@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+#MISE description="Run core CI checks (test, coverage)"
+#MISE depends=["coverage"]
+true

@@ -1,0 +1,11 @@
+# Build and test output
+/tamis
+*.test
+*.out
+dist/
+
+# Local state and secrets
+.env
+*.db
+go.work
+go.work.sum

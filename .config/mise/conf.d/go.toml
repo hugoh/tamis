@@ -1,0 +1,7 @@
+# Seeded once — managed by hugoh/go-tools via copier only for its initial
+# creation (see copier.yml's _skip_if_exists). After that, Copier never
+# re-renders or overwrites this file again: Renovate owns Go version bumps
+# here directly, so they don't get bundled into unrelated go-tools
+# template updates.
+[tools]
+go = "1.27.2"

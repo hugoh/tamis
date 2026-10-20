@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+#MISE description="Tidy the module"
+go mod tidy -v

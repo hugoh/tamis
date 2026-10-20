@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+#MISE description="Lint Go source"
+#MISE sources=["**/*.go"]
+#USAGE flag "--fix" help="Automatically fix issues"
+flags=()
+[ "${usage_fix:-}" != "" ] && flags+=(--fix)
+golangci-lint run "${flags[@]}" ./...

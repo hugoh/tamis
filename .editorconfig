@@ -1,0 +1,6 @@
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+root = true
+
+[mise-tasks/*]
+indent_size = 2
+indent_style = space

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+#MISE description="Check for dead code"
+#MISE sources=["**/*.go"]
+#USAGE flag "--test" help="Include test files"
+flags=()
+[ "${usage_test:-}" != "" ] && flags+=(-test)
+if deadcode "${flags[@]}" ./... 2>&1 | grep .; then
+  echo 'dead code found'
+  exit 1
+fi

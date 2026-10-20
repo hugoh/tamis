@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+#MISE description="Check release config if present"
+#MISE sources=[".goreleaser.yml"]
+set -uo pipefail
+
+[ -f .goreleaser.yml ] || exit 0
+
+out=$(goreleaser check 2>&1)
+ec=$?
+printf '%s\n' "$out"
+[ "$ec" -eq 0 ] && exit 0
+
+# goreleaser check fails even on configs it calls "valid" if they use a
+# deprecated property (e.g. brews instead of homebrew_casks). Deprecation
+# is a lint concern, not a validity one, so don't hard-fail CI on it.
+if [ "$ec" -eq 2 ] && printf '%s\n' "$out" | grep -q 'configuration is valid, but uses deprecated properties'; then
+  exit 0
+fi
+
+exit "$ec"

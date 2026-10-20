@@ -1,0 +1,5 @@
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+profile: cover.out
+
+threshold:
+  total: 90

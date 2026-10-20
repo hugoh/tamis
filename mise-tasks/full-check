@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+#MISE description="Run full pre-commit validation (format, fix, core CI)"
+set -e
+mise run format
+mise run fix
+mise run ci-core

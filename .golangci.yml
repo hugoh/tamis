@@ -1,0 +1,32 @@
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+version: "2"
+linters:
+  default: all
+  disable:
+    - depguard
+    - exhaustruct
+    - exhaustruct_v5
+    - gomodguard
+    - noinlineerr
+    - paralleltest
+    - testpackage
+    - wsl
+  exclusions:
+    rules:
+      - path: _test\.go$
+        linters:
+          - err113
+          - varnamelen
+          - funlen
+formatters:
+  enable:
+    - gci
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    gofumpt:
+      extra:
+        group-params: true
+        clothe-returns: true
+        balance-calls: true

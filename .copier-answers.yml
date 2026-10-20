@@ -1,0 +1,19 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v1.26.28
+_src_path: https://github.com/hugoh/go-tools.git
+coverage_total: 90
+golangci_extra_disable: []
+golangci_extra_exclusions: []
+golangci_settings: ''
+golangci_test_exclude_linters:
+- funlen
+has_executable: true
+has_fuzz: false
+has_gen: false
+has_goreleaser: false
+has_pages: false
+has_test_int: false
+project_name: tamis
+testcoverage_excludes: []
+testcoverage_overrides: []
+

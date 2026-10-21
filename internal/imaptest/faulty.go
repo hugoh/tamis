@@ -3,10 +3,14 @@ package imaptest
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 )
+
+// idlePollInterval is how often Idle checks for updates.
+const idlePollInterval = 10 * time.Millisecond
 
 var (
 	// errInjected is what an injected failure returns to the client.
@@ -126,12 +130,30 @@ func (s *session) Store(
 	return s.fullSession.Store(writer, numSet, flags, options) //nolint:wrapcheck // passthrough
 }
 
+// Idle serves IDLE by polling the session's update queue instead of
+// delegating to the in-memory server. Its tracker only wakes Idle for
+// updates queued after Idle registers, which happens after the server has
+// already sent "+ idling", so an APPEND from another connection in that gap
+// was never pushed and IDLE tests flaked under load.
 func (s *session) Idle(writer *imapserver.UpdateWriter, stop <-chan struct{}) error {
 	if err := s.check("IDLE", ""); err != nil {
 		return err
 	}
 
-	return s.fullSession.Idle(writer, stop) //nolint:wrapcheck // passthrough
+	ticker := time.NewTicker(idlePollInterval)
+	defer ticker.Stop()
+
+	for {
+		if err := s.Poll(writer, true); err != nil {
+			return err //nolint:wrapcheck // passthrough
+		}
+
+		select {
+		case <-stop:
+			return nil
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *session) Move(writer *imapserver.MoveWriter, numSet imap.NumSet, dest string) error {

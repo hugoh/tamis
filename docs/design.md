@@ -42,17 +42,60 @@ corrections:
 | Signal | Why |
 |---|---|
 | Token Bayes (Robinson/Fisher chi-square) | Cheap; covers headers, URLs, structure |
-| Embedding nearest-neighbour | Catches reworded/new spam; learns instantly from one correction |
+| Jev zero-shot Choice (opt-in) | Strong from day one with no corpus; errors complement Bayes |
+| Embedding nearest-neighbour (later) | Local alternative for reworded spam; learns from one correction |
 | Correspondent whitelist | Strongest ham signal; only counts when DKIM/DMARC passes |
 | Hide My Email alias ↔ expected sender | Mail to a single-site alias from someone else is suspect |
 | Provider's verdict (folder, auth headers) | Free prior |
 
 The combined score maps to three tiers: **good**, **uncertain**, **spam**.
-An LLM, if ever added, only looks at the uncertain band and is opt-in.
 
-Embeddings come from a small local model (bge-small / e5-small / MiniLM class)
-via ONNX or a local embedding server; vectors are stored with the user's
-labelled messages.
+### Jev
+
+[TypeSafe's Jev](https://typesafe.ai) is a hosted model that classifies
+zero-shot from written category definitions and returns a probability
+distribution. The [jev-spam-eval](https://github.com/bitnovus/jev-spam-eval)
+study is the evidence for using it here:
+
+- With enriched context (link destinations, Reply-To, attachment metadata) it
+  reached 98.64% on a ham/spam/phishing set, 0.23 points behind TF-IDF
+  regression trained on ~4,600 labelled messages.
+- Its errors complement a trained token model: a fixed 50/50 average beat
+  both alone (binary: 99.22% vs 98.39% for regression).
+- On later mail it held up better than older-trained regression (2024–25
+  phishing recall 95.3% vs 75.3%).
+- Cost is negligible at personal volumes: about 1,600 input tokens per
+  message, roughly $0.00007 at the study's recorded rate.
+
+How tamis would use it:
+
+- **Cold start.** Before the personal corpus exists, Jev plus the whitelist
+  carries the decision; the combiner shifts weight to Bayes as corrections
+  accumulate.
+- **Context the study lacked.** Its limits list recipient history and
+  verified sender authentication as missing. tamis has both: whether the
+  user has written to the sender, `Authentication-Results`, `List-Id`, and
+  Hide My Email alias mapping. The Ling-Spam false positives (expected
+  publisher announcements) are exactly what subscription context fixes.
+- **Three-way output.** Phishing gets stricter handling than spam: never
+  rescued from Junk, never whitelisted by display name.
+- **Corrections don't retrain Jev.** Its weights are fixed; personal learning
+  stays in Bayes, the whitelist and the combiner's weights and thresholds.
+
+Constraints:
+
+- It is a hosted API, so message content leaves the machine. Off by
+  default; send bounded text and metadata, never attachments.
+- The study used the Python SDK; a Go client needs the HTTP API, not yet
+  checked.
+- Pin the model version, cache verdicts per message, and calibrate its
+  probabilities on the user's own corrections before trusting thresholds.
+- The study is exploratory, on public corpora that may have been in
+  pretraining.
+
+Local embeddings (bge-small / e5-small / MiniLM class via ONNX) remain an
+option for a fully local semantic signal, but are no longer on the critical
+path.
 
 ## Learning and corrections
 
@@ -106,6 +149,9 @@ providers:
 - IMAP only (`imap.mail.me.com:993`), app-specific password, no OAuth, no JMAP.
 - CONDSTORE/QRESYNC are advertised but have been buggy; MOVE is unconfirmed.
   Every extension is optional, with a full UID/flags resync as fallback.
+  `tamis probe` measures what actually works.
+- go-imap v2 has no client-side QRESYNC; using it would need either an
+  upstream contribution or raw commands like the probe's ENABLE check.
 - Without MOVE, use COPY + `\Deleted` + `UID EXPUNGE`; never plain `EXPUNGE`
   without UIDPLUS.
 - Connection limits are undocumented: IDLE on the Inbox only, poll the rest.
@@ -131,7 +177,7 @@ web UI / API, TOML config
 
 | Phase | Scope |
 |---|---|
-| 0 | iCloud capability probe: which extensions actually work |
+| 0 | iCloud capability probe: which extensions actually work (`tamis probe`) |
 | MVP | IMAP, Train folders, token Bayes, whitelist from Sent, shadow mode, SQLite, CLI |
-| Next | Inferred corrections, rescue from Junk, embeddings, digest, web UI with undo |
-| Later | JMAP, OAuth (Gmail, Microsoft), optional Rspamd/LLM signals |
+| Next | Opt-in Jev signal, inferred corrections, rescue from Junk, digest, web UI with undo |
+| Later | JMAP, OAuth (Gmail, Microsoft), local embeddings, optional Rspamd signal |

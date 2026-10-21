@@ -3,3 +3,7 @@ profile: cover.out
 
 threshold:
   total: 90
+
+exclude:
+  paths:
+    - internal/imaptest/

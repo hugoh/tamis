@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -74,7 +75,7 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name:       "probe no password",
-			args:       []string{probeCmd, "--user", "me"},
+			args:       []string{probeCmd, userFlag, "me"},
 			wantCode:   2,
 			wantStderr: "no password",
 		},
@@ -95,12 +96,19 @@ func TestRun(t *testing.T) {
 	}
 }
 
-const probeCmd = "probe"
+const (
+	probeCmd = "probe"
+	userFlag = "--user"
+)
 
 func probeArgs(t *testing.T, extra ...string) []string {
 	t.Helper()
 
-	srv := imaptest.Start(t, imaptest.Rev2())
+	return probeArgsFor(t, imaptest.Start(t, imaptest.Rev2()), extra...)
+}
+
+func probeArgsFor(t *testing.T, srv *imaptest.Server, extra ...string) []string {
+	t.Helper()
 
 	host, port, err := net.SplitHostPort(srv.Addr)
 	if err != nil {
@@ -109,7 +117,7 @@ func probeArgs(t *testing.T, extra ...string) []string {
 
 	return append([]string{
 		probeCmd, "--plaintext", "--idle-wait", "5s",
-		"--host", host, "--port", port, "--user", imaptest.Username,
+		"--host", host, "--port", port, userFlag, imaptest.Username,
 	}, extra...)
 }
 
@@ -158,6 +166,43 @@ func TestProbeLoginFailure(t *testing.T) {
 	}
 
 	assertContains(t, "stderr", got.stderr, "login failed")
+}
+
+func TestProbeFailedChecks(t *testing.T) {
+	t.Parallel()
+
+	// A bare IMAP4rev1 server lacks UIDPLUS, which the probe requires.
+	args := probeArgsFor(t, imaptest.Start(t, imaptest.Rev1()))
+
+	got := run(args, imaptest.Password+"\n", nil)
+	if got.code != 1 {
+		t.Errorf("exit code = %d, want 1", got.code)
+	}
+
+	assertContains(t, "stdout", got.stdout, "FAIL")
+}
+
+// errReader fails every read.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("stdin closed") }
+
+func TestProbePasswordReadError(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+
+	code := cli.Run([]string{probeCmd, userFlag, "me"}, cli.Env{
+		Stdin:  errReader{},
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Getenv: func(string) string { return "" },
+	}, "1.2.3")
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2", code)
+	}
+
+	assertContains(t, "stderr", stderr.String(), "read password")
 }
 
 func assertContains(t *testing.T, stream, got, want string) {

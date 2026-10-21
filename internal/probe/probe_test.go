@@ -168,8 +168,10 @@ func TestRunConnectRefused(t *testing.T) {
 	}
 }
 
-// fakeServer answers raw IMAP with a fixed reply to ENABLE.
-func fakeServer(t *testing.T, enableReply string) Config {
+// fakeServer speaks scripted raw IMAP: it sends greeting (closing at once
+// if it is empty), then answers each command whose name is in replies with
+// that reply ("TAG" replaced by the command's tag) and anything else with OK.
+func fakeServer(t *testing.T, greeting string, replies map[string]string) Config {
 	t.Helper()
 
 	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -186,7 +188,11 @@ func fakeServer(t *testing.T, enableReply string) Config {
 		}
 		defer func() { _ = conn.Close() }()
 
-		_, _ = conn.Write([]byte("* OK ready\r\n"))
+		if greeting == "" {
+			return
+		}
+
+		_, _ = conn.Write([]byte(greeting))
 		r := bufio.NewReader(conn)
 
 		for {
@@ -196,13 +202,14 @@ func fakeServer(t *testing.T, enableReply string) Config {
 			}
 
 			tag, cmd, _ := strings.Cut(strings.TrimSpace(line), " ")
+			name, _, _ := strings.Cut(cmd, " ")
 
-			switch {
-			case strings.HasPrefix(cmd, "ENABLE"):
-				_, _ = conn.Write([]byte(strings.ReplaceAll(enableReply, "TAG", tag)))
-			default:
-				_, _ = conn.Write([]byte(tag + " OK done\r\n"))
+			reply, ok := replies[name]
+			if !ok {
+				reply = "TAG OK done\r\n"
 			}
+
+			_, _ = conn.Write([]byte(strings.ReplaceAll(reply, "TAG", tag)))
 		}
 	}()
 
@@ -230,8 +237,38 @@ func TestCheckQResync(t *testing.T) {
 			t.Parallel()
 
 			report := &Report{}
-			checkQResync(t.Context(), report, fakeServer(t, tt.reply), caps)
+			cfg := fakeServer(t, "* OK ready\r\n", map[string]string{"ENABLE": tt.reply})
+			checkQResync(t.Context(), report, cfg, caps)
 			expect(t, report, "ENABLE QRESYNC", tt.status, tt.detail)
+		})
+	}
+}
+
+func TestRawEnableFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		greeting string
+		replies  map[string]string
+		want     string
+	}{
+		{"no greeting", "", nil, "greeting"},
+		{"login rejected", "* OK ready\r\n", map[string]string{"LOGIN": "TAG NO bad\r\n"}, "login"},
+		{"hangup", "* OK ready\r\n", map[string]string{"LOGIN": ""}, "read"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := fakeServer(t, tt.greeting, tt.replies)
+			cfg.Timeout = time.Second
+
+			_, err := rawEnable(t.Context(), cfg, "QRESYNC")
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %v, want it to mention %q", err, tt.want)
+			}
 		})
 	}
 }
@@ -251,7 +288,10 @@ func TestWriteReport(t *testing.T) {
 		Server:       "imap.example.com:993",
 		Capabilities: []string{"IDLE", opMove},
 		Mailboxes:    []Mailbox{{Name: "Junk", Attrs: []string{`\Junk`}}},
-		Checks:       []Check{{Name: opMove, Status: StatusOK, Detail: "native MOVE"}},
+		Checks: []Check{
+			{Name: opMove, Status: StatusOK, Detail: "native MOVE"},
+			{Name: "CONDSTORE", Status: StatusWarn, Detail: "missing"},
+		},
 	}
 
 	var text bytes.Buffer
@@ -259,7 +299,7 @@ func TestWriteReport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, want := range []string{"imap.example.com:993", "IDLE MOVE", "native MOVE", `\Junk`} {
+	for _, want := range []string{"imap.example.com:993", "IDLE MOVE", "native MOVE", `\Junk`, "WARN"} {
 		if !strings.Contains(text.String(), want) {
 			t.Errorf("text report missing %q:\n%s", want, text.String())
 		}
@@ -349,4 +389,23 @@ func TestCheckSpecialFolder(t *testing.T) {
 
 	expect(t, report, `folder \Junk`, StatusOK, `"Bulk"`)
 	expect(t, report, `folder \Sent`, StatusWarn, `guessed "Sent Messages"`)
+}
+
+// failWriter rejects every write.
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+func TestWriteReportErrors(t *testing.T) {
+	t.Parallel()
+
+	report := &Report{Checks: []Check{{Name: "login", Status: StatusOK}}}
+
+	if err := report.WriteText(failWriter{}); err == nil {
+		t.Error("WriteText: want error from a failing writer")
+	}
+
+	if err := report.WriteJSON(failWriter{}); err == nil {
+		t.Error("WriteJSON: want error from a failing writer")
+	}
 }

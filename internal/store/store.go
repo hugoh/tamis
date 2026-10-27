@@ -22,6 +22,7 @@ func migrations() []string {
 	return []string{
 		schemaV1,
 		`ALTER TABLE decisions ADD COLUMN undone INTEGER NOT NULL DEFAULT 0;`,
+		`CREATE INDEX decisions_by_message_id ON decisions (message_id);`,
 	}
 }
 
@@ -216,6 +217,20 @@ func (s *Store) AddAddress(ctx context.Context, address, source string) error {
 	return nil
 }
 
+// RemoveAddress takes an address off the whitelist, if it is there.
+func (s *Store) RemoveAddress(ctx context.Context, address string) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		"DELETE FROM addresses WHERE address = ?",
+		strings.ToLower(address),
+	)
+	if err != nil {
+		return fmt.Errorf("remove %s from whitelist: %w", address, err)
+	}
+
+	return nil
+}
+
 // HasAddress reports whether address is whitelisted.
 func (s *Store) HasAddress(ctx context.Context, address string) (bool, error) {
 	var found int
@@ -345,6 +360,26 @@ func (s *Store) Decision(ctx context.Context, id int64) (Decision, error) {
 	}
 
 	return decision, err
+}
+
+// LatestDecision returns the most recent journal entry for a Message-ID.
+// An empty ID matches nothing.
+func (s *Store) LatestDecision(ctx context.Context, messageID string) (Decision, bool, error) {
+	if messageID == "" {
+		return Decision{}, false, nil
+	}
+
+	decision, err := scanDecision(s.db.QueryRowContext(ctx,
+		decisionColumns+" FROM decisions WHERE message_id = ? ORDER BY id DESC LIMIT 1", messageID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Decision{}, false, nil
+	}
+
+	if err != nil {
+		return Decision{}, false, fmt.Errorf("latest decision for %s: %w", messageID, err)
+	}
+
+	return decision, true, nil
 }
 
 // MarkUndone records that a decision's action was reversed. It fails if the

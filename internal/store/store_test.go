@@ -177,7 +177,7 @@ func TestDecisions(t *testing.T) {
 
 	at := time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
 
-	for i, verdict := range []string{"good", "spam"} {
+	for i, verdict := range []string{"good", verdictSpam} {
 		_, err := db.RecordDecision(t.Context(), store.Decision{
 			At:        at.Add(time.Duration(i) * time.Minute),
 			Mailbox:   "INBOX",
@@ -197,7 +197,7 @@ func TestDecisions(t *testing.T) {
 	decisions, err := db.Decisions(t.Context(), 10)
 	require.NoError(t, err)
 	require.Len(t, decisions, 2)
-	require.Equal(t, "spam", decisions[0].Verdict, "newest first")
+	require.Equal(t, verdictSpam, decisions[0].Verdict, "newest first")
 	require.Equal(t, at.Add(time.Minute), decisions[0].At)
 	require.Equal(t, "bayes", decisions[0].Reason)
 	require.Positive(t, decisions[0].ID)
@@ -288,6 +288,16 @@ func TestClosedStoreFails(t *testing.T) {
 			t.Helper()
 			require.Error(t, db.MarkUndone(t.Context(), 1))
 		},
+		"latest decision": func(t *testing.T) {
+			t.Helper()
+
+			_, _, err := db.LatestDecision(t.Context(), "<m@x>")
+			require.Error(t, err)
+		},
+		"remove address": func(t *testing.T) {
+			t.Helper()
+			require.Error(t, db.RemoveAddress(t.Context(), "a@b"))
+		},
 		"stats": func(t *testing.T) {
 			t.Helper()
 
@@ -354,6 +364,8 @@ func TestConcurrentOpenOfNewDatabase(t *testing.T) {
 	}
 }
 
+const verdictSpam = "spam"
+
 // v1Schema is the decisions table as released in schema version 1.
 const v1Schema = `
 CREATE TABLE decisions (
@@ -396,8 +408,14 @@ func TestDecisionLookup(t *testing.T) {
 	db := open(t)
 
 	id, err := db.RecordDecision(t.Context(), store.Decision{
-		At: time.Unix(0, 0).UTC(), Mailbox: "INBOX", UID: 3, MessageID: "<a@b>", Verdict: "spam",
-		Action: "move:Junk", Applied: true,
+		At: time.Unix(0, 0).
+			UTC(),
+		Mailbox:   "INBOX",
+		UID:       3,
+		MessageID: "<a@b>",
+		Verdict:   verdictSpam,
+		Action:    "move:Junk",
+		Applied:   true,
 	})
 	require.NoError(t, err)
 
@@ -425,4 +443,51 @@ func TestMarkUndone(t *testing.T) {
 	decisions, err := db.Decisions(t.Context(), 10)
 	require.NoError(t, err)
 	require.True(t, decisions[0].Undone)
+}
+
+func TestLatestDecision(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	_, ok, err := db.LatestDecision(t.Context(), "<m@x>")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	for _, verdict := range []string{verdictSpam, "good"} {
+		_, err := db.RecordDecision(
+			t.Context(),
+			store.Decision{MessageID: "<m@x>", Verdict: verdict},
+		)
+		require.NoError(t, err)
+	}
+
+	_, err = db.RecordDecision(
+		t.Context(),
+		store.Decision{MessageID: "<other@x>", Verdict: verdictSpam},
+	)
+	require.NoError(t, err)
+
+	decision, ok, err := db.LatestDecision(t.Context(), "<m@x>")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "good", decision.Verdict)
+
+	_, ok, err = db.LatestDecision(t.Context(), "")
+	require.NoError(t, err)
+	require.False(t, ok, "an empty Message-ID matches nothing")
+}
+
+func TestRemoveAddress(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	require.NoError(t, db.AddAddress(t.Context(), "friend@example.com", "sent"))
+	require.NoError(t, db.RemoveAddress(t.Context(), "Friend@Example.com"))
+	require.NoError(t, db.RemoveAddress(t.Context(), "nobody@example.com"))
+
+	ok, err := db.HasAddress(t.Context(), "friend@example.com")
+	require.NoError(t, err)
+	require.False(t, ok)
 }

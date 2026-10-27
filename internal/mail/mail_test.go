@@ -411,3 +411,90 @@ func TestFindMessageID(t *testing.T) {
 		})
 	}
 }
+
+const (
+	junkKeyword      = "$Junk"
+	appleJunkKeyword = "Junk"
+)
+
+func TestSearchKeywords(t *testing.T) {
+	t.Parallel()
+
+	old := time.Now().AddDate(0, 0, -60)
+
+	tests := []struct {
+		name     string
+		keywords []string
+		since    time.Time
+		want     []uint32
+	}{
+		{"one keyword", []string{junkKeyword}, time.Time{}, []uint32{1}},
+		{"either keyword", []string{junkKeyword, appleJunkKeyword}, time.Time{}, []uint32{1, 2}},
+		{
+			"recent only",
+			[]string{junkKeyword, appleJunkKeyword},
+			time.Now().AddDate(0, 0, -30),
+			[]uint32{1},
+		},
+		{"no keywords", nil, time.Time{}, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := connect(t, imaptest.Start(t, imaptest.Rev2()))
+
+			// UID 1: $Junk, recent. UID 2: Junk, old. UID 3: unflagged.
+			_, err := client.Append(
+				"INBOX",
+				raw("a@x", "b@y", "one"),
+				[]string{junkKeyword},
+				time.Now(),
+			)
+			require.NoError(t, err)
+			_, err = client.Append(
+				"INBOX",
+				raw("a@x", "b@y", "two"),
+				[]string{appleJunkKeyword},
+				old,
+			)
+			require.NoError(t, err)
+			_, err = client.Append("INBOX", raw("a@x", "b@y", "three"), nil, time.Now())
+			require.NoError(t, err)
+
+			got, err := client.SearchKeywords("INBOX", tt.keywords, tt.since)
+			require.NoError(t, err)
+
+			if tt.want == nil {
+				require.Empty(t, got)
+
+				return
+			}
+
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestFetchEnvelopes(t *testing.T) {
+	t.Parallel()
+
+	client := connect(t, imaptest.Start(t, imaptest.Rev2()))
+
+	uid, err := client.Append(
+		"INBOX",
+		raw("alice@example.com", "b@y", "hello"),
+		[]string{junkKeyword},
+		time.Time{},
+	)
+	require.NoError(t, err)
+
+	messages, err := client.FetchEnvelopes("INBOX", []uint32{uid})
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	require.Equal(t, "<hello@test>", messages[0].MessageID)
+	require.Equal(t, "alice@example.com", messages[0].From)
+	require.Contains(t, messages[0].Flags, "$junk")
+	require.Empty(t, messages[0].Raw, "no body is downloaded")
+}

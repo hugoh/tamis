@@ -133,6 +133,30 @@ func (c *Client) FindMessageID(mailbox, messageID string) ([]uint32, error) {
 	})
 }
 
+// SearchKeywords lists messages carrying any of the keywords that arrived
+// on or after since (zero for no bound). No keywords match nothing.
+func (c *Client) SearchKeywords(
+	mailbox string,
+	keywords []string,
+	since time.Time,
+) ([]uint32, error) {
+	if len(keywords) == 0 {
+		return nil, nil
+	}
+
+	criteria := imap.SearchCriteria{Flag: []imap.Flag{imap.Flag(keywords[0])}}
+
+	for _, keyword := range keywords[1:] {
+		criteria = imap.SearchCriteria{Or: [][2]imap.SearchCriteria{
+			{criteria, {Flag: []imap.Flag{imap.Flag(keyword)}}},
+		}}
+	}
+
+	criteria.Since = since
+
+	return c.search(mailbox, &criteria)
+}
+
 // SeenBefore lists read messages that arrived before the given day.
 func (c *Client) SeenBefore(mailbox string, before time.Time) ([]uint32, error) {
 	return c.search(mailbox, &imap.SearchCriteria{Flag: []imap.Flag{imap.FlagSeen}, Before: before})
@@ -152,47 +176,36 @@ type Message struct {
 
 // Fetch downloads the given messages without marking them as read.
 func (c *Client) Fetch(mailbox string, uids []uint32) ([]Message, error) {
-	options := &imap.FetchOptions{
-		UID:      true,
-		Flags:    true,
-		Envelope: true,
-		BodySection: []*imap.FetchItemBodySection{{
-			Peek:    true,
-			Partial: &imap.SectionPartial{Offset: 0, Size: MaxMessageBytes},
-		}},
+	return c.fetchMessages(mailbox, uids, true)
+}
+
+// FetchEnvelopes is Fetch without the message source: UID, flags and
+// envelope fields only.
+func (c *Client) FetchEnvelopes(mailbox string, uids []uint32) ([]Message, error) {
+	return c.fetchMessages(mailbox, uids, false)
+}
+
+func toMessage(buffer *imapclient.FetchMessageBuffer) Message {
+	message := Message{UID: uint32(buffer.UID)}
+
+	for _, flag := range buffer.Flags {
+		message.Flags = append(message.Flags, strings.ToLower(string(flag)))
 	}
 
-	buffers, err := c.fetch(mailbox, uids, options)
-	if err != nil {
-		return nil, err
+	if len(buffer.BodySection) > 0 {
+		message.Raw = buffer.BodySection[0].Bytes
 	}
 
-	messages := make([]Message, 0, len(buffers))
+	if envelope := buffer.Envelope; envelope != nil {
+		message.Subject = envelope.Subject
+		message.MessageID = bracket(envelope.MessageID)
 
-	for _, buffer := range buffers {
-		message := Message{UID: uint32(buffer.UID)}
-
-		for _, flag := range buffer.Flags {
-			message.Flags = append(message.Flags, strings.ToLower(string(flag)))
+		if len(envelope.From) > 0 {
+			message.From = strings.ToLower(envelope.From[0].Addr())
 		}
-
-		if len(buffer.BodySection) > 0 {
-			message.Raw = buffer.BodySection[0].Bytes
-		}
-
-		if envelope := buffer.Envelope; envelope != nil {
-			message.Subject = envelope.Subject
-			message.MessageID = bracket(envelope.MessageID)
-
-			if len(envelope.From) > 0 {
-				message.From = strings.ToLower(envelope.From[0].Addr())
-			}
-		}
-
-		messages = append(messages, message)
 	}
 
-	return messages, nil
+	return message
 }
 
 // Recipients returns the distinct To and Cc addresses of the given
@@ -300,6 +313,29 @@ func (c *Client) Ensure(mailbox string) error {
 	}
 
 	return nil
+}
+
+func (c *Client) fetchMessages(mailbox string, uids []uint32, withBody bool) ([]Message, error) {
+	options := &imap.FetchOptions{UID: true, Flags: true, Envelope: true}
+	if withBody {
+		options.BodySection = []*imap.FetchItemBodySection{{
+			Peek:    true,
+			Partial: &imap.SectionPartial{Offset: 0, Size: MaxMessageBytes},
+		}}
+	}
+
+	buffers, err := c.fetch(mailbox, uids, options)
+	if err != nil {
+		return nil, err
+	}
+
+	messages := make([]Message, 0, len(buffers))
+
+	for _, buffer := range buffers {
+		messages = append(messages, toMessage(buffer))
+	}
+
+	return messages, nil
 }
 
 func (c *Client) search(mailbox string, criteria *imap.SearchCriteria) ([]uint32, error) {

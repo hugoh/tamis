@@ -44,8 +44,8 @@ flowchart TD
     trainGood --> watch{Next watched folder?}
     watch -- yes --> scan[Scan folder]
     scan --> watch
-    watch -- no --> learn{learn_from_junk?}
-    learn -- yes --> junk[Scan Junk<br/>learn missed spam]
+    watch -- no --> learn{learn_from_junk<br/>or rescue?}
+    learn -- yes --> junk[Scan Junk<br/>learn missed spam, rescue]
     learn -- no --> marks{learn_from_keywords?}
     junk --> marks
     marks -- yes --> keywords[Search Junk / Not Junk marks<br/>learn contradictions]
@@ -144,6 +144,7 @@ falls in the uncertain band.
 |---|---|---|---|
 | spam | add `$TamisFiled`, move to Junk | nothing | `move:Junk` |
 | uncertain | add `$TamisUncertain` | nothing | `keyword:$TamisUncertain` |
+| rescued (in Junk) | add `$TamisRescued`, move to the inbox | nothing | `move:INBOX` |
 | good | nothing | nothing | `none` |
 
 Every decision is journalled with its verdict, reason (`bayes`,
@@ -161,10 +162,10 @@ flowchart TD
     u([undo ID]) --> load[Load decision]
     load --> check{Applied, not yet undone,<br/>and tamis's own verdict?}
     check -- no --> refuse([Refuse, saying why])
-    check -- "move:Junk" --> find[Find it in Junk by Message-ID]
-    find --> learn[Learn good, whitelist sender]
-    learn --> unflag[Remove $TamisFiled]
-    unflag --> back[Move back to the original folder]
+    check -- "move (filed or rescued)" --> find[Find it where tamis moved it,<br/>by Message-ID]
+    find --> learn[Filed: learn good, whitelist sender<br/>Rescued: learn spam, drop sender]
+    learn --> unflag[Remove $TamisFiled or $TamisRescued]
+    unflag --> back[Move back to where it was]
     check -- "keyword:$TamisUncertain" --> findU[Find it by Message-ID]
     findU --> clear[Remove $TamisUncertain]
     back --> mark[(Mark undone, journal the undo)]
@@ -182,6 +183,36 @@ new UID. Undo refuses:
 
 The decision is marked undone last, so an undo that fails partway (say the
 move back fails) can simply be run again.
+
+## Rescue
+
+With `policy.rescue` on (the default), the Junk scan also looks for good
+mail the provider filed there.
+
+```mermaid
+flowchart TD
+    arrival([New in Junk]) --> mine{Judged, trained, filed<br/>or marked Junk before?}
+    mine -- yes --> leave([Leave it: someone put it there deliberately])
+    mine -- no --> friend{Whitelisted sender<br/>and DKIM/DMARC pass?}
+    friend -- yes --> rescue[Rescue<br/>reason: whitelisted]
+    friend -- no --> threshold{rescue_threshold set<br/>and score at or below it?}
+    threshold -- yes --> rescueB[Rescue<br/>reason: bayes]
+    threshold -- no --> leave2([Leave it in Junk])
+    rescue --> act[Live: tag $TamisRescued,<br/>move to folders.rescued or the inbox]
+    rescueB --> act
+    act --> journal[(Journal)]
+```
+
+- **Only mail tamis never saw.** Anything tamis judged, trained or filed, and
+  anything you marked Junk, was put in Junk on purpose.
+- **Authentication is always required** for the whitelist route, even with
+  `whitelist_requires_auth = false`: phishing that impersonates a contact is
+  exactly what ends up in Junk.
+- **Score-based rescue is off** until you set `rescue_threshold` (e.g. 0.05).
+  It must be below `good_threshold`.
+- A rescued message is not judged again in the inbox. Move it back to Junk and
+  tamis learns it as spam and drops the sender from the whitelist; `tamis
+  undo` does the same.
 
 ## Missed spam
 
@@ -235,6 +266,7 @@ stateDiagram-v2
     Inbox --> Inbox: next pass sees $TamisFiled, learns good
     Inbox --> Junk: user moves missed spam
     Junk --> Junk: next pass learns spam
+    Junk --> Inbox: rescue (live)
     Inbox --> TrainSpam: user drops it
     Junk --> TrainGood: user drops it
     Inbox --> TrainGood: user drops it
@@ -281,4 +313,3 @@ mail could be spam that slipped through and that nobody has looked at yet.
 - Corrections rely on `$TamisFiled` surviving a move back from Junk. Servers
   that drop keywords on MOVE won't report corrections; the training folders
   still work.
-- No rescue from the provider's Junk yet (see the roadmap in `design.md`).

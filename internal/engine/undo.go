@@ -70,7 +70,7 @@ func (e *Engine) undoerFor(decision store.Decision) (undoer, error) {
 	case decision.Reason != ReasonBayes && decision.Reason != ReasonWhitelisted:
 		return nil, ErrNotUndoable
 	case strings.HasPrefix(decision.Action, "move:"):
-		return e.undoFiling, nil
+		return e.undoMove, nil
 	case decision.Action == "keyword:"+UncertainKeyword:
 		return e.undoUncertain, nil
 	default:
@@ -78,11 +78,19 @@ func (e *Engine) undoerFor(decision store.Decision) (undoer, error) {
 	}
 }
 
-// undoFiling brings a message back from Junk, teaching tamis it was wrong.
-func (e *Engine) undoFiling(ctx context.Context, decision store.Decision) (string, error) {
-	junk := strings.TrimPrefix(decision.Action, "move:")
+// undoMove brings a message back to where it was before tamis moved it,
+// teaching tamis it was wrong: filed spam is learnt as good and its sender
+// whitelisted; a rescue is learnt as spam and its sender dropped from the
+// whitelist.
+func (e *Engine) undoMove(ctx context.Context, decision store.Decision) (string, error) {
+	movedTo := strings.TrimPrefix(decision.Action, "move:")
 
-	messages, err := e.locate(junk, decision.MessageID)
+	reversal := moveReversal{keyword: FiledKeyword, label: classify.Good, verdict: VerdictGood}
+	if decision.Verdict == VerdictGood {
+		reversal = moveReversal{keyword: RescuedKeyword, label: classify.Spam, verdict: VerdictSpam}
+	}
+
+	messages, err := e.locate(movedTo, decision.MessageID)
 	if err != nil {
 		return "", err
 	}
@@ -92,40 +100,71 @@ func (e *Engine) undoFiling(ctx context.Context, decision store.Decision) (strin
 	for i, message := range messages {
 		uids[i] = message.UID
 
-		if _, err := e.store.Train(
-			ctx,
-			trainingKey(message),
-			classify.Tokenize(message.Raw),
-			classify.Good,
-		); err != nil {
-			return "", fmt.Errorf("learn good: %w", err)
-		}
-
-		if message.From != "" {
-			if err := e.store.AddAddress(ctx, message.From, ReasonUndo); err != nil {
-				return "", fmt.Errorf("whitelist sender: %w", err)
-			}
+		if err := e.relearn(ctx, message, reversal.label); err != nil {
+			return "", err
 		}
 	}
 
-	if err := e.mail.RemoveKeyword(junk, uids, FiledKeyword); err != nil {
-		return "", fmt.Errorf("clear %s: %w", FiledKeyword, err)
+	if err := e.mail.RemoveKeyword(movedTo, uids, reversal.keyword); err != nil {
+		return "", fmt.Errorf("clear %s: %w", reversal.keyword, err)
 	}
 
-	if err := e.mail.Move(junk, uids, decision.Mailbox); err != nil {
+	if err := e.mail.Move(movedTo, uids, decision.Mailbox); err != nil {
 		return "", fmt.Errorf("move back: %w", err)
 	}
 
 	err = e.record(ctx, decision.Mailbox, messages[0],
-		judgement{verdict: VerdictGood, reason: ReasonUndo}, "move:"+decision.Mailbox, true)
+		judgement{verdict: reversal.verdict, reason: ReasonUndo}, "move:"+decision.Mailbox, true)
 	if err != nil {
 		return "", err
+	}
+
+	if reversal.label == classify.Spam {
+		return fmt.Sprintf("moved back to %s, learnt as spam, sender removed from whitelist",
+			decision.Mailbox), nil
 	}
 
 	return fmt.Sprintf(
 		"moved back to %s, learnt as good, sender whitelisted",
 		decision.Mailbox,
 	), nil
+}
+
+// moveReversal is what undoing a move teaches: the keyword tamis set, and
+// the label and verdict the message really deserved.
+type moveReversal struct {
+	keyword string
+	label   classify.Label
+	verdict string
+}
+
+// relearn trains message as label and updates the whitelist to match.
+func (e *Engine) relearn(ctx context.Context, message mail.Message, label classify.Label) error {
+	if _, err := e.store.Train(
+		ctx,
+		trainingKey(message),
+		classify.Tokenize(message.Raw),
+		label,
+	); err != nil {
+		return fmt.Errorf("learn %s: %w", label, err)
+	}
+
+	if message.From == "" {
+		return nil
+	}
+
+	var err error
+	if label == classify.Good {
+		err = e.store.AddAddress(ctx, message.From, ReasonUndo)
+	} else {
+		err = e.store.RemoveAddress(ctx, message.From)
+	}
+
+	if err != nil {
+		return fmt.Errorf("update whitelist: %w", err)
+	}
+
+	return nil
 }
 
 func (e *Engine) undoUncertain(ctx context.Context, decision store.Decision) (string, error) {

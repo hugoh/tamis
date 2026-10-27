@@ -4,8 +4,8 @@ A second-opinion spam filter for remote mailboxes.
 
 `tamis` connects to a mail account over IMAP (later JMAP), watches the folders
 you choose, and re-checks what your provider's own filter decided: it catches
-spam that slipped into the inbox and learns from the corrections you make in
-any mail client. The training model is
+spam that slipped into the inbox, rescues mail from people you know out of the
+junk folder, and learns from the corrections you make in any mail client. The training model is
 inspired by SpamSieve's drone setup, but runs as a server-side daemon instead
 of on a Mac running Apple Mail.
 
@@ -46,6 +46,7 @@ junk = "Junk"
 sent = "Sent Messages"
 train_spam = "TrainSpam"   # created if missing
 train_good = "TrainGood"
+rescued = ""               # where rescued mail goes; empty means the first watched folder
 
 [policy]
 mode = "shadow"            # "live" to actually file mail
@@ -55,6 +56,8 @@ poll_interval = "2m"
 whitelist_requires_auth = true  # trust a whitelisted sender only if DKIM/DMARC passed
 learn_from_junk = true     # mail tamis let through that you move to Junk is learnt as spam
 learn_from_keywords = true # Junk / Not Junk buttons that disagree with tamis are learnt
+rescue = true              # move mail from verified whitelisted senders out of Junk
+rescue_threshold = 0       # also rescue mail scoring at or below this, e.g. 0.05; 0 is off
 ```
 
 Then:
@@ -78,6 +81,8 @@ To correct it from any mail client, on any device:
   the message is good.
 - Marking a message Junk or Not Junk in your mail client teaches tamis too,
   when the mark disagrees with what tamis decided.
+- Moving a message tamis rescued from Junk back into Junk teaches it that the
+  message is spam.
 
 If another program also moves mail to Junk (Mail.app's own junk filter, or
 SpamSieve), set `learn_from_junk = false`: tamis can't tell its moves from

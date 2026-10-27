@@ -1383,3 +1383,34 @@ func TestRescueFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestUndoRescue(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.run(t)
+	e.fromFriend(t, dmarcOK)
+	require.Equal(t, 1, e.run(t).Rescued)
+
+	rescued := e.latestDecisionID(t)
+
+	summary, err := e.engine.Undo(t.Context(), rescued)
+	require.NoError(t, err)
+	require.Contains(t, summary, "moved back to Junk")
+
+	back := e.messages(t, junk)
+	require.Len(t, back, 1)
+	require.NotContains(t, back[0].Flags, "$tamisrescued")
+	require.Empty(t, e.messages(t, inbox))
+
+	label, trained, err := e.db.Trained(t.Context(), back[0].MessageID)
+	require.NoError(t, err)
+	require.True(t, trained)
+	require.Equal(t, classify.Spam, label)
+
+	whitelisted, err := e.db.HasAddress(t.Context(), friend)
+	require.NoError(t, err)
+	require.False(t, whitelisted)
+
+	require.Equal(t, engine.Summary{}, e.run(t), "not rescued again")
+}

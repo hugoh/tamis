@@ -1,0 +1,624 @@
+package engine_test
+
+import (
+	"fmt"
+	"log/slog"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/hugoh/tamis/internal/classify"
+	"github.com/hugoh/tamis/internal/config"
+	"github.com/hugoh/tamis/internal/engine"
+	"github.com/hugoh/tamis/internal/imaptest"
+	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/store"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	seenFlag = `\Seen`
+	opFetch  = "FETCH"
+	opMove   = "MOVE"
+	opSelect = "SELECT"
+	inTrain  = "train from"
+)
+
+const (
+	inbox     = "INBOX"
+	junk      = "Junk"
+	sent      = "Sent Messages"
+	trainSpam = "TrainSpam"
+	trainGood = "TrainGood"
+)
+
+type env struct {
+	client *mail.Client
+	db     *store.Store
+	cfg    *config.Config
+	engine *engine.Engine
+	serial int
+}
+
+func setup(t *testing.T, mode config.Mode) *env {
+	t.Helper()
+
+	return setupWith(t, mode, nil)
+}
+
+// setupWith makes the server fail the commands fail selects.
+func setupWith(t *testing.T, mode config.Mode, fail func(op, mailbox string) bool) *env {
+	t.Helper()
+
+	srv := imaptest.StartWith(t, imaptest.Options{Caps: imaptest.Rev2(), Fail: fail})
+
+	client, err := mail.Dial(t.Context(), mail.DialConfig{
+		Addr: srv.Addr, Username: imaptest.Username, Password: imaptest.Password, Plaintext: true,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "tamis.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	cfg := &config.Config{
+		Folders: config.Folders{
+			Watch: []string{
+				inbox,
+			},
+			Junk:      junk,
+			Sent:      sent,
+			TrainSpam: trainSpam,
+			TrainGood: trainGood,
+		},
+		Policy: config.Policy{
+			Mode: mode, SpamThreshold: 0.9, GoodThreshold: 0.2, WhitelistRequiresAuth: true,
+		},
+	}
+
+	e := &env{client: client, db: db, cfg: cfg}
+	e.engine = engine.New(client, db, cfg, slog.New(slog.DiscardHandler))
+
+	return e
+}
+
+// spammy and hammy messages share vocabulary the model is trained on.
+func (e *env) spammy(from string) []byte {
+	return e.message(
+		from,
+		"WINNER claim prize",
+		"Congratulations winner, claim your lottery prize now.",
+	)
+}
+
+func (e *env) hammy(from string) []byte {
+	return e.message(from, "Project meeting", "Agenda for the project meeting with the team.")
+}
+
+func (e *env) message(from, subject, body string, headers ...string) []byte {
+	e.serial++
+
+	var extra strings.Builder
+	for _, header := range headers {
+		extra.WriteString(header + "\r\n")
+	}
+
+	return fmt.Appendf(nil,
+		"%sFrom: %s\r\nTo: me@example.com\r\nSubject: %s\r\nMessage-ID: <m%d@test>\r\n"+
+			"Content-Type: text/plain\r\n\r\n%s\r\n",
+		extra.String(), from, subject, e.serial, body)
+}
+
+func (e *env) trainModel(t *testing.T) {
+	t.Helper()
+
+	for i := range 10 {
+		_, err := e.db.Train(t.Context(), fmt.Sprintf("spam%d", i),
+			classify.Tokenize(e.spammy("x@spam.example")), classify.Spam)
+		require.NoError(t, err)
+		_, err = e.db.Train(t.Context(), fmt.Sprintf("good%d", i),
+			classify.Tokenize(e.hammy("y@good.example")), classify.Good)
+		require.NoError(t, err)
+	}
+}
+
+func (e *env) append(t *testing.T, mailbox string, raw []byte) {
+	t.Helper()
+
+	require.NoError(t, e.client.Ensure(mailbox))
+
+	_, err := e.client.Append(mailbox, raw, nil, time.Time{})
+	require.NoError(t, err)
+}
+
+func (e *env) run(t *testing.T) engine.Summary {
+	t.Helper()
+
+	summary, err := e.engine.RunOnce(t.Context())
+	require.NoError(t, err)
+
+	return summary
+}
+
+func (e *env) messages(t *testing.T, mailbox string) []mail.Message {
+	t.Helper()
+
+	uids, err := e.client.UIDsAfter(mailbox, 0)
+	require.NoError(t, err)
+
+	messages, err := e.client.Fetch(mailbox, uids)
+	require.NoError(t, err)
+
+	return messages
+}
+
+func (e *env) decisions(t *testing.T) []store.Decision {
+	t.Helper()
+
+	decisions, err := e.db.Decisions(t.Context(), 100)
+	require.NoError(t, err)
+
+	return decisions
+}
+
+func TestFirstRunStartsFromCurrentMail(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.append(t, inbox, e.spammy("old@spam.example"))
+
+	summary := e.run(t)
+
+	require.Zero(t, summary.Scanned, "mail already in the inbox is left to bootstrap")
+	require.Len(t, e.messages(t, inbox), 1)
+}
+
+func TestShadowModeChangesNothing(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.spammy("new@spam.example"))
+
+	summary := e.run(t)
+
+	require.Equal(t, engine.Summary{Scanned: 1, Spam: 1}, summary)
+	require.Len(t, e.messages(t, inbox), 1, "shadow mode must not move mail")
+	require.Empty(t, e.messages(t, junk))
+
+	decisions := e.decisions(t)
+	require.Len(t, decisions, 1)
+	require.Equal(t, "spam", decisions[0].Verdict)
+	require.Equal(t, "move:"+junk, decisions[0].Action)
+	require.False(t, decisions[0].Applied)
+	require.Equal(t, "new@spam.example", decisions[0].From)
+}
+
+func TestLiveModeActsOnEachVerdict(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.run(t)
+
+	e.append(t, inbox, e.spammy("s@spam.example"))
+	e.append(t, inbox, e.hammy("g@good.example"))
+	e.append(t, inbox, e.message("u@unknown.example", "Quokka", "Xylophone zebra quokka."))
+
+	summary := e.run(t)
+
+	require.Equal(t, engine.Summary{Scanned: 3, Spam: 1, Good: 1, Uncertain: 1}, summary)
+
+	filed := e.messages(t, junk)
+	require.Len(t, filed, 1)
+	require.Equal(t, "s@spam.example", filed[0].From)
+	require.Contains(t, filed[0].Flags, "$tamisfiled")
+
+	kept := e.messages(t, inbox)
+	require.Len(t, kept, 2)
+
+	for _, message := range kept {
+		if message.From == "u@unknown.example" {
+			require.Contains(t, message.Flags, "$tamisuncertain")
+		} else {
+			require.NotContains(t, message.Flags, "$tamisuncertain")
+		}
+	}
+
+	for _, decision := range e.decisions(t) {
+		require.Equal(t, decision.Action != "none", decision.Applied, decision.Verdict)
+	}
+}
+
+func TestSecondRunDoesNotRescan(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.hammy("g@good.example"))
+	e.run(t)
+
+	require.Equal(t, engine.Summary{}, e.run(t))
+}
+
+func TestWhitelist(t *testing.T) {
+	t.Parallel()
+
+	const (
+		friend = "friend@example.com"
+		pass   = "Authentication-Results: mx.test; dmarc=pass header.from=example.com"
+	)
+
+	tests := []struct {
+		name        string
+		headers     []string
+		requireAuth bool
+		want        string
+		reason      string
+	}{
+		{"verified friend", []string{pass}, true, "good", "whitelisted"},
+		{"unverified friend", nil, true, "spam", "bayes"},
+		{"unverified friend, auth not required", nil, false, "good", "whitelisted"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, config.ModeShadow)
+			e.cfg.Policy.WhitelistRequiresAuth = tt.requireAuth
+			e.trainModel(t)
+			require.NoError(t, e.db.AddAddress(t.Context(), friend, "test"))
+			e.run(t)
+
+			e.append(t, inbox, e.message(friend, "WINNER claim prize",
+				"Congratulations winner, claim your lottery prize now.", tt.headers...))
+			e.run(t)
+
+			decision := e.decisions(t)[0]
+			require.Equal(t, tt.want, decision.Verdict)
+			require.Equal(t, tt.reason, decision.Reason)
+		})
+	}
+}
+
+func TestTrainFolders(t *testing.T) {
+	t.Parallel()
+
+	// Training folders are an explicit request, so they work in shadow mode too.
+	e := setup(t, config.ModeShadow)
+	e.run(t)
+
+	e.append(t, trainSpam, e.spammy("s@spam.example"))
+	e.append(t, trainGood, e.hammy("Friend@Good.example"))
+
+	summary := e.run(t)
+	require.Equal(t, 2, summary.Trained)
+
+	stats, err := e.db.Stats(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 1, stats.Spam)
+	require.Equal(t, 1, stats.Good)
+
+	require.Empty(t, e.messages(t, trainSpam))
+	require.Empty(t, e.messages(t, trainGood))
+	require.Len(t, e.messages(t, junk), 1)
+	require.Len(t, e.messages(t, inbox), 1)
+
+	whitelisted, err := e.db.HasAddress(t.Context(), "friend@good.example")
+	require.NoError(t, err)
+	require.True(t, whitelisted, "training as good whitelists the sender")
+
+	require.Zero(t, e.run(t).Scanned, "mail returned to the inbox by training is not judged again")
+}
+
+func TestTrainFoldersAreCreated(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.run(t)
+
+	for _, folder := range []string{trainSpam, trainGood} {
+		_, err := e.client.State(folder)
+		require.NoError(t, err)
+	}
+}
+
+func TestCorrection(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.run(t)
+
+	e.append(t, inbox, e.spammy("actually@friend.example"))
+	require.Equal(t, 1, e.run(t).Spam)
+
+	filed := e.messages(t, junk)
+	require.Len(t, filed, 1)
+
+	// The user disagrees and moves it back.
+	require.NoError(t, e.client.Move(junk, []uint32{filed[0].UID}, inbox))
+
+	summary := e.run(t)
+	require.Equal(t, engine.Summary{Scanned: 1, Corrected: 1}, summary)
+	require.Len(t, e.messages(t, inbox), 1, "a corrected message stays where the user put it")
+
+	decision := e.decisions(t)[0]
+	require.Equal(t, "good", decision.Verdict)
+	require.Equal(t, "correction", decision.Reason)
+}
+
+func TestUIDValidityChangeRestartsFolder(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.cfg.Folders.Watch = []string{"Lists"}
+	e.append(t, "Lists", e.hammy("a@b.example"))
+	e.run(t)
+
+	cursor, ok, err := e.db.Cursor(t.Context(), "Lists")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	require.NoError(t, e.db.SetCursor(t.Context(), "Lists",
+		store.Cursor{UIDValidity: cursor.UIDValidity + 1000, LastUID: 0}))
+
+	require.Zero(t, e.run(t).Scanned, "a new UIDVALIDITY restarts from current mail")
+
+	reset, _, err := e.db.Cursor(t.Context(), "Lists")
+	require.NoError(t, err)
+	require.Equal(t, cursor, reset)
+}
+
+func TestBootstrap(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	old := time.Now().AddDate(0, 0, -30)
+
+	for _, to := range []string{"friend@example.com", "colleague@example.org"} {
+		e.append(t, sent, fmt.Appendf(nil,
+			"From: me@example.com\r\nTo: %s\r\nSubject: hi\r\n\r\nhello\r\n", to))
+	}
+
+	e.append(t, junk, e.spammy("a@spam.example"))
+	e.append(t, junk, e.spammy("b@spam.example"))
+
+	_, err := e.client.Append(inbox, e.hammy("old@good.example"), []string{seenFlag}, old)
+	require.NoError(t, err)
+	_, err = e.client.Append(inbox, e.hammy("unread@good.example"), nil, old)
+	require.NoError(t, err)
+	_, err = e.client.Append(inbox, e.hammy("recent@good.example"), []string{seenFlag}, time.Now())
+	require.NoError(t, err)
+
+	require.NoError(t, e.client.Ensure("Archive"))
+	_, err = e.client.Append("Archive", e.hammy("archived@good.example"), []string{seenFlag}, old)
+	require.NoError(t, err)
+
+	summary, err := e.engine.Bootstrap(t.Context(), engine.BootstrapOptions{
+		SentLimit:  100,
+		Spam:       []engine.Source{{Folder: junk, Limit: 100}},
+		Good:       []engine.Source{{Folder: inbox, Limit: 100}, {Folder: "Archive", Limit: 100}},
+		GoodMinAge: 7 * 24 * time.Hour,
+	})
+	require.NoError(t, err)
+	require.Equal(t, engine.BootstrapSummary{Addresses: 2, Spam: 2, Good: 2}, summary)
+
+	for _, address := range []string{"friend@example.com", "colleague@example.org"} {
+		ok, err := e.db.HasAddress(t.Context(), address)
+		require.NoError(t, err)
+		require.True(t, ok, address)
+	}
+
+	require.Zero(t, e.run(t).Scanned, "bootstrap starts watching from current mail")
+}
+
+func TestBootstrapLimits(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+
+	for range 3 {
+		e.append(t, junk, e.spammy("a@spam.example"))
+	}
+
+	summary, err := e.engine.Bootstrap(t.Context(), engine.BootstrapOptions{
+		Spam: []engine.Source{{Folder: junk, Limit: 2}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, summary.Spam)
+}
+
+func TestBootstrapMissingFolder(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+
+	_, err := e.engine.Bootstrap(t.Context(), engine.BootstrapOptions{
+		Good: []engine.Source{{Folder: "Nope", Limit: 10}},
+	})
+	require.ErrorContains(t, err, "Nope")
+}
+
+func TestRunOnceFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		fail    func(op, mailbox string) bool
+		prepare func(t *testing.T, e *env)
+		want    string
+	}{
+		{
+			name: "train folder can't be listed",
+			fail: func(op, _ string) bool { return op == "LIST" },
+			want: inTrain,
+		},
+		{
+			name: "train folder can't be fetched",
+			fail: func(op, _ string) bool { return op == opFetch },
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, trainSpam, e.spammy("s@spam.example"))
+			},
+			want: inTrain,
+		},
+		{
+			name: "trained mail can't be moved",
+			fail: func(op, _ string) bool { return op == opMove },
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, trainGood, e.hammy("g@good.example"))
+			},
+			want: inTrain,
+		},
+		{
+			name: "watched folder status fails",
+			fail: func(op, mailbox string) bool { return op == "STATUS" && mailbox == inbox },
+			want: "scan INBOX",
+		},
+		{
+			name: "new mail can't be fetched",
+			fail: func(op, _ string) bool { return op == opFetch },
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, inbox, e.spammy("s@spam.example"))
+			},
+			want: "scan INBOX",
+		},
+		{
+			name: "spam can't be flagged",
+			fail: func(op, _ string) bool { return op == "STORE" },
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, inbox, e.spammy("s@spam.example"))
+			},
+			want: "file spam",
+		},
+		{
+			name: "spam can't be moved",
+			fail: func(op, mailbox string) bool { return op == opMove && mailbox == junk },
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, inbox, e.spammy("s@spam.example"))
+			},
+			want: "file spam",
+		},
+		{
+			name: "uncertain mail can't be flagged",
+			fail: func(op, _ string) bool { return op == "STORE" },
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, inbox, e.message("u@unknown.example", "Quokka", "Xylophone zebra."))
+			},
+			want: "flag uncertain",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var failing atomic.Bool
+
+			e := setupWith(t, config.ModeLive, func(op, mailbox string) bool {
+				return failing.Load() && tt.fail(op, mailbox)
+			})
+			e.trainModel(t)
+			e.run(t)
+
+			if tt.prepare != nil {
+				tt.prepare(t, e)
+			}
+
+			failing.Store(true)
+
+			_, err := e.engine.RunOnce(t.Context())
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func TestBootstrapFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		fail func(op, mailbox string) bool
+		want string
+	}{
+		{
+			"sent unreadable",
+			func(op, mailbox string) bool { return op == opSelect && mailbox == sent },
+			sent,
+		},
+		{
+			"junk unreadable",
+			func(op, mailbox string) bool { return op == opSelect && mailbox == junk },
+			junk,
+		},
+		{
+			"inbox unreadable",
+			func(op, mailbox string) bool { return op == opSelect && mailbox == inbox },
+			inbox,
+		},
+		{"junk fetch fails", func(op, _ string) bool { return op == opFetch }, junk},
+		{"inbox status fails", func(op, _ string) bool { return op == "STATUS" }, inbox},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setupWith(t, config.ModeShadow, tt.fail)
+			require.NoError(t, e.client.Ensure(sent))
+			e.append(t, junk, e.spammy("s@spam.example"))
+
+			_, err := e.engine.Bootstrap(t.Context(), engine.BootstrapOptions{
+				SentLimit: 10,
+				Spam:      []engine.Source{{Folder: junk, Limit: 10}},
+				Good:      []engine.Source{{Folder: inbox, Limit: 10}},
+			})
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func TestFailedMoveIsNotACorrection(t *testing.T) {
+	t.Parallel()
+
+	var failing atomic.Bool
+
+	e := setupWith(t, config.ModeLive, func(op, mailbox string) bool {
+		return failing.Load() && op == opMove && mailbox == junk
+	})
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.spammy("s@spam.example"))
+
+	failing.Store(true)
+
+	_, err := e.engine.RunOnce(t.Context())
+	require.ErrorContains(t, err, "file spam")
+
+	failing.Store(false)
+
+	summary := e.run(t)
+	require.Equal(
+		t,
+		engine.Summary{Scanned: 1, Spam: 1},
+		summary,
+		"retried as spam, not learnt as good",
+	)
+
+	whitelisted, err := e.db.HasAddress(t.Context(), "s@spam.example")
+	require.NoError(t, err)
+	require.False(t, whitelisted)
+}

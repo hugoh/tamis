@@ -376,3 +376,38 @@ func TestServerFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestFindMessageID(t *testing.T) {
+	t.Parallel()
+
+	// Each case seeds UIDs 1 and 2 into a fresh mailbox.
+	tests := []struct {
+		name      string
+		messageID string
+		want      []uint32
+	}{
+		{"match", "<second@test>", []uint32{2}},
+		{"no match", "<missing@test>", nil},
+		{"empty id", "", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := connect(t, imaptest.Start(t, imaptest.Rev2()))
+			seed(t, client, "INBOX", raw("a@x", "b@y", "first"), raw("a@x", "b@y", "second"))
+
+			got, err := client.FindMessageID("INBOX", tt.messageID)
+			require.NoError(t, err)
+
+			if tt.want == nil {
+				require.Empty(t, got)
+
+				return
+			}
+
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

@@ -121,6 +121,18 @@ func (c *Client) UIDsAfter(mailbox string, after uint32) ([]uint32, error) {
 	return slices.DeleteFunc(uids, func(uid uint32) bool { return uid <= after }), nil
 }
 
+// FindMessageID lists the UIDs in mailbox whose Message-ID header contains
+// messageID. An empty ID matches nothing.
+func (c *Client) FindMessageID(mailbox, messageID string) ([]uint32, error) {
+	if messageID == "" {
+		return nil, nil
+	}
+
+	return c.search(mailbox, &imap.SearchCriteria{
+		Header: []imap.SearchCriteriaHeaderField{{Key: "Message-ID", Value: messageID}},
+	})
+}
+
 // SeenBefore lists read messages that arrived before the given day.
 func (c *Client) SeenBefore(mailbox string, before time.Time) ([]uint32, error) {
 	return c.search(mailbox, &imap.SearchCriteria{Flag: []imap.Flag{imap.FlagSeen}, Before: before})

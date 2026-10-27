@@ -135,6 +135,18 @@ func (s *session) Store(
 // updates queued after Idle registers, which happens after the server has
 // already sent "+ idling", so an APPEND from another connection in that gap
 // was never pushed and IDLE tests flaked under load.
+func (s *session) Search(
+	kind imapserver.NumKind,
+	criteria *imap.SearchCriteria,
+	options *imap.SearchOptions,
+) (*imap.SearchData, error) {
+	if err := s.check("SEARCH", ""); err != nil {
+		return nil, err
+	}
+
+	return s.fullSession.Search(kind, criteria, options) //nolint:wrapcheck // passthrough
+}
+
 func (s *session) Idle(writer *imapserver.UpdateWriter, stop <-chan struct{}) error {
 	if err := s.check("IDLE", ""); err != nil {
 		return err

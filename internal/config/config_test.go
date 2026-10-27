@@ -41,6 +41,7 @@ user = "me@icloud.com"
 	require.InDelta(t, 0.2, cfg.Policy.GoodThreshold, 1e-9)
 	require.Equal(t, 2*time.Minute, cfg.Policy.PollInterval.Duration)
 	require.True(t, cfg.Policy.WhitelistRequiresAuth)
+	require.True(t, cfg.Policy.LearnFromJunk)
 	require.NotEmpty(t, cfg.State)
 }
 
@@ -68,6 +69,7 @@ spam_threshold = 0.95
 good_threshold = 0.1
 poll_interval = "30s"
 whitelist_requires_auth = false
+learn_from_junk = false
 `))
 	require.NoError(t, err)
 
@@ -77,6 +79,7 @@ whitelist_requires_auth = false
 	require.Equal(t, config.ModeLive, cfg.Policy.Mode)
 	require.Equal(t, 30*time.Second, cfg.Policy.PollInterval.Duration)
 	require.False(t, cfg.Policy.WhitelistRequiresAuth)
+	require.False(t, cfg.Policy.LearnFromJunk)
 	require.Equal(t, filepath.Join(home, "tamis-test.db"), cfg.State)
 }
 

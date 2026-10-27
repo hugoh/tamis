@@ -53,6 +53,7 @@ spam_threshold = 0.9       # score >= this is spam
 good_threshold = 0.2       # score <= this is good; between is uncertain
 poll_interval = "2m"
 whitelist_requires_auth = true  # trust a whitelisted sender only if DKIM/DMARC passed
+learn_from_junk = true     # mail tamis let through that you move to Junk is learnt as spam
 ```
 
 Then:
@@ -70,8 +71,14 @@ To correct it from any mail client, on any device:
 - Drop a missed spam into **TrainSpam**: it is learnt and moved to Junk.
 - Drop a good message into **TrainGood**: it is learnt, its sender
   whitelisted, and it is moved back to the inbox.
-- In live mode, moving something tamis filed back out of Junk also teaches it
-  that the message is good.
+- Moving a message tamis let through into Junk teaches it that the message
+  is spam, and takes its sender off the whitelist.
+- In live mode, moving something tamis filed back out of Junk teaches it that
+  the message is good.
+
+If another program also moves mail to Junk (Mail.app's own junk filter, or
+SpamSieve), set `learn_from_junk = false`: tamis can't tell its moves from
+yours.
 
 `bootstrap` trains on Junk and the inbox by default. Name other folders, and
 how many recent messages to take from each, with `-s`/`--spam` and

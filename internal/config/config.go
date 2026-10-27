@@ -74,6 +74,10 @@ type Policy struct {
 	// WhitelistRequiresAuth only trusts a whitelisted sender when DKIM or
 	// DMARC passed, so a forged From can't bypass the filter.
 	WhitelistRequiresAuth bool `toml:"whitelist_requires_auth"`
+	// LearnFromJunk treats a message tamis judged good or uncertain that
+	// later appears in Junk as one the user moved there: missed spam. Turn
+	// it off if another program (e.g. Mail.app's junk filter) moves mail.
+	LearnFromJunk bool `toml:"learn_from_junk"`
 }
 
 // Duration is a time.Duration written as a string such as "2m".
@@ -112,6 +116,7 @@ func defaults() Config {
 			GoodThreshold:         0.2, //nolint:mnd // SpamBayes' ham cutoff
 			PollInterval:          Duration{2 * time.Minute},
 			WhitelistRequiresAuth: true,
+			LearnFromJunk:         true,
 		},
 	}
 }

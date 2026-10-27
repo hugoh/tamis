@@ -44,7 +44,10 @@ flowchart TD
     trainGood --> watch{Next watched folder?}
     watch -- yes --> scan[Scan folder]
     scan --> watch
-    watch -- no --> done([Summary])
+    watch -- no --> learn{learn_from_junk?}
+    learn -- yes --> junk[Scan Junk<br/>learn missed spam]
+    learn -- no --> done([Summary])
+    junk --> done
 ```
 
 Training folders go first. A message the user has just trained is recorded
@@ -52,7 +55,8 @@ as trained, so when it lands back in the inbox in the same pass, the scan
 skips it instead of judging it again.
 
 Training folders are processed in both modes. Dropping a message into one is
-an explicit request, not a judgement tamis makes on its own.
+an explicit request, not a judgement tamis makes on its own. The same goes for
+the Junk scan, which only learns from your moves.
 
 ## Scanning a folder
 
@@ -176,6 +180,27 @@ new UID. Undo refuses:
 The decision is marked undone last, so an undo that fails partway (say the
 move back fails) can simply be run again.
 
+## Missed spam
+
+With `policy.learn_from_junk` on (the default), Junk has a cursor too. Each
+new arrival is looked up in the journal by Message-ID:
+
+```mermaid
+flowchart TD
+    arrival([New in Junk]) --> filed{Has $TamisFiled?}
+    filed -- yes --> ignore([Ignore: tamis put it there])
+    filed -- no --> trained{Already trained as spam?}
+    trained -- yes --> ignore2([Ignore: e.g. from TrainSpam])
+    trained -- no --> journal{Last journal entry:<br/>good or uncertain<br/>in a watched folder?}
+    journal -- no --> ignore3([Ignore: filed by the provider])
+    journal -- yes --> learn[Learn spam,<br/>remove sender from whitelist]
+    learn --> record[(Journal: spam, correction)]
+```
+
+A message tamis let through that turns up in Junk was moved there by someone,
+and tamis assumes it was you. Mail.app's own junk filter or SpamSieve moving
+mail looks exactly the same, so turn `learn_from_junk` off if you run either.
+
 ## Where messages go
 
 ```mermaid
@@ -184,6 +209,8 @@ stateDiagram-v2
     Inbox --> Junk: spam verdict (live)
     Junk --> Inbox: user moves it back
     Inbox --> Inbox: next pass sees $TamisFiled, learns good
+    Inbox --> Junk: user moves missed spam
+    Junk --> Junk: next pass learns spam
     Inbox --> TrainSpam: user drops it
     Junk --> TrainGood: user drops it
     Inbox --> TrainGood: user drops it

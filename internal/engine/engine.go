@@ -95,8 +95,22 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		}
 	}
 
+	judge := func(ctx context.Context, folder string, message mail.Message) error {
+		return e.handle(ctx, folder, message, &summary)
+	}
+
 	for _, folder := range e.cfg.Folders.Watch {
-		if err := e.scan(ctx, folder, &summary); err != nil {
+		if err := e.scan(ctx, folder, judge); err != nil {
+			return summary, err
+		}
+	}
+
+	if e.cfg.Policy.LearnFromJunk {
+		learn := func(ctx context.Context, _ string, message mail.Message) error {
+			return e.learnFromJunk(ctx, message, &summary)
+		}
+
+		if err := e.scan(ctx, e.cfg.Folders.Junk, learn); err != nil {
 			return summary, err
 		}
 	}
@@ -104,9 +118,12 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	return summary, nil
 }
 
-// scan judges the folder's messages newer than its cursor. A missing or
+// handler processes one newly arrived message in a scanned folder.
+type handler func(ctx context.Context, folder string, message mail.Message) error
+
+// scan hands the folder's messages newer than its cursor to handle. A missing or
 // stale cursor (new UIDVALIDITY) restarts the folder from its current mail.
-func (e *Engine) scan(ctx context.Context, folder string, summary *Summary) error {
+func (e *Engine) scan(ctx context.Context, folder string, handle handler) error {
 	state, err := e.mail.State(folder)
 	if err != nil {
 		return fmt.Errorf("scan %s: %w", folder, err)
@@ -129,7 +146,7 @@ func (e *Engine) scan(ctx context.Context, folder string, summary *Summary) erro
 	}
 
 	for batch := range slices.Chunk(uids, fetchBatch) {
-		if err := e.scanBatch(ctx, folder, batch, &cursor, summary); err != nil {
+		if err := e.scanBatch(ctx, folder, batch, &cursor, handle); err != nil {
 			return err
 		}
 	}
@@ -144,7 +161,7 @@ func (e *Engine) scanBatch(
 	folder string,
 	batch []uint32,
 	cursor *store.Cursor,
-	summary *Summary,
+	handle handler,
 ) error {
 	messages, err := e.mail.Fetch(folder, batch)
 	if err != nil {
@@ -152,7 +169,7 @@ func (e *Engine) scanBatch(
 	}
 
 	for _, message := range messages {
-		if err := e.handle(ctx, folder, message, summary); err != nil {
+		if err := handle(ctx, folder, message); err != nil {
 			return fmt.Errorf("%s UID %d: %w", folder, message.UID, err)
 		}
 

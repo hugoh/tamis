@@ -77,6 +77,7 @@ func setupWith(t *testing.T, mode config.Mode, fail func(op, mailbox string) boo
 		},
 		Policy: config.Policy{
 			Mode: mode, SpamThreshold: 0.9, GoodThreshold: 0.2, WhitelistRequiresAuth: true,
+			LearnFromJunk: true,
 		},
 	}
 
@@ -263,9 +264,15 @@ func TestWhitelist(t *testing.T) {
 		want        string
 		reason      string
 	}{
-		{"verified friend", []string{pass}, true, "good", "whitelisted"},
+		{"verified friend", []string{pass}, true, engine.VerdictGood, engine.ReasonWhitelisted},
 		{"unverified friend", nil, true, "spam", "bayes"},
-		{"unverified friend, auth not required", nil, false, "good", "whitelisted"},
+		{
+			"unverified friend, auth not required",
+			nil,
+			false,
+			engine.VerdictGood,
+			engine.ReasonWhitelisted,
+		},
 	}
 
 	for _, tt := range tests {
@@ -811,7 +818,7 @@ func TestUndoServerFailures(t *testing.T) {
 		{
 			"search fails",
 			false,
-			func(op, mailbox string) bool { return op == opSelect && mailbox == junk },
+			func(op, _ string) bool { return op == "SEARCH" },
 		},
 		{"fetch fails", false, func(op, _ string) bool { return op == opFetch }},
 		{"keyword can't be cleared", false, func(op, _ string) bool { return op == opStore }},
@@ -870,4 +877,154 @@ func TestUndoUncertainGone(t *testing.T) {
 
 	_, err := e.engine.Undo(t.Context(), e.latestDecisionID(t))
 	require.ErrorIs(t, err, engine.ErrMessageGone)
+}
+
+// moveToJunk plays the user dragging a message from the inbox to Junk.
+func (e *env) moveToJunk(t *testing.T, from string) {
+	t.Helper()
+
+	for _, message := range e.messages(t, inbox) {
+		if message.From == from {
+			require.NoError(t, e.client.Move(inbox, []uint32{message.UID}, junk))
+
+			return
+		}
+	}
+
+	t.Fatalf("no message from %s in %s", from, inbox)
+}
+
+func TestMissedSpamLearntFromJunk(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		message func(e *env) []byte
+		verdict string
+	}{
+		{
+			"judged good",
+			func(e *env) []byte { return e.hammy("sneaky@elsewhere.example") },
+			engine.VerdictGood,
+		},
+		{"judged uncertain", func(e *env) []byte {
+			return e.message("sneaky@elsewhere.example", "Quokka", "Xylophone zebra.")
+		}, "uncertain"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, config.ModeShadow)
+			e.trainModel(t)
+			e.run(t)
+			e.append(t, inbox, tt.message(e))
+			e.run(t)
+			require.Equal(t, tt.verdict, e.decisions(t)[0].Verdict)
+
+			e.moveToJunk(t, "sneaky@elsewhere.example")
+
+			summary := e.run(t)
+			require.Equal(t, engine.Summary{Corrected: 1}, summary)
+
+			decision := e.decisions(t)[0]
+			require.Equal(t, "spam", decision.Verdict)
+			require.Equal(t, engine.ReasonCorrection, decision.Reason)
+
+			label, trained, err := e.db.Trained(t.Context(), decision.MessageID)
+			require.NoError(t, err)
+			require.True(t, trained)
+			require.Equal(t, classify.Spam, label)
+
+			require.Equal(t, engine.Summary{}, e.run(t), "learnt once")
+		})
+	}
+}
+
+func TestMissedSpamUnwhitelistsSender(t *testing.T) {
+	t.Parallel()
+
+	const friend = "friend@example.com"
+
+	e := setup(t, config.ModeShadow)
+	e.cfg.Policy.WhitelistRequiresAuth = false
+	require.NoError(t, e.db.AddAddress(t.Context(), friend, "test"))
+	e.run(t)
+	e.append(t, inbox, e.spammy(friend))
+	e.run(t)
+	require.Equal(t, engine.ReasonWhitelisted, e.decisions(t)[0].Reason)
+
+	e.moveToJunk(t, friend)
+	require.Equal(t, 1, e.run(t).Corrected)
+
+	whitelisted, err := e.db.HasAddress(t.Context(), friend)
+	require.NoError(t, err)
+	require.False(t, whitelisted)
+}
+
+func TestJunkArrivalsThatAreNotCorrections(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		mode    config.Mode
+		learn   bool
+		prepare func(t *testing.T, e *env)
+	}{
+		{
+			name:  "filed by the provider",
+			mode:  config.ModeShadow,
+			learn: true,
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, junk, e.spammy("provider@spam.example"))
+			},
+		},
+		{
+			name:  "filed by tamis",
+			mode:  config.ModeLive,
+			learn: true,
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, inbox, e.spammy("s@spam.example"))
+				e.run(t)
+			},
+		},
+		{
+			name:  "trained through TrainSpam",
+			mode:  config.ModeShadow,
+			learn: true,
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, trainSpam, e.spammy("s@spam.example"))
+				e.run(t)
+			},
+		},
+		{
+			name:  "learning from Junk turned off",
+			mode:  config.ModeShadow,
+			learn: false,
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, inbox, e.hammy("sneaky@elsewhere.example"))
+				e.run(t)
+				e.moveToJunk(t, "sneaky@elsewhere.example")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, tt.mode)
+			e.cfg.Policy.LearnFromJunk = tt.learn
+			e.trainModel(t)
+			e.run(t)
+			tt.prepare(t, e)
+
+			require.Zero(t, e.run(t).Corrected)
+		})
+	}
 }

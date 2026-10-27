@@ -57,6 +57,7 @@ type Mailbox interface {
 	Move(mailbox string, uids []uint32, dest string) error
 	AddKeyword(mailbox string, uids []uint32, keyword string) error
 	RemoveKeyword(mailbox string, uids []uint32, keyword string) error
+	FindMessageID(mailbox, messageID string) ([]uint32, error)
 	Ensure(mailbox string) error
 }
 

@@ -22,6 +22,7 @@ const (
 	seenFlag = `\Seen`
 	opFetch  = "FETCH"
 	opMove   = "MOVE"
+	opStore  = "STORE"
 	opSelect = "SELECT"
 	inTrain  = "train from"
 )
@@ -495,7 +496,7 @@ func TestRunOnceFailures(t *testing.T) {
 		},
 		{
 			name: "spam can't be flagged",
-			fail: func(op, _ string) bool { return op == "STORE" },
+			fail: func(op, _ string) bool { return op == opStore },
 			prepare: func(t *testing.T, e *env) {
 				t.Helper()
 				e.append(t, inbox, e.spammy("s@spam.example"))
@@ -513,7 +514,7 @@ func TestRunOnceFailures(t *testing.T) {
 		},
 		{
 			name: "uncertain mail can't be flagged",
-			fail: func(op, _ string) bool { return op == "STORE" },
+			fail: func(op, _ string) bool { return op == opStore },
 			prepare: func(t *testing.T, e *env) {
 				t.Helper()
 				e.append(t, inbox, e.message("u@unknown.example", "Quokka", "Xylophone zebra."))
@@ -621,4 +622,252 @@ func TestFailedMoveIsNotACorrection(t *testing.T) {
 	whitelisted, err := e.db.HasAddress(t.Context(), "s@spam.example")
 	require.NoError(t, err)
 	require.False(t, whitelisted)
+}
+
+// latestDecisionID returns the newest journal entry's ID.
+func (e *env) latestDecisionID(t *testing.T) int64 {
+	t.Helper()
+
+	return e.decisions(t)[0].ID
+}
+
+func TestUndoFiling(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.spammy("friend@example.org"))
+	require.Equal(t, 1, e.run(t).Spam)
+
+	filed := e.latestDecisionID(t)
+
+	summary, err := e.engine.Undo(t.Context(), filed)
+	require.NoError(t, err)
+	require.Contains(t, summary, "moved back to INBOX")
+
+	require.Empty(t, e.messages(t, junk))
+
+	back := e.messages(t, inbox)
+	require.Len(t, back, 1)
+	require.NotContains(t, back[0].Flags, "$tamisfiled")
+
+	whitelisted, err := e.db.HasAddress(t.Context(), "friend@example.org")
+	require.NoError(t, err)
+	require.True(t, whitelisted)
+
+	original, err := e.db.Decision(t.Context(), filed)
+	require.NoError(t, err)
+	require.True(t, original.Undone)
+
+	undo := e.decisions(t)[0]
+	require.Equal(t, engine.ReasonUndo, undo.Reason)
+	require.Equal(t, "good", undo.Verdict)
+
+	require.Equal(t, engine.Summary{}, e.run(t), "the restored message is not judged again")
+}
+
+func TestUndoUncertain(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.message("u@unknown.example", "Quokka", "Xylophone zebra quokka."))
+	require.Equal(t, 1, e.run(t).Uncertain)
+
+	summary, err := e.engine.Undo(t.Context(), e.latestDecisionID(t))
+	require.NoError(t, err)
+	require.Contains(t, summary, engine.UncertainKeyword)
+
+	require.NotContains(t, e.messages(t, inbox)[0].Flags, "$tamisuncertain")
+}
+
+func TestUndoRefusals(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, e *env) int64
+		want    error
+	}{
+		{
+			name: "unknown decision",
+			prepare: func(t *testing.T, _ *env) int64 {
+				t.Helper()
+
+				return 999
+			},
+			want: store.ErrNotFound,
+		},
+		{
+			name: "shadow decision",
+			prepare: func(t *testing.T, e *env) int64 {
+				t.Helper()
+
+				e.cfg.Policy.Mode = config.ModeShadow
+				e.append(t, inbox, e.spammy("s@spam.example"))
+				e.run(t)
+
+				return e.latestDecisionID(t)
+			},
+			want: engine.ErrNothingToUndo,
+		},
+		{
+			name: "training",
+			prepare: func(t *testing.T, e *env) int64 {
+				t.Helper()
+				e.append(t, trainSpam, e.spammy("s@spam.example"))
+				e.run(t)
+
+				return e.latestDecisionID(t)
+			},
+			want: engine.ErrNotUndoable,
+		},
+		{
+			name: "already undone",
+			prepare: func(t *testing.T, e *env) int64 {
+				t.Helper()
+				e.append(t, inbox, e.spammy("s@spam.example"))
+				e.run(t)
+
+				id := e.latestDecisionID(t)
+				_, err := e.engine.Undo(t.Context(), id)
+				require.NoError(t, err)
+
+				return id
+			},
+			want: store.ErrAlreadyUndone,
+		},
+		{
+			name: "message gone from Junk",
+			prepare: func(t *testing.T, e *env) int64 {
+				t.Helper()
+				e.append(t, inbox, e.spammy("s@spam.example"))
+				e.run(t)
+
+				filed := e.messages(t, junk)
+				require.NoError(t, e.client.Move(junk, []uint32{filed[0].UID}, trainSpam))
+
+				return e.latestDecisionID(t)
+			},
+			want: engine.ErrMessageGone,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, config.ModeLive)
+			e.trainModel(t)
+			e.run(t)
+
+			_, err := e.engine.Undo(t.Context(), tt.prepare(t, e))
+			require.ErrorIs(t, err, tt.want)
+		})
+	}
+}
+
+func TestUndoRetriesAfterFailure(t *testing.T) {
+	t.Parallel()
+
+	var failing atomic.Bool
+
+	e := setupWith(t, config.ModeLive, func(op, mailbox string) bool {
+		return failing.Load() && op == opMove && mailbox == inbox
+	})
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.spammy("s@spam.example"))
+	e.run(t)
+
+	filed := e.latestDecisionID(t)
+
+	failing.Store(true)
+
+	_, err := e.engine.Undo(t.Context(), filed)
+	require.Error(t, err)
+
+	original, err := e.db.Decision(t.Context(), filed)
+	require.NoError(t, err)
+	require.False(t, original.Undone, "a failed undo can be retried")
+
+	failing.Store(false)
+
+	_, err = e.engine.Undo(t.Context(), filed)
+	require.NoError(t, err)
+	require.Len(t, e.messages(t, inbox), 1)
+}
+
+func TestUndoServerFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		uncertain bool
+		fail      func(op, mailbox string) bool
+	}{
+		{
+			"search fails",
+			false,
+			func(op, mailbox string) bool { return op == opSelect && mailbox == junk },
+		},
+		{"fetch fails", false, func(op, _ string) bool { return op == opFetch }},
+		{"keyword can't be cleared", false, func(op, _ string) bool { return op == opStore }},
+		{
+			"uncertain keyword can't be cleared",
+			true,
+			func(op, _ string) bool { return op == opStore },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var failing atomic.Bool
+
+			e := setupWith(t, config.ModeLive, func(op, mailbox string) bool {
+				return failing.Load() && tt.fail(op, mailbox)
+			})
+			e.trainModel(t)
+			e.run(t)
+
+			if tt.uncertain {
+				e.append(t, inbox, e.message("u@unknown.example", "Quokka", "Xylophone zebra."))
+			} else {
+				e.append(t, inbox, e.spammy("s@spam.example"))
+			}
+
+			e.run(t)
+
+			id := e.latestDecisionID(t)
+
+			failing.Store(true)
+
+			_, err := e.engine.Undo(t.Context(), id)
+			require.Error(t, err)
+
+			decision, err := e.db.Decision(t.Context(), id)
+			require.NoError(t, err)
+			require.False(t, decision.Undone)
+		})
+	}
+}
+
+func TestUndoUncertainGone(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.message("u@unknown.example", "Quokka", "Xylophone zebra."))
+	e.run(t)
+
+	moved := e.messages(t, inbox)
+	require.NoError(t, e.client.Move(inbox, []uint32{moved[0].UID}, junk))
+
+	_, err := e.engine.Undo(t.Context(), e.latestDecisionID(t))
+	require.ErrorIs(t, err, engine.ErrMessageGone)
 }

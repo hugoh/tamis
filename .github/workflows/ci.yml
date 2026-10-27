@@ -17,20 +17,25 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Cancel superseded PR runs; never cancel a push-to-main run mid-release.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   hk:
-    uses: hugoh/go-tools/.github/workflows/go-hk.yml@98767ab97d8a15b52e2037cc79cb8663a22c08fe # v1.26.28
+    uses: hugoh/go-tools/.github/workflows/go-hk.yml@8c7fdba46e8aa23effa4c9e355d516396a03fc3a # v1.26.32
     permissions:
       contents: read
 
   goci:
-    uses: hugoh/go-tools/.github/workflows/go-ci.yml@98767ab97d8a15b52e2037cc79cb8663a22c08fe # v1.26.28
+    uses: hugoh/go-tools/.github/workflows/go-ci.yml@8c7fdba46e8aa23effa4c9e355d516396a03fc3a # v1.26.32
     permissions:
       contents: read
 
   release:
     needs: [hk, goci]
-    uses: hugoh/go-tools/.github/workflows/go-release.yml@98767ab97d8a15b52e2037cc79cb8663a22c08fe # v1.26.28
+    uses: hugoh/go-tools/.github/workflows/go-release.yml@8c7fdba46e8aa23effa4c9e355d516396a03fc3a # v1.26.32
     permissions:
       contents: write
     with:

@@ -1,7 +1,7 @@
 // DO NOT EDIT — managed by hugoh/go-tools via copier.
-amends "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Config.pkl"
-import "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Builtins.pkl"
-import "package://github.com/hugoh/hk-config/releases/download/v2.1.3/hk-config@2.1.3#/base.pkl" as Base
+amends "package://github.com/jdx/hk/releases/download/v2.9.0/hk@2.9.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.9.0/hk@2.9.0#/Builtins.pkl"
+import "package://github.com/hugoh/hk-config/releases/download/v3.0.1/hk-config@3.0.1#/base.pkl" as Base
 
 min_hk_version = Base.min_hk_version
 
@@ -34,7 +34,7 @@ local linters = new Mapping<String, Step> {
   ["ryl"] = (Builtins.ryl) {
     exclude = List(".copier-answers.yml")
   }
-  ["golangci_lint_config"] = {
+  ["golangci_lint_config"] {
     check = "golangci-lint config verify"
   }
   ["golangci_lint"] = (Builtins.golangci_lint) {
@@ -46,7 +46,7 @@ local linters = new Mapping<String, Step> {
   ["conventional_commit"] {
     check = "mise run lint-commits"
   }
-  ["duplication"] = {
+  ["duplication"] {
     check = "jscpd"
   }
 }

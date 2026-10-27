@@ -14,15 +14,19 @@ import (
 // folder, now arriving in Junk, as one the user moved there: missed spam.
 // Everything else in Junk (filed by the provider, by tamis, or through
 // TrainSpam) is left alone.
-func (e *Engine) learnFromJunk(ctx context.Context, message mail.Message, summary *Summary) error {
+func (e *Engine) learnFromJunk(
+	ctx context.Context,
+	message mail.Message,
+	summary *Summary,
+) (bool, error) {
 	missed, err := e.isMissedSpam(ctx, message)
 	if err != nil || !missed {
-		return err
+		return false, err
 	}
 
 	summary.Corrected++
 
-	return e.learnSpam(
+	return true, e.learnSpam(
 		ctx,
 		e.cfg.Folders.Junk,
 		message,
@@ -31,11 +35,32 @@ func (e *Engine) learnFromJunk(ctx context.Context, message mail.Message, summar
 	)
 }
 
+// handleJunk learns from what the user moved to Junk, then considers
+// rescuing what the provider put there.
+func (e *Engine) handleJunk(ctx context.Context, message mail.Message, summary *Summary) error {
+	if e.cfg.Policy.LearnFromJunk {
+		if learnt, err := e.learnFromJunk(ctx, message, summary); err != nil || learnt {
+			return err
+		}
+	}
+
+	if e.cfg.Policy.Rescue {
+		return e.rescue(ctx, message, summary)
+	}
+
+	return nil
+}
+
 // isMissedSpam reports whether the user moved this message to Junk after
 // tamis let it through.
 func (e *Engine) isMissedSpam(ctx context.Context, message mail.Message) (bool, error) {
 	if slices.Contains(message.Flags, strings.ToLower(FiledKeyword)) {
 		return false, nil
+	}
+
+	// Rescued mail back in Junk: the user put it there.
+	if slices.Contains(message.Flags, strings.ToLower(RescuedKeyword)) {
+		return true, nil
 	}
 
 	label, trained, err := e.store.Trained(ctx, trainingKey(message))

@@ -28,6 +28,9 @@ const (
 	FiledKeyword = "$TamisFiled"
 	// UncertainKeyword marks mail tamis couldn't decide on.
 	UncertainKeyword = "$TamisUncertain"
+	// RescuedKeyword marks mail tamis moved out of Junk. Seeing it back in
+	// Junk means the user disagreed.
+	RescuedKeyword = "$TamisRescued"
 )
 
 // Verdicts and reasons recorded in the journal.
@@ -94,6 +97,7 @@ type Summary struct {
 	Good      int
 	Corrected int
 	Trained   int
+	Rescued   int
 }
 
 // RunOnce trains from the training folders, then judges new mail in each
@@ -117,12 +121,12 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		}
 	}
 
-	if e.cfg.Policy.LearnFromJunk {
-		learn := func(ctx context.Context, _ string, message mail.Message) error {
-			return e.learnFromJunk(ctx, message, &summary)
+	if e.cfg.Policy.LearnFromJunk || e.cfg.Policy.Rescue {
+		junk := func(ctx context.Context, _ string, message mail.Message) error {
+			return e.handleJunk(ctx, message, &summary)
 		}
 
-		if err := e.scan(ctx, e.cfg.Folders.Junk, learn); err != nil {
+		if err := e.scan(ctx, e.cfg.Folders.Junk, junk); err != nil {
 			return summary, err
 		}
 	}
@@ -226,6 +230,10 @@ func (e *Engine) handle(
 	}
 
 	if trained {
+		return nil
+	}
+
+	if slices.Contains(message.Flags, strings.ToLower(RescuedKeyword)) {
 		return nil
 	}
 

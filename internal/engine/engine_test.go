@@ -77,7 +77,7 @@ func setupWith(t *testing.T, mode config.Mode, fail func(op, mailbox string) boo
 		},
 		Policy: config.Policy{
 			Mode: mode, SpamThreshold: 0.9, GoodThreshold: 0.2, WhitelistRequiresAuth: true,
-			LearnFromJunk: true, LearnFromKeywords: true,
+			LearnFromJunk: true, LearnFromKeywords: true, Rescue: true,
 		},
 	}
 
@@ -1037,15 +1037,22 @@ const marked = "someone@elsewhere.example"
 func (e *env) mark(t *testing.T, folder, keyword string) {
 	t.Helper()
 
+	e.markFrom(t, folder, marked, keyword)
+}
+
+// markFrom sets keyword on the message from sender in folder.
+func (e *env) markFrom(t *testing.T, folder, sender, keyword string) {
+	t.Helper()
+
 	for _, message := range e.messages(t, folder) {
-		if message.From == marked {
+		if message.From == sender {
 			require.NoError(t, e.client.AddKeyword(folder, []uint32{message.UID}, keyword))
 
 			return
 		}
 	}
 
-	t.Fatalf("no message from %s in %s", marked, folder)
+	t.Fatalf("no message from %s in %s", sender, folder)
 }
 
 func TestKeywordCorrections(t *testing.T) {
@@ -1172,6 +1179,207 @@ func TestKeywordsIgnored(t *testing.T) {
 			tt.prepare(t, e)
 
 			require.Zero(t, e.run(t).Corrected)
+		})
+	}
+}
+
+const (
+	friend   = "friend@example.com"
+	dmarcOK  = "Authentication-Results: mx.test; dmarc=pass header.from=example.com"
+	rescueTo = "Rescued"
+)
+
+// fromFriend is mail from a whitelisted contact that the provider
+// nonetheless filed to Junk.
+func (e *env) fromFriend(t *testing.T, headers ...string) {
+	t.Helper()
+
+	require.NoError(t, e.db.AddAddress(t.Context(), friend, "test"))
+	e.append(t, junk, e.message(friend, "Lunch?", "Are we still on for lunch?", headers...))
+}
+
+func TestRescue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		mode      config.Mode
+		configure func(cfg *config.Config)
+		prepare   func(t *testing.T, e *env)
+		rescued   bool
+		reason    string
+		dest      string
+	}{
+		{
+			name:    "verified whitelisted sender",
+			mode:    config.ModeLive,
+			prepare: func(t *testing.T, e *env) { t.Helper(); e.fromFriend(t, dmarcOK) },
+			rescued: true, reason: engine.ReasonWhitelisted, dest: inbox,
+		},
+		{
+			name: "unverified whitelisted sender",
+			mode: config.ModeLive,
+			configure: func(cfg *config.Config) {
+				cfg.Policy.WhitelistRequiresAuth = false
+			},
+			prepare: func(t *testing.T, e *env) { t.Helper(); e.fromFriend(t) },
+		},
+		{
+			name:      "low score with a threshold",
+			mode:      config.ModeLive,
+			configure: func(cfg *config.Config) { cfg.Policy.RescueThreshold = 0.05 },
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, junk, e.hammy("colleague@good.example"))
+			},
+			rescued: true, reason: engine.ReasonBayes, dest: inbox,
+		},
+		{
+			name: "low score without a threshold",
+			mode: config.ModeLive,
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, junk, e.hammy("colleague@good.example"))
+			},
+		},
+		{
+			name:      "to a rescue folder",
+			mode:      config.ModeLive,
+			configure: func(cfg *config.Config) { cfg.Folders.Rescued = rescueTo },
+			prepare:   func(t *testing.T, e *env) { t.Helper(); e.fromFriend(t, dmarcOK) },
+			rescued:   true, reason: engine.ReasonWhitelisted, dest: rescueTo,
+		},
+		{
+			name:      "turned off",
+			mode:      config.ModeLive,
+			configure: func(cfg *config.Config) { cfg.Policy.Rescue = false },
+			prepare:   func(t *testing.T, e *env) { t.Helper(); e.fromFriend(t, dmarcOK) },
+		},
+		{
+			name: "marked Junk by the user",
+			mode: config.ModeLive,
+			prepare: func(t *testing.T, e *env) {
+				t.Helper()
+				e.fromFriend(t, dmarcOK)
+				e.markFrom(t, junk, friend, "$Junk")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, tt.mode)
+			if tt.configure != nil {
+				tt.configure(e.cfg)
+			}
+
+			e.trainModel(t)
+			e.run(t)
+			tt.prepare(t, e)
+
+			summary := e.run(t)
+
+			if !tt.rescued {
+				require.Zero(t, summary.Rescued)
+				require.Len(t, e.messages(t, junk), 1)
+
+				return
+			}
+
+			require.Equal(t, 1, summary.Rescued)
+			require.Empty(t, e.messages(t, junk))
+
+			moved := e.messages(t, tt.dest)
+			require.Len(t, moved, 1)
+			require.Contains(t, moved[0].Flags, "$tamisrescued")
+
+			decision := e.decisions(t)[0]
+			require.Equal(t, engine.VerdictGood, decision.Verdict)
+			require.Equal(t, tt.reason, decision.Reason)
+			require.Equal(t, "move:"+tt.dest, decision.Action)
+			require.True(t, decision.Applied)
+
+			require.Equal(t, engine.Summary{}, e.run(t), "rescued mail is not judged again")
+		})
+	}
+}
+
+func TestRescueInShadowMode(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.run(t)
+	e.fromFriend(t, dmarcOK)
+
+	require.Equal(t, engine.Summary{Rescued: 1}, e.run(t))
+	require.Len(t, e.messages(t, junk), 1, "shadow mode moves nothing")
+
+	decision := e.decisions(t)[0]
+	require.Equal(t, "move:"+inbox, decision.Action)
+	require.False(t, decision.Applied)
+}
+
+func TestRescueNeverUndoesTheUser(t *testing.T) {
+	t.Parallel()
+
+	// The user moves a verified friend's mail to Junk; with learning off,
+	// tamis must still not rescue it back.
+	e := setup(t, config.ModeLive)
+	e.cfg.Policy.LearnFromJunk = false
+	require.NoError(t, e.db.AddAddress(t.Context(), friend, "test"))
+	e.run(t)
+	e.append(t, inbox, e.message(friend, "Lunch?", "Are we still on?", dmarcOK))
+	e.run(t)
+	e.moveToJunk(t, friend)
+
+	require.Zero(t, e.run(t).Rescued)
+	require.Len(t, e.messages(t, junk), 1)
+}
+
+func TestRescueCorrection(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.run(t)
+	e.fromFriend(t, dmarcOK)
+	require.Equal(t, 1, e.run(t).Rescued)
+
+	e.moveToJunk(t, friend)
+
+	require.Equal(t, engine.Summary{Corrected: 1}, e.run(t))
+
+	whitelisted, err := e.db.HasAddress(t.Context(), friend)
+	require.NoError(t, err)
+	require.False(t, whitelisted)
+	require.Len(t, e.messages(t, junk), 1, "not rescued again")
+	require.Equal(t, engine.Summary{}, e.run(t))
+}
+
+func TestRescueFailures(t *testing.T) {
+	t.Parallel()
+
+	for _, op := range []string{opStore, opMove} {
+		t.Run(op, func(t *testing.T) {
+			t.Parallel()
+
+			var failing atomic.Bool
+
+			e := setupWith(t, config.ModeLive, func(got, _ string) bool {
+				return failing.Load() && got == op
+			})
+			e.run(t)
+			e.fromFriend(t, dmarcOK)
+
+			failing.Store(true)
+
+			_, err := e.engine.RunOnce(t.Context())
+			require.ErrorContains(t, err, "rescue")
+
+			failing.Store(false)
+
+			require.Equal(t, 1, e.run(t).Rescued, "retried on the next pass")
 		})
 	}
 }

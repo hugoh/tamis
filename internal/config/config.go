@@ -78,6 +78,10 @@ type Policy struct {
 	// later appears in Junk as one the user moved there: missed spam. Turn
 	// it off if another program (e.g. Mail.app's junk filter) moves mail.
 	LearnFromJunk bool `toml:"learn_from_junk"`
+	// LearnFromKeywords learns from the Junk / Not Junk marks mail clients
+	// set ($Junk, $NotJunk, and Apple Mail's Junk, NotJunk) when they
+	// contradict tamis's own verdict.
+	LearnFromKeywords bool `toml:"learn_from_keywords"`
 }
 
 // Duration is a time.Duration written as a string such as "2m".
@@ -117,6 +121,7 @@ func defaults() Config {
 			PollInterval:          Duration{2 * time.Minute},
 			WhitelistRequiresAuth: true,
 			LearnFromJunk:         true,
+			LearnFromKeywords:     true,
 		},
 	}
 }

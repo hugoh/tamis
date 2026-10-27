@@ -46,8 +46,11 @@ flowchart TD
     scan --> watch
     watch -- no --> learn{learn_from_junk?}
     learn -- yes --> junk[Scan Junk<br/>learn missed spam]
-    learn -- no --> done([Summary])
-    junk --> done
+    learn -- no --> marks{learn_from_keywords?}
+    junk --> marks
+    marks -- yes --> keywords[Search Junk / Not Junk marks<br/>learn contradictions]
+    marks -- no --> done([Summary])
+    keywords --> done
 ```
 
 Training folders go first. A message the user has just trained is recorded
@@ -200,6 +203,27 @@ flowchart TD
 A message tamis let through that turns up in Junk was moved there by someone,
 and tamis assumes it was you. Mail.app's own junk filter or SpamSieve moving
 mail looks exactly the same, so turn `learn_from_junk` off if you run either.
+
+## Junk and Not Junk marks
+
+Mail clients' Junk / Not Junk buttons set keywords: `$Junk` / `$NotJunk`, or
+Apple Mail's `Junk` / `NotJunk`. With `policy.learn_from_keywords` on (the
+default), each pass searches the watched folders and Junk for them on mail
+from the last 30 days.
+
+A server-side search finds marks without tracking flag changes, so this works
+whether or not the server's CONDSTORE does. Headers come first; a message's
+body is only downloaded once it is known to be learnt.
+
+| Mark | Learnt when tamis judged it | Learns |
+|---|---|---|
+| Junk | good or uncertain | spam; sender off the whitelist |
+| Not Junk | spam or uncertain (shadow verdicts too) | good; sender whitelisted |
+
+Marks that agree with tamis, marks on mail tamis never judged, and messages
+marked both ways are ignored: Apple Mail's own junk filter sets these keywords
+too, so only a mark that contradicts tamis is taken as yours. Each message is
+learnt once.
 
 ## Where messages go
 

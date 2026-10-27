@@ -49,15 +49,27 @@ const fetchBatch = 50
 // Mailbox is what the engine needs from an IMAP connection; *mail.Client
 // implements it.
 type Mailbox interface {
+	MailboxReader
+	MailboxWriter
+}
+
+// MailboxReader finds and reads messages.
+type MailboxReader interface {
 	State(mailbox string) (mail.State, error)
 	UIDsAfter(mailbox string, after uint32) ([]uint32, error)
 	SeenBefore(mailbox string, before time.Time) ([]uint32, error)
+	FindMessageID(mailbox, messageID string) ([]uint32, error)
+	SearchKeywords(mailbox string, keywords []string, since time.Time) ([]uint32, error)
 	Fetch(mailbox string, uids []uint32) ([]mail.Message, error)
+	FetchEnvelopes(mailbox string, uids []uint32) ([]mail.Message, error)
 	Recipients(mailbox string, uids []uint32) ([]string, error)
+}
+
+// MailboxWriter changes where messages are and how they are flagged.
+type MailboxWriter interface {
 	Move(mailbox string, uids []uint32, dest string) error
 	AddKeyword(mailbox string, uids []uint32, keyword string) error
 	RemoveKeyword(mailbox string, uids []uint32, keyword string) error
-	FindMessageID(mailbox, messageID string) ([]uint32, error)
 	Ensure(mailbox string) error
 }
 
@@ -111,6 +123,12 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		}
 
 		if err := e.scan(ctx, e.cfg.Folders.Junk, learn); err != nil {
+			return summary, err
+		}
+	}
+
+	if e.cfg.Policy.LearnFromKeywords {
+		if err := e.learnFromKeywords(ctx, &summary); err != nil {
 			return summary, err
 		}
 	}
@@ -355,6 +373,29 @@ func (e *Engine) learnGood(
 
 	return e.record(ctx, folder, message,
 		judgement{verdict: VerdictGood, reason: reason}, "train:good", true)
+}
+
+// learnSpam trains a message as spam and takes its sender off the
+// whitelist: the user has said it is spam.
+func (e *Engine) learnSpam(
+	ctx context.Context,
+	folder string,
+	message mail.Message,
+	tokens []string,
+	reason string,
+) error {
+	if _, err := e.store.Train(ctx, trainingKey(message), tokens, classify.Spam); err != nil {
+		return fmt.Errorf("learn spam: %w", err)
+	}
+
+	if message.From != "" {
+		if err := e.store.RemoveAddress(ctx, message.From); err != nil {
+			return fmt.Errorf("learn spam: %w", err)
+		}
+	}
+
+	return e.record(ctx, folder, message,
+		judgement{verdict: VerdictSpam, reason: reason}, "train:spam", true)
 }
 
 func (e *Engine) record(

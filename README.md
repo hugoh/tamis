@@ -54,6 +54,7 @@ good_threshold = 0.2       # score <= this is good; between is uncertain
 poll_interval = "2m"
 whitelist_requires_auth = true  # trust a whitelisted sender only if DKIM/DMARC passed
 learn_from_junk = true     # mail tamis let through that you move to Junk is learnt as spam
+learn_from_keywords = true # Junk / Not Junk buttons that disagree with tamis are learnt
 ```
 
 Then:
@@ -75,6 +76,8 @@ To correct it from any mail client, on any device:
   is spam, and takes its sender off the whitelist.
 - In live mode, moving something tamis filed back out of Junk teaches it that
   the message is good.
+- Marking a message Junk or Not Junk in your mail client teaches tamis too,
+  when the mark disagrees with what tamis decided.
 
 If another program also moves mail to Junk (Mail.app's own junk filter, or
 SpamSieve), set `learn_from_junk = false`: tamis can't tell its moves from

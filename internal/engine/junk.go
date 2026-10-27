@@ -20,25 +20,15 @@ func (e *Engine) learnFromJunk(ctx context.Context, message mail.Message, summar
 		return err
 	}
 
-	if _, err := e.store.Train(
-		ctx,
-		trainingKey(message),
-		classify.Tokenize(message.Raw),
-		classify.Spam,
-	); err != nil {
-		return fmt.Errorf("learn spam: %w", err)
-	}
-
-	if message.From != "" {
-		if err := e.store.RemoveAddress(ctx, message.From); err != nil {
-			return fmt.Errorf("learn spam: %w", err)
-		}
-	}
-
 	summary.Corrected++
 
-	return e.record(ctx, e.cfg.Folders.Junk, message,
-		judgement{verdict: VerdictSpam, reason: ReasonCorrection}, "train:spam", true)
+	return e.learnSpam(
+		ctx,
+		e.cfg.Folders.Junk,
+		message,
+		classify.Tokenize(message.Raw),
+		ReasonCorrection,
+	)
 }
 
 // isMissedSpam reports whether the user moved this message to Junk after

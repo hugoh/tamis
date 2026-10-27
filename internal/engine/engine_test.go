@@ -77,7 +77,7 @@ func setupWith(t *testing.T, mode config.Mode, fail func(op, mailbox string) boo
 		},
 		Policy: config.Policy{
 			Mode: mode, SpamThreshold: 0.9, GoodThreshold: 0.2, WhitelistRequiresAuth: true,
-			LearnFromJunk: true,
+			LearnFromJunk: true, LearnFromKeywords: true,
 		},
 	}
 
@@ -1020,6 +1020,153 @@ func TestJunkArrivalsThatAreNotCorrections(t *testing.T) {
 
 			e := setup(t, tt.mode)
 			e.cfg.Policy.LearnFromJunk = tt.learn
+			e.trainModel(t)
+			e.run(t)
+			tt.prepare(t, e)
+
+			require.Zero(t, e.run(t).Corrected)
+		})
+	}
+}
+
+// marked is who sends the messages the keyword tests mark.
+const marked = "someone@elsewhere.example"
+
+// mark plays a mail client's Junk / Not Junk button: it sets keyword on the
+// message from marked in folder.
+func (e *env) mark(t *testing.T, folder, keyword string) {
+	t.Helper()
+
+	for _, message := range e.messages(t, folder) {
+		if message.From == marked {
+			require.NoError(t, e.client.AddKeyword(folder, []uint32{message.UID}, keyword))
+
+			return
+		}
+	}
+
+	t.Fatalf("no message from %s in %s", marked, folder)
+}
+
+func TestKeywordCorrections(t *testing.T) {
+	t.Parallel()
+
+	const sender = marked
+
+	tests := []struct {
+		name    string
+		mode    config.Mode
+		message func(e *env) []byte
+		folder  string
+		keyword string
+		want    classify.Label
+	}{
+		{
+			"$Junk on good", config.ModeShadow, func(e *env) []byte { return e.hammy(sender) },
+			inbox, "$Junk", classify.Spam,
+		},
+		{"Junk on uncertain", config.ModeShadow, func(e *env) []byte {
+			return e.message(sender, "Quokka", "Xylophone zebra.")
+		}, inbox, "Junk", classify.Spam},
+		{
+			"$NotJunk on a shadow spam verdict",
+			config.ModeShadow,
+			func(e *env) []byte { return e.spammy(sender) },
+			inbox,
+			"$NotJunk",
+			classify.Good,
+		},
+		{
+			"NotJunk on spam filed to Junk",
+			config.ModeLive,
+			func(e *env) []byte { return e.spammy(sender) },
+			junk,
+			"NotJunk",
+			classify.Good,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, tt.mode)
+			e.trainModel(t)
+			e.run(t)
+			e.append(t, inbox, tt.message(e))
+			e.run(t)
+
+			e.mark(t, tt.folder, tt.keyword)
+
+			require.Equal(t, engine.Summary{Corrected: 1}, e.run(t))
+
+			decision := e.decisions(t)[0]
+			require.Equal(t, engine.ReasonCorrection, decision.Reason)
+
+			label, trained, err := e.db.Trained(t.Context(), decision.MessageID)
+			require.NoError(t, err)
+			require.True(t, trained)
+			require.Equal(t, tt.want, label)
+
+			whitelisted, err := e.db.HasAddress(t.Context(), sender)
+			require.NoError(t, err)
+			require.Equal(t, tt.want == classify.Good, whitelisted)
+
+			require.Equal(t, engine.Summary{}, e.run(t), "learnt once")
+		})
+	}
+}
+
+func TestKeywordsIgnored(t *testing.T) {
+	t.Parallel()
+
+	const sender = marked
+
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, e *env)
+	}{
+		{"agrees with tamis", func(t *testing.T, e *env) {
+			t.Helper()
+			e.append(t, inbox, e.spammy(sender))
+			e.run(t)
+			e.mark(t, inbox, "$Junk")
+		}},
+		{"never judged by tamis", func(t *testing.T, e *env) {
+			t.Helper()
+			e.append(t, junk, e.spammy(sender))
+			e.mark(t, junk, "$NotJunk")
+		}},
+		{"marked both ways", func(t *testing.T, e *env) {
+			t.Helper()
+			e.append(t, inbox, e.hammy(sender))
+			e.run(t)
+			e.mark(t, inbox, "$Junk")
+			e.mark(t, inbox, "$NotJunk")
+		}},
+		{"outside the window", func(t *testing.T, e *env) {
+			t.Helper()
+
+			_, err := e.client.Append(inbox, e.hammy(sender), nil, time.Now().AddDate(0, 0, -60))
+			require.NoError(t, err)
+			e.run(t)
+			e.mark(t, inbox, "$Junk")
+		}},
+		{"turned off", func(t *testing.T, e *env) {
+			t.Helper()
+
+			e.cfg.Policy.LearnFromKeywords = false
+			e.append(t, inbox, e.hammy(sender))
+			e.run(t)
+			e.mark(t, inbox, "$Junk")
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, config.ModeShadow)
 			e.trainModel(t)
 			e.run(t)
 			tt.prepare(t, e)

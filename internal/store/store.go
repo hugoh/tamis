@@ -16,9 +16,16 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+// migrations()[i] upgrades the schema from version i to i+1. Released
+// steps never change; new ones are appended.
+func migrations() []string {
+	return []string{
+		schemaV1,
+		`ALTER TABLE decisions ADD COLUMN undone INTEGER NOT NULL DEFAULT 0;`,
+	}
+}
 
-const schema = `
+const schemaV1 = `
 CREATE TABLE tokens (
 	token TEXT PRIMARY KEY,
 	spam  INTEGER NOT NULL DEFAULT 0,
@@ -54,6 +61,12 @@ CREATE TABLE decisions (
 	applied    INTEGER NOT NULL
 );
 `
+
+// Lookup failures.
+var (
+	ErrNotFound      = errors.New("not found")
+	ErrAlreadyUndone = errors.New("already undone")
+)
 
 // Store is an open state database.
 type Store struct {
@@ -270,6 +283,8 @@ type Decision struct {
 	Reason    string
 	Action    string
 	Applied   bool
+	// Undone is set once the action has been reversed with Undo.
+	Undone bool
 }
 
 // RecordDecision appends to the journal and returns the entry's ID.
@@ -295,12 +310,8 @@ func (s *Store) RecordDecision(ctx context.Context, decision Decision) (int64, e
 
 // Decisions returns the most recent journal entries, newest first.
 func (s *Store) Decisions(ctx context.Context, limit int) ([]Decision, error) {
-	rows, err := s.db.QueryContext(
-		ctx,
-		`SELECT id, at, mailbox, uid, message_id, sender, subject, score, verdict, reason, action, applied
-		 FROM decisions ORDER BY at DESC, id DESC LIMIT ?`,
-		limit,
-	)
+	rows, err := s.db.QueryContext(ctx,
+		decisionColumns+" FROM decisions ORDER BY at DESC, id DESC LIMIT ?", limit)
 	if err != nil {
 		return nil, fmt.Errorf("list decisions: %w", err)
 	}
@@ -310,19 +321,11 @@ func (s *Store) Decisions(ctx context.Context, limit int) ([]Decision, error) {
 	var decisions []Decision
 
 	for rows.Next() {
-		var (
-			decision Decision
-			unixAt   int64
-		)
-
-		err := rows.Scan(&decision.ID, &unixAt, &decision.Mailbox, &decision.UID,
-			&decision.MessageID, &decision.From, &decision.Subject, &decision.Score,
-			&decision.Verdict, &decision.Reason, &decision.Action, &decision.Applied)
+		decision, err := scanDecision(rows)
 		if err != nil {
-			return nil, fmt.Errorf("scan decision: %w", err)
+			return nil, err
 		}
 
-		decision.At = time.Unix(unixAt, 0).UTC()
 		decisions = append(decisions, decision)
 	}
 
@@ -331,6 +334,67 @@ func (s *Store) Decisions(ctx context.Context, limit int) ([]Decision, error) {
 	}
 
 	return decisions, nil
+}
+
+// Decision returns one journal entry.
+func (s *Store) Decision(ctx context.Context, id int64) (Decision, error) {
+	decision, err := scanDecision(s.db.QueryRowContext(ctx,
+		decisionColumns+" FROM decisions WHERE id = ?", id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Decision{}, fmt.Errorf("decision %d: %w", id, ErrNotFound)
+	}
+
+	return decision, err
+}
+
+// MarkUndone records that a decision's action was reversed. It fails if the
+// decision doesn't exist or was already undone.
+func (s *Store) MarkUndone(ctx context.Context, decisionID int64) error {
+	result, err := s.db.ExecContext(ctx,
+		"UPDATE decisions SET undone = 1 WHERE id = ? AND undone = 0", decisionID)
+	if err != nil {
+		return fmt.Errorf("mark decision %d undone: %w", decisionID, err)
+	}
+
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("mark decision %d undone: %w", decisionID, err)
+	}
+
+	if changed > 0 {
+		return nil
+	}
+
+	if _, err := s.Decision(ctx, decisionID); err != nil {
+		return err
+	}
+
+	return fmt.Errorf("decision %d: %w", decisionID, ErrAlreadyUndone)
+}
+
+const decisionColumns = `SELECT id, at, mailbox, uid, message_id, sender, subject,
+	score, verdict, reason, action, applied, undone`
+
+func scanDecision(row interface{ Scan(dest ...any) error }) (Decision, error) {
+	var (
+		decision Decision
+		unixAt   int64
+	)
+
+	err := row.Scan(&decision.ID, &unixAt, &decision.Mailbox, &decision.UID,
+		&decision.MessageID, &decision.From, &decision.Subject, &decision.Score,
+		&decision.Verdict, &decision.Reason, &decision.Action, &decision.Applied, &decision.Undone)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Decision{}, err //nolint:wrapcheck // callers test for it
+	}
+
+	if err != nil {
+		return Decision{}, fmt.Errorf("scan decision: %w", err)
+	}
+
+	decision.At = time.Unix(unixAt, 0).UTC()
+
+	return decision, nil
 }
 
 // Stats summarises what the store has learnt.
@@ -403,15 +467,18 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("read schema version: %w", err)
 		}
 
-		if version >= schemaVersion {
+		steps := migrations()
+		if version >= len(steps) {
 			return nil
 		}
 
-		if _, err := txn.ExecContext(ctx, schema); err != nil {
-			return fmt.Errorf("create schema: %w", err)
+		for ; version < len(steps); version++ {
+			if _, err := txn.ExecContext(ctx, steps[version]); err != nil {
+				return fmt.Errorf("migrate schema to version %d: %w", version+1, err)
+			}
 		}
 
-		pragma := fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)
+		pragma := fmt.Sprintf("PRAGMA user_version = %d", version)
 		if _, err := txn.ExecContext(ctx, pragma); err != nil {
 			return fmt.Errorf("set schema version: %w", err)
 		}

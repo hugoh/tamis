@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -277,6 +278,16 @@ func TestClosedStoreFails(t *testing.T) {
 			_, _, err := db.Trained(t.Context(), "k")
 			require.Error(t, err)
 		},
+		"decision": func(t *testing.T) {
+			t.Helper()
+
+			_, err := db.Decision(t.Context(), 1)
+			require.Error(t, err)
+		},
+		"mark undone": func(t *testing.T) {
+			t.Helper()
+			require.Error(t, db.MarkUndone(t.Context(), 1))
+		},
 		"stats": func(t *testing.T) {
 			t.Helper()
 
@@ -341,4 +352,77 @@ func TestConcurrentOpenOfNewDatabase(t *testing.T) {
 	for range openers {
 		require.NoError(t, <-errs)
 	}
+}
+
+// v1Schema is the decisions table as released in schema version 1.
+const v1Schema = `
+CREATE TABLE decisions (
+	id INTEGER PRIMARY KEY, at INTEGER NOT NULL, mailbox TEXT NOT NULL,
+	uid INTEGER NOT NULL, message_id TEXT NOT NULL, sender TEXT NOT NULL,
+	subject TEXT NOT NULL, score REAL NOT NULL, verdict TEXT NOT NULL,
+	reason TEXT NOT NULL, action TEXT NOT NULL, applied INTEGER NOT NULL
+);
+INSERT INTO decisions VALUES (1, 0, 'INBOX', 7, '<m@x>', 'a@x', 's', 0.95, 'spam', 'bayes', 'move:Junk', 1);
+PRAGMA user_version = 1;
+`
+
+func TestMigrateFromV1(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "tamis.db")
+
+	raw, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	_, err = raw.ExecContext(t.Context(), v1Schema)
+	require.NoError(t, err)
+	require.NoError(t, raw.Close())
+
+	db, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, db.Close()) }()
+
+	decision, err := db.Decision(t.Context(), 1)
+	require.NoError(t, err)
+	require.Equal(t, "<m@x>", decision.MessageID)
+	require.False(t, decision.Undone)
+
+	require.NoError(t, db.MarkUndone(t.Context(), 1))
+}
+
+func TestDecisionLookup(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	id, err := db.RecordDecision(t.Context(), store.Decision{
+		At: time.Unix(0, 0).UTC(), Mailbox: "INBOX", UID: 3, MessageID: "<a@b>", Verdict: "spam",
+		Action: "move:Junk", Applied: true,
+	})
+	require.NoError(t, err)
+
+	decision, err := db.Decision(t.Context(), id)
+	require.NoError(t, err)
+	require.Equal(t, id, decision.ID)
+	require.Equal(t, "<a@b>", decision.MessageID)
+
+	_, err = db.Decision(t.Context(), id+100)
+	require.ErrorIs(t, err, store.ErrNotFound)
+}
+
+func TestMarkUndone(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	id, err := db.RecordDecision(t.Context(), store.Decision{Action: "move:Junk", Applied: true})
+	require.NoError(t, err)
+
+	require.NoError(t, db.MarkUndone(t.Context(), id))
+	require.ErrorIs(t, db.MarkUndone(t.Context(), id), store.ErrAlreadyUndone)
+	require.ErrorIs(t, db.MarkUndone(t.Context(), id+100), store.ErrNotFound)
+
+	decisions, err := db.Decisions(t.Context(), 10)
+	require.NoError(t, err)
+	require.True(t, decisions[0].Undone)
 }

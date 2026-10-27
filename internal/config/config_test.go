@@ -43,6 +43,9 @@ user = "me@icloud.com"
 	require.True(t, cfg.Policy.WhitelistRequiresAuth)
 	require.True(t, cfg.Policy.LearnFromJunk)
 	require.True(t, cfg.Policy.LearnFromKeywords)
+	require.True(t, cfg.Policy.Rescue)
+	require.Zero(t, cfg.Policy.RescueThreshold)
+	require.Equal(t, "INBOX", cfg.Folders.RescueTo())
 	require.NotEmpty(t, cfg.State)
 }
 
@@ -63,6 +66,7 @@ user = "me@example.com"
 [folders]
 watch = ["INBOX", "Lists"]
 junk = "Spam"
+rescued = "Rescued"
 
 [policy]
 mode = "live"
@@ -72,6 +76,8 @@ poll_interval = "30s"
 whitelist_requires_auth = false
 learn_from_junk = false
 learn_from_keywords = false
+rescue = false
+rescue_threshold = 0.05
 `))
 	require.NoError(t, err)
 
@@ -83,6 +89,9 @@ learn_from_keywords = false
 	require.False(t, cfg.Policy.WhitelistRequiresAuth)
 	require.False(t, cfg.Policy.LearnFromJunk)
 	require.False(t, cfg.Policy.LearnFromKeywords)
+	require.False(t, cfg.Policy.Rescue)
+	require.InDelta(t, 0.05, cfg.Policy.RescueThreshold, 1e-9)
+	require.Equal(t, "Rescued", cfg.Folders.RescueTo())
 	require.Equal(t, filepath.Join(home, "tamis-test.db"), cfg.State)
 }
 
@@ -103,6 +112,16 @@ func TestLoadInvalid(t *testing.T) {
 			"thresholds inverted",
 			"[account]\nhost = \"h\"\nuser = \"u\"\n[policy]\nspam_threshold = 0.2\ngood_threshold = 0.5",
 			"threshold",
+		},
+		{
+			"rescue threshold too high",
+			"[account]\nhost = \"h\"\nuser = \"u\"\n[policy]\nrescue_threshold = 0.3",
+			"rescue_threshold",
+		},
+		{
+			"negative rescue threshold",
+			"[account]\nhost = \"h\"\nuser = \"u\"\n[policy]\nrescue_threshold = -0.1",
+			"rescue_threshold",
 		},
 		{
 			"no watched folders",

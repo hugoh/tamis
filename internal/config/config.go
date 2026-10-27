@@ -61,6 +61,18 @@ type Folders struct {
 	Sent      string   `toml:"sent"`
 	TrainSpam string   `toml:"train_spam"`
 	TrainGood string   `toml:"train_good"`
+	// Rescued is where mail rescued from Junk goes; empty means the first
+	// watched folder.
+	Rescued string `toml:"rescued"`
+}
+
+// RescueTo is the folder rescued mail is moved to.
+func (f Folders) RescueTo() string {
+	if f.Rescued != "" {
+		return f.Rescued
+	}
+
+	return f.Watch[0]
 }
 
 // Policy turns scores into actions.
@@ -82,6 +94,13 @@ type Policy struct {
 	// set ($Junk, $NotJunk, and Apple Mail's Junk, NotJunk) when they
 	// contradict tamis's own verdict.
 	LearnFromKeywords bool `toml:"learn_from_keywords"`
+	// Rescue moves mail the provider filed to Junk back out when its sender
+	// is whitelisted and DKIM or DMARC passed (regardless of
+	// WhitelistRequiresAuth: impersonated contacts are what Junk catches).
+	Rescue bool `toml:"rescue"`
+	// RescueThreshold also rescues mail scoring at or below it. Zero turns
+	// score-based rescue off.
+	RescueThreshold float64 `toml:"rescue_threshold"`
 }
 
 // Duration is a time.Duration written as a string such as "2m".
@@ -122,6 +141,7 @@ func defaults() Config {
 			WhitelistRequiresAuth: true,
 			LearnFromJunk:         true,
 			LearnFromKeywords:     true,
+			Rescue:                true,
 		},
 	}
 }
@@ -194,27 +214,38 @@ func (c *Config) validate() error {
 		problems = append(problems, "account.user is required")
 	}
 
-	if c.Policy.Mode != ModeShadow && c.Policy.Mode != ModeLive {
-		problems = append(
-			problems,
-			fmt.Sprintf("policy.mode must be %q or %q", ModeShadow, ModeLive),
-		)
-	}
-
-	if !(0 < c.Policy.GoodThreshold && c.Policy.GoodThreshold < c.Policy.SpamThreshold &&
-		c.Policy.SpamThreshold < 1) {
-		problems = append(problems, "need 0 < policy.good_threshold < policy.spam_threshold < 1")
-	}
-
 	if len(c.Folders.Watch) == 0 {
 		problems = append(problems, "folders.watch needs at least one folder")
 	}
+
+	problems = append(problems, c.Policy.problems()...)
 
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", errInvalid, strings.Join(problems, "; "))
 	}
 
 	return nil
+}
+
+func (p Policy) problems() []string {
+	var problems []string
+
+	if p.Mode != ModeShadow && p.Mode != ModeLive {
+		problems = append(
+			problems,
+			fmt.Sprintf("policy.mode must be %q or %q", ModeShadow, ModeLive),
+		)
+	}
+
+	if !(0 < p.GoodThreshold && p.GoodThreshold < p.SpamThreshold && p.SpamThreshold < 1) {
+		problems = append(problems, "need 0 < policy.good_threshold < policy.spam_threshold < 1")
+	}
+
+	if p.RescueThreshold < 0 || p.RescueThreshold >= p.GoodThreshold {
+		problems = append(problems, "need 0 <= policy.rescue_threshold < policy.good_threshold")
+	}
+
+	return problems
 }
 
 // Addr is the server's host:port.

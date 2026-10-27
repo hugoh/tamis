@@ -1,0 +1,253 @@
+// Package config loads tamis's TOML configuration.
+package config
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/pelletier/go-toml/v2"
+)
+
+// Mode says whether tamis acts on its decisions.
+type Mode string
+
+// Modes.
+const (
+	// ModeShadow records what tamis would do and changes nothing.
+	ModeShadow Mode = "shadow"
+	// ModeLive files messages according to their verdict.
+	ModeLive Mode = "live"
+)
+
+const passwordEnv = "TAMIS_PASSWORD"
+
+var errInvalid = errors.New("invalid config")
+
+// ErrNoPassword means neither a password command nor $TAMIS_PASSWORD is set.
+var ErrNoPassword = errors.New("no password: set account.password_command or $" + passwordEnv)
+
+// Config is the whole configuration file.
+type Config struct {
+	// State is the SQLite database path; "~/" expands to the home directory.
+	State   string  `toml:"state"`
+	Account Account `toml:"account"`
+	Folders Folders `toml:"folders"`
+	Policy  Policy  `toml:"policy"`
+}
+
+// Account is how to reach the mailbox.
+type Account struct {
+	Host string `toml:"host"`
+	Port int    `toml:"port"`
+	User string `toml:"user"`
+	// PasswordCommand is run without a shell; its trimmed stdout is the
+	// password. For example: ["security", "find-generic-password", "-s",
+	// "tamis", "-w"].
+	PasswordCommand []string `toml:"password_command"`
+}
+
+// Folders names the mailboxes tamis reads and writes.
+type Folders struct {
+	Watch     []string `toml:"watch"`
+	Junk      string   `toml:"junk"`
+	Sent      string   `toml:"sent"`
+	TrainSpam string   `toml:"train_spam"`
+	TrainGood string   `toml:"train_good"`
+}
+
+// Policy turns scores into actions.
+type Policy struct {
+	Mode Mode `toml:"mode"`
+	// Scores at or above SpamThreshold are spam; at or below GoodThreshold,
+	// good; anything between is uncertain.
+	SpamThreshold float64  `toml:"spam_threshold"`
+	GoodThreshold float64  `toml:"good_threshold"`
+	PollInterval  Duration `toml:"poll_interval"`
+	// WhitelistRequiresAuth only trusts a whitelisted sender when DKIM or
+	// DMARC passed, so a forged From can't bypass the filter.
+	WhitelistRequiresAuth bool `toml:"whitelist_requires_auth"`
+}
+
+// Duration is a time.Duration written as a string such as "2m".
+type Duration struct {
+	time.Duration
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (d *Duration) UnmarshalText(text []byte) error {
+	parsed, err := time.ParseDuration(string(text))
+	if err != nil {
+		return fmt.Errorf("duration %q: %w", text, err)
+	}
+
+	d.Duration = parsed
+
+	return nil
+}
+
+func defaults() Config {
+	return Config{
+		State: "~/.local/state/tamis/tamis.db",
+		Account: Account{
+			Port: 993, //nolint:mnd // IMAPS
+		},
+		Folders: Folders{
+			Watch:     []string{"INBOX"},
+			Junk:      "Junk",
+			Sent:      "Sent Messages",
+			TrainSpam: "TrainSpam",
+			TrainGood: "TrainGood",
+		},
+		Policy: Policy{
+			Mode:                  ModeShadow,
+			SpamThreshold:         0.9, //nolint:mnd // SpamBayes' spam cutoff
+			GoodThreshold:         0.2, //nolint:mnd // SpamBayes' ham cutoff
+			PollInterval:          Duration{2 * time.Minute},
+			WhitelistRequiresAuth: true,
+		},
+	}
+}
+
+// DefaultPath is $XDG_CONFIG_HOME/tamis/config.toml, falling back to
+// ~/.config.
+func DefaultPath(getenv func(string) string) string {
+	base := getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, _ := os.UserHomeDir()
+		base = filepath.Join(home, ".config")
+	}
+
+	return filepath.Join(base, "tamis", "config.toml")
+}
+
+// Load reads and validates the file at path, filling unset fields with
+// defaults. Unknown keys are errors, so typos don't pass silently.
+func Load(path string) (*Config, error) {
+	file, err := os.Open(path) //nolint:gosec // the path is the user's own config file
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+
+	defer func() { _ = file.Close() }()
+
+	cfg := defaults()
+
+	if err := toml.NewDecoder(file).DisallowUnknownFields().Decode(&cfg); err != nil {
+		return nil, decodeError(path, err)
+	}
+
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
+	cfg.State, err = expandHome(cfg.State)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+func decodeError(path string, err error) error {
+	if strict, ok := errors.AsType[*toml.StrictMissingError](err); ok {
+		keys := make([]string, len(strict.Errors))
+		for i, missing := range strict.Errors {
+			keys[i] = strings.Join(missing.Key(), ".")
+		}
+
+		return fmt.Errorf("%w: unknown keys %s", errInvalid, strings.Join(keys, ", "))
+	}
+
+	if decode, ok := errors.AsType[*toml.DecodeError](err); ok && len(decode.Key()) > 0 {
+		return fmt.Errorf("parse %s: %s: %w", path, strings.Join(decode.Key(), "."), err)
+	}
+
+	return fmt.Errorf("parse %s: %w", path, err)
+}
+
+func (c *Config) validate() error {
+	var problems []string
+
+	if c.Account.Host == "" {
+		problems = append(problems, "account.host is required, e.g. imap.mail.me.com for iCloud")
+	}
+
+	if c.Account.User == "" {
+		problems = append(problems, "account.user is required")
+	}
+
+	if c.Policy.Mode != ModeShadow && c.Policy.Mode != ModeLive {
+		problems = append(
+			problems,
+			fmt.Sprintf("policy.mode must be %q or %q", ModeShadow, ModeLive),
+		)
+	}
+
+	if !(0 < c.Policy.GoodThreshold && c.Policy.GoodThreshold < c.Policy.SpamThreshold &&
+		c.Policy.SpamThreshold < 1) {
+		problems = append(problems, "need 0 < policy.good_threshold < policy.spam_threshold < 1")
+	}
+
+	if len(c.Folders.Watch) == 0 {
+		problems = append(problems, "folders.watch needs at least one folder")
+	}
+
+	if len(problems) > 0 {
+		return fmt.Errorf("%w: %s", errInvalid, strings.Join(problems, "; "))
+	}
+
+	return nil
+}
+
+// Addr is the server's host:port.
+func (a Account) Addr() string {
+	return net.JoinHostPort(a.Host, strconv.Itoa(a.Port))
+}
+
+// Password runs PasswordCommand if set, otherwise reads $TAMIS_PASSWORD.
+func (a Account) Password(ctx context.Context, getenv func(string) string) (string, error) {
+	if len(a.PasswordCommand) == 0 {
+		if password := getenv(passwordEnv); password != "" {
+			return password, nil
+		}
+
+		return "", ErrNoPassword
+	}
+
+	//nolint:gosec // the command comes from the user's own config file
+	out, err := exec.CommandContext(ctx, a.PasswordCommand[0], a.PasswordCommand[1:]...).Output()
+	if err != nil {
+		return "", fmt.Errorf("account.password_command: %w", err)
+	}
+
+	password := strings.TrimRight(string(out), "\r\n")
+	if password == "" {
+		return "", fmt.Errorf("account.password_command: %w", errEmptyPassword)
+	}
+
+	return password, nil
+}
+
+var errEmptyPassword = errors.New("printed an empty password")
+
+func expandHome(path string) (string, error) {
+	rest, ok := strings.CutPrefix(path, "~/")
+	if !ok {
+		return path, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("expand %s: %w", path, err)
+	}
+
+	return filepath.Join(home, rest), nil
+}

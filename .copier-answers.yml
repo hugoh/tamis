@@ -14,6 +14,7 @@ has_goreleaser: false
 has_pages: false
 has_test_int: false
 project_name: tamis
-testcoverage_excludes: []
+testcoverage_excludes:
+- internal/imaptest/
 testcoverage_overrides: []
 

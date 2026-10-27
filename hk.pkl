@@ -44,7 +44,7 @@ local linters = new Mapping<String, Step> {
     profiles = List("!ci")
   }
   ["conventional_commit"] {
-    check = "cog check --from-latest-tag"
+    check = "mise run lint-commits"
   }
   ["duplication"] = {
     check = "jscpd"

@@ -2,45 +2,24 @@
 package cli
 
 import (
-	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"net"
-	"strconv"
-	"strings"
-	"time"
 
-	"github.com/hugoh/tamis/internal/probe"
+	"github.com/hugoh/tamis/internal/config"
+	"github.com/spf13/cobra"
 )
-
-const usage = `tamis — a second-opinion spam filter for remote mailboxes
-
-Usage:
-  tamis <command> [flags]
-
-Commands:
-  probe     Check which IMAP features a server supports
-  version   Print the version
-  help      Show this help
-
-Run 'tamis probe -h' for probe flags.
-`
 
 // Exit codes returned by Run.
 const (
-	exitOK    = 0
-	exitFail  = 1
-	exitUsage = 2
+	exitOK   = 0
+	exitFail = 1
 )
 
-const (
-	passwordEnv     = "TAMIS_PASSWORD"
-	defaultPort     = 993
-	defaultIdleWait = 30 * time.Second
-)
+// errReported means the command already told the user what went wrong.
+var errReported = errors.New("command failed")
 
 // Env is the process environment Run works against.
 type Env struct {
@@ -48,130 +27,63 @@ type Env struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Getenv func(string) string
+	// TLSConfig, if set, replaces the default TLS settings for IMAP
+	// connections. Tests use it to trust a throwaway certificate.
+	TLSConfig *tls.Config
+	// Prompt, if set, asks for a secret without echoing it. It returns
+	// ErrNotTerminal when there is no terminal to ask on.
+	Prompt func(prompt string) (string, error)
 }
 
-// Run executes the command named in args and returns the process exit code.
-func Run(args []string, env Env, version string) int {
-	if len(args) == 0 {
-		_, _ = fmt.Fprint(env.Stderr, usage)
+// Run executes the command line in args and returns the process exit code.
+func Run(ctx context.Context, args []string, env Env, version string) int {
+	root := newRoot(env, version) //nolint:contextcheck // commands get ctx via cmd.Context()
+	root.SetArgs(args)
+	root.SetIn(env.Stdin)
+	root.SetOut(env.Stdout)
+	root.SetErr(env.Stderr)
 
-		return exitUsage
-	}
+	if err := root.ExecuteContext(ctx); err != nil {
+		if !errors.Is(err, errReported) {
+			_, _ = fmt.Fprintln(env.Stderr, "tamis:", err)
+		}
 
-	switch args[0] {
-	case "probe":
-		return runProbe(args[1:], env)
-	case "version", "--version", "-v":
-		_, _ = fmt.Fprintln(env.Stdout, "tamis", version)
-
-		return exitOK
-	case "help", "--help", "-h":
-		_, _ = fmt.Fprint(env.Stdout, usage)
-
-		return exitOK
-	default:
-		_, _ = fmt.Fprintf(env.Stderr, "tamis: unknown command %q\n\n%s", args[0], usage)
-
-		return exitUsage
-	}
-}
-
-var errNoPassword = errors.New("no password: set " + passwordEnv + " or pipe it on stdin")
-
-func runProbe(args []string, env Env) int {
-	cfg, asJSON, code := parseProbeFlags(args, env)
-	if code != exitOK || cfg == nil {
-		return code
-	}
-
-	report, err := probe.Run(context.Background(), *cfg)
-	if err != nil {
-		_, _ = fmt.Fprintln(env.Stderr, "tamis probe:", err)
-
-		return exitFail
-	}
-
-	if asJSON {
-		err = report.WriteJSON(env.Stdout)
-	} else {
-		err = report.WriteText(env.Stdout)
-	}
-
-	if err != nil || report.Failed() {
 		return exitFail
 	}
 
 	return exitOK
 }
 
-// parseProbeFlags returns the probe configuration, or a nil config and the
-// exit code to stop with.
-func parseProbeFlags(args []string, env Env) (*probe.Config, bool, int) {
-	flags := flag.NewFlagSet("tamis probe", flag.ContinueOnError)
-	flags.SetOutput(env.Stderr)
-	flags.Usage = func() {
-		_, _ = fmt.Fprintf(env.Stderr, "Usage: tamis probe --user ADDRESS [flags]\n\n"+
-			"Reads the password (an app-specific password for iCloud) from $%s,\n"+
-			"or from the first line of stdin.\n\n", passwordEnv)
+func newRoot(env Env, version string) *cobra.Command {
+	app := &app{env: env}
 
-		flags.PrintDefaults()
+	root := &cobra.Command{
+		Use:           "tamis",
+		Short:         "A second-opinion spam filter for remote mailboxes",
+		Version:       version,
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
+	root.SetVersionTemplate("tamis {{.Version}}\n")
+	root.PersistentFlags().
+		StringVarP(&app.configPath, "config", "c", config.DefaultPath(env.Getenv),
+			"configuration file")
 
-	host := flags.String("host", "imap.mail.me.com", "IMAP server")
-	port := flags.Int("port", defaultPort, "IMAP port (implicit TLS)")
-	user := flags.String("user", "", "login name, usually the full address")
-	write := flags.Bool("write", false, "also create, fill and delete scratch folders")
-	asJSON := flags.Bool("json", false, "print the report as JSON")
-	idleWait := flags.Duration("idle-wait", defaultIdleWait, "how long to wait for an IDLE push")
-	plaintext := flags.Bool("plaintext", false, "connect without TLS (local test servers only)")
+	root.AddCommand(
+		app.bootstrapCommand(),
+		app.runCommand(),
+		app.logCommand(),
+		app.statusCommand(),
+		probeCommand(env),
+		&cobra.Command{
+			Use:   "version",
+			Short: "Print the version",
+			Args:  cobra.NoArgs,
+			Run: func(cmd *cobra.Command, _ []string) {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "tamis", version)
+			},
+		},
+	)
 
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil, false, exitOK
-		}
-
-		return nil, false, exitUsage
-	}
-
-	if *user == "" {
-		_, _ = fmt.Fprintln(env.Stderr, "tamis probe: --user is required")
-
-		flags.Usage()
-
-		return nil, false, exitUsage
-	}
-
-	password, err := readPassword(env)
-	if err != nil {
-		_, _ = fmt.Fprintln(env.Stderr, "tamis probe:", err)
-
-		return nil, false, exitUsage
-	}
-
-	return &probe.Config{
-		Addr:      net.JoinHostPort(*host, strconv.Itoa(*port)),
-		Username:  *user,
-		Password:  password,
-		Write:     *write,
-		IdleWait:  *idleWait,
-		Plaintext: *plaintext,
-	}, *asJSON, exitOK
-}
-
-func readPassword(env Env) (string, error) {
-	if password := env.Getenv(passwordEnv); password != "" {
-		return password, nil
-	}
-
-	line, err := bufio.NewReader(env.Stdin).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", fmt.Errorf("read password: %w", err)
-	}
-
-	password := strings.TrimRight(line, "\r\n")
-	if password == "" {
-		return "", errNoPassword
-	}
-
-	return password, nil
+	return root
 }

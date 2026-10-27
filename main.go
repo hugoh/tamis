@@ -3,7 +3,10 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/hugoh/tamis/internal/cli"
 )
@@ -12,10 +15,16 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(cli.Run(os.Args[1:], cli.Env{
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	code := cli.Run(ctx, os.Args[1:], cli.Env{
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 		Getenv: os.Getenv,
-	}, version))
+		Prompt: cli.TerminalPrompt(os.Stdin, os.Stderr),
+	}, version)
+
+	stop()
+	os.Exit(code)
 }

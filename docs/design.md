@@ -102,7 +102,7 @@ path.
 The daemon runs remotely, so training must come from what the user already
 does in their mail client. Three channels, all on by default:
 
-1. **Train folders**: `tamis/TrainSpam` and `tamis/TrainGood` per account.
+1. **Train folders**: `TrainSpam` and `TrainGood` per account (configurable).
    Messages dropped there are trained, then moved to Junk or back to the
    Inbox.
 2. **Inferred moves**: every message tamis touches is recorded (Message-ID,
@@ -178,6 +178,6 @@ web UI / API, TOML config
 | Phase | Scope |
 |---|---|
 | 0 | iCloud capability probe: which extensions actually work (`tamis probe`) |
-| MVP | IMAP, Train folders, token Bayes, whitelist from Sent, shadow mode, SQLite, CLI |
+| MVP (done, see [engine.md](engine.md)) | IMAP, Train folders, token Bayes, whitelist from Sent, shadow mode, SQLite, CLI |
 | Next | Opt-in Jev signal, inferred corrections, rescue from Junk, digest, web UI with undo |
 | Later | JMAP, OAuth (Gmail, Microsoft), local embeddings, optional Rspamd signal |

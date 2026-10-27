@@ -74,6 +74,7 @@ func newRoot(env Env, version string) *cobra.Command {
 		app.runCommand(),
 		app.logCommand(),
 		app.statusCommand(),
+		app.undoCommand(),
 		probeCommand(env),
 		&cobra.Command{
 			Use:   "version",

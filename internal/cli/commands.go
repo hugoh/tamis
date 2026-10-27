@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"text/tabwriter"
 	"time"
 
@@ -287,7 +288,7 @@ func writeDecisions(cmd *cobra.Command, decisions []store.Decision) error {
 	}
 
 	table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tablePadding, ' ', 0)
-	_, _ = fmt.Fprintln(table, "TIME\tVERDICT\tREASON\tSCORE\tACTION\tFROM\tSUBJECT")
+	_, _ = fmt.Fprintln(table, "ID\tTIME\tVERDICT\tREASON\tSCORE\tACTION\tFROM\tSUBJECT")
 
 	for _, decision := range decisions {
 		when := decision.At.Local() //nolint:gosmopolitan // a local CLI shows local time
@@ -297,9 +298,12 @@ func writeDecisions(cmd *cobra.Command, decisions []store.Decision) error {
 			action = "would " + action
 		}
 
-		_, _ = fmt.Fprintf(
-			table,
-			"%s\t%s\t%s\t%.2f\t%s\t%s\t%s\n",
+		if decision.Undone {
+			action += " (undone)"
+		}
+
+		_, _ = fmt.Fprintf(table, "%d\t%s\t%s\t%s\t%.2f\t%s\t%s\t%s\n",
+			decision.ID,
 			when.Format(time.DateTime),
 			decision.Verdict,
 			decision.Reason,
@@ -312,6 +316,76 @@ func writeDecisions(cmd *cobra.Command, decisions []store.Decision) error {
 
 	if err := table.Flush(); err != nil {
 		return fmt.Errorf("write log: %w", err)
+	}
+
+	return nil
+}
+
+func (a *app) undoCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "undo ID...",
+		Short: "Reverse decisions tamis applied",
+		Long: "Reverse decisions tamis applied, by the IDs 'tamis log' shows. Mail filed\n" +
+			"to Junk is moved back, learnt as good and its sender whitelisted; an\n" +
+			"uncertain flag is cleared.",
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			ids, err := parseIDs(args)
+			if err != nil {
+				return err
+			}
+
+			cfg, database, err := a.open(ctx)
+			if err != nil {
+				return err
+			}
+
+			defer func() { _ = database.Close() }()
+
+			return a.withEngine(ctx, cfg, database, slog.New(slog.DiscardHandler),
+				func(ctx context.Context, eng *engine.Engine) error {
+					return undoAll(ctx, cmd, eng, ids)
+				})
+		},
+	}
+}
+
+func parseIDs(args []string) ([]int64, error) {
+	ids := make([]int64, 0, len(args))
+
+	for _, arg := range args {
+		id, err := strconv.ParseInt(arg, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid decision ID %q: %w", arg, err)
+		}
+
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
+// undoAll undoes each decision in turn, reporting each outcome, and fails if
+// any of them did.
+func undoAll(ctx context.Context, cmd *cobra.Command, eng *engine.Engine, ids []int64) error {
+	failed := false
+
+	for _, decisionID := range ids {
+		summary, err := eng.Undo(ctx, decisionID)
+		if err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%d: %v\n", decisionID, err)
+			failed = true
+
+			continue
+		}
+
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d: %s\n", decisionID, summary)
+	}
+
+	if failed {
+		return errReported
 	}
 
 	return nil

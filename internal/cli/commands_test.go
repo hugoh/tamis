@@ -335,3 +335,67 @@ func TestRunPromptsForPassword(t *testing.T) {
 	})
 	require.Zero(t, got.code, got.stderr)
 }
+
+func TestUndo(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, `mode = "live"`)
+	a.seedCorpus(t)
+	require.Zero(t, a.run(t, "bootstrap").code)
+
+	a.add(
+		t,
+		"INBOX",
+		nil,
+		time.Now(),
+		"WINNER claim prize",
+		"Congratulations winner, claim your lottery prize.",
+	)
+	require.Zero(t, a.run(t, runCmd, onceFlag).code)
+
+	got := a.run(t, "log")
+	require.Contains(t, got.stdout, "ID")
+	require.Contains(t, got.stdout, "move:Junk")
+
+	got = a.run(t, "undo", "1")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "1: moved back to INBOX")
+
+	got = a.run(t, "log")
+	require.Contains(t, got.stdout, "move:Junk (undone)")
+
+	inbox, err := a.client.UIDsAfter("INBOX", 0)
+	require.NoError(t, err)
+	require.Len(t, inbox, 6)
+
+	got = a.run(t, "undo", "1", "42")
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stderr, "1: ")
+	require.Contains(t, got.stderr, "already undone")
+	require.Contains(t, got.stderr, "42: ")
+	require.Contains(t, got.stderr, "not found")
+}
+
+func TestUndoArguments(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		"no id":  {[]string{"undo"}, "requires at least 1 arg"},
+		"not id": {[]string{"undo", "abc"}, `invalid decision ID "abc"`},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := a.run(t, tt.args...)
+			require.Equal(t, 1, got.code)
+			require.Contains(t, got.stderr, tt.want)
+		})
+	}
+}

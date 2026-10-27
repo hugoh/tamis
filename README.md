@@ -62,6 +62,7 @@ tamis bootstrap   # whitelist Sent recipients, train on Junk and old read mail
 tamis run         # judge new mail every poll_interval (--once for one pass)
 tamis log         # what it decided, and in shadow mode what it would have done
 tamis status      # mode, folders, how much it has learnt
+tamis undo 42     # reverse decision 42 from the log
 ```
 
 To correct it from any mail client, on any device:
@@ -84,7 +85,9 @@ Only read messages at least `--good-min-age` old (default a week) are
 trained as good. `--sent N` sets how many sent messages to whitelist
 recipients from (default 2000).
 
-When `tamis log` looks right for a week or two, set `mode = "live"`.
+When `tamis log` looks right for a week or two, set `mode = "live"`. If tamis
+then files something it shouldn't have, `tamis undo ID` moves it back, learns
+it as good and whitelists the sender.
 
 ## Probe a server
 

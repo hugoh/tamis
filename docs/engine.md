@@ -144,6 +144,38 @@ Every decision is journalled with its verdict, reason (`bayes`,
 whether that action was applied. In shadow mode, the journal shows what live
 mode would have done; `tamis log` prints it.
 
+## Undo
+
+`tamis undo ID...` reverses decisions that were applied in live mode, using
+the IDs `tamis log` shows.
+
+```mermaid
+flowchart TD
+    u([undo ID]) --> load[Load decision]
+    load --> check{Applied, not yet undone,<br/>and tamis's own verdict?}
+    check -- no --> refuse([Refuse, saying why])
+    check -- "move:Junk" --> find[Find it in Junk by Message-ID]
+    find --> learn[Learn good, whitelist sender]
+    learn --> unflag[Remove $TamisFiled]
+    unflag --> back[Move back to the original folder]
+    check -- "keyword:$TamisUncertain" --> findU[Find it by Message-ID]
+    findU --> clear[Remove $TamisUncertain]
+    back --> mark[(Mark undone, journal the undo)]
+    clear --> mark
+```
+
+The message is found by Message-ID rather than UID, because a move gives it a
+new UID. Undo refuses:
+
+- decisions only recorded in shadow mode;
+- decisions already undone;
+- training and corrections, which are changed by dropping the message in the
+  other training folder;
+- messages no longer where tamis left them.
+
+The decision is marked undone last, so an undo that fails partway (say the
+move back fails) can simply be run again.
+
 ## Where messages go
 
 ```mermaid
@@ -198,5 +230,4 @@ mail could be spam that slipped through and that nobody has looked at yet.
 - Corrections rely on `$TamisFiled` surviving a move back from Junk. Servers
   that drop keywords on MOVE won't report corrections; the training folders
   still work.
-- No undo command yet. The journal records enough to add one.
 - No rescue from the provider's Junk yet (see the roadmap in `design.md`).

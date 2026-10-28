@@ -18,9 +18,10 @@ func TestVerified(t *testing.T) {
 	const from = "From: Friend <friend@example.com>"
 
 	tests := []struct {
-		name string
-		raw  []byte
-		want bool
+		name     string
+		raw      []byte
+		serverID string
+		want     bool
 	}{
 		{
 			name: "dmarc pass for the From domain",
@@ -82,6 +83,24 @@ func TestVerified(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "authserv-id matches the configured one",
+			raw: message(
+				"Authentication-Results: MX.iCloud.com 1; dmarc=pass header.from=example.com",
+				from,
+			),
+			serverID: "mx.icloud.com",
+			want:     true,
+		},
+		{
+			name: "header written by someone other than the provider",
+			raw: message(
+				"Authentication-Results: evil.example.net; dmarc=pass header.from=example.com",
+				from,
+			),
+			serverID: "mx.icloud.com",
+			want:     false,
+		},
+		{
 			name: "no results",
 			raw:  message(from),
 			want: false,
@@ -104,7 +123,7 @@ func TestVerified(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.want, auth.Verified(tt.raw))
+			require.Equal(t, tt.want, auth.Verified(tt.raw, tt.serverID))
 		})
 	}
 }

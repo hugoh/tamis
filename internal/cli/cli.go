@@ -17,6 +17,8 @@ import (
 const (
 	exitOK   = 0
 	exitFail = 1
+	// exitUsage is a bad command line: nothing ran.
+	exitUsage = 2
 )
 
 // errReported means the command already told the user what went wrong.
@@ -40,7 +42,7 @@ type Env struct {
 
 // Run executes the command line in args and returns the process exit code.
 func Run(ctx context.Context, args []string, env Env, version string) int {
-	root := newRoot(env, version) //nolint:contextcheck // commands get ctx via cmd.Context()
+	root, app := newRoot(env, version) //nolint:contextcheck // commands get ctx via cmd.Context()
 	root.SetArgs(args)
 	root.SetIn(env.Stdin)
 	root.SetOut(env.Stdout)
@@ -51,13 +53,17 @@ func Run(ctx context.Context, args []string, env Env, version string) int {
 			_, _ = fmt.Fprintln(env.Stderr, "tamis:", err)
 		}
 
+		if !app.ran {
+			return exitUsage
+		}
+
 		return exitFail
 	}
 
 	return exitOK
 }
 
-func newRoot(env Env, version string) *cobra.Command {
+func newRoot(env Env, version string) (*cobra.Command, *app) {
 	app := &app{env: env, finder: passwordFinder{env: env}}
 
 	root := &cobra.Command{
@@ -92,5 +98,32 @@ func newRoot(env Env, version string) *cobra.Command {
 		},
 	)
 
-	return root
+	app.markRuns(root)
+
+	return root, app
+}
+
+// markRuns makes app.ran true once a command starts running, so an error
+// before that is a usage error: unknown command or flag, bad arguments, or
+// a missing required flag.
+func (a *app) markRuns(cmd *cobra.Command) {
+	if run := cmd.RunE; run != nil {
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			a.ran = true
+
+			return run(cmd, args)
+		}
+	}
+
+	if run := cmd.Run; run != nil {
+		cmd.Run = func(cmd *cobra.Command, args []string) {
+			a.ran = true
+
+			run(cmd, args)
+		}
+	}
+
+	for _, sub := range cmd.Commands() {
+		a.markRuns(sub)
+	}
 }

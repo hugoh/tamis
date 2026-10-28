@@ -28,6 +28,7 @@ const (
 	logoutCmd     = "logout"
 	noPassword    = "no password"
 	loginFailed   = "login failed"
+	statusCmd     = "status"
 )
 
 type result struct {
@@ -83,7 +84,7 @@ func TestRun(t *testing.T) {
 		{name: "version", args: []string{"version"}, wantStdout: "tamis 1.2.3\n"},
 		{
 			name:       "config shorthand",
-			args:       []string{"status", "-c", missingConfig},
+			args:       []string{statusCmd, "-c", missingConfig},
 			wantCode:   1,
 			wantStderr: missingConfig,
 		},
@@ -92,26 +93,26 @@ func TestRun(t *testing.T) {
 		{
 			name:       "unknown command",
 			args:       []string{"bogus"},
-			wantCode:   1,
+			wantCode:   2,
 			wantStderr: `unknown command "bogus"`,
 		},
 		{name: "probe help", args: []string{probeCmd, "-h"}, wantStdout: passwordKey},
 		{
 			name:       "probe bad flag",
 			args:       []string{probeCmd, "--nope"},
-			wantCode:   1,
+			wantCode:   2,
 			wantStderr: "unknown flag",
 		},
 		{
 			name:       "probe without user",
 			args:       []string{probeCmd},
-			wantCode:   1,
+			wantCode:   2,
 			wantStderr: `"user" not set`,
 		},
 		{
 			name:       "probe without host",
 			args:       []string{probeCmd, userFlag, "me"},
-			wantCode:   1,
+			wantCode:   2,
 			wantStderr: `"host" not set`,
 		},
 		{
@@ -288,6 +289,29 @@ func TestProbePassword(t *testing.T) {
 			require.Equal(t, tt.wantCode, got.code, got.stderr)
 			require.Contains(t, got.stderr, tt.want)
 			require.Contains(t, asked, imaptest.Username, "the prompt names the account")
+		})
+	}
+}
+
+func TestUsageErrorsExitTwo(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"unknown command", []string{"bogus"}},
+		{"unknown flag", []string{statusCmd, "--nope"}},
+		{"unexpected argument", []string{statusCmd, "extra"}},
+		{"missing required flag", []string{"init", configFlag, missingConfig, userFlag, "u"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := execute(t.Context(), t, invocation{args: tt.args})
+			require.Equal(t, 2, got.code, got.stderr)
 		})
 	}
 }

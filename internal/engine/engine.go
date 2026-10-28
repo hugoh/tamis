@@ -302,7 +302,8 @@ func (e *Engine) judge(
 			return judgement{}, fmt.Errorf("judge: %w", err)
 		}
 
-		if whitelisted && (!e.cfg.Policy.WhitelistRequiresAuth || auth.Verified(message.Raw)) {
+		if whitelisted &&
+			(!e.cfg.Policy.WhitelistRequiresAuth || auth.Verified(message.Raw, e.cfg.Account.AuthServerID)) {
 			return judgement{verdict: VerdictGood, reason: ReasonWhitelisted}, nil
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/hugoh/tamis/internal/imaptest"
+	"github.com/stretchr/testify/require"
 )
 
 const opMove = "MOVE"
@@ -45,22 +47,17 @@ func expect(t *testing.T, r *Report, name string, status Status, detail string) 
 	t.Helper()
 
 	c := find(t, r, name)
-	if c.Status != status || !strings.Contains(c.Detail, detail) {
-		t.Errorf("%s = %s %q, want %s containing %q", name, c.Status, c.Detail, status, detail)
-	}
+	require.Equal(t, status, c.Status, "%s: %s", name, c.Detail)
+	require.Contains(t, c.Detail, detail, name)
 }
 
 func TestRunReadOnly(t *testing.T) {
 	t.Parallel()
 
 	report, err := Run(config(imaptest.Start(t, imaptest.Rev2())))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if report.Failed() {
-		t.Errorf("unexpected failure: %+v", report.Checks)
-	}
+	require.False(t, report.Failed(), "%+v", report.Checks)
 
 	expect(t, report, "login", StatusOK, imaptest.Username)
 	expect(t, report, "IDLE", StatusOK, "advertised")
@@ -69,9 +66,7 @@ func TestRunReadOnly(t *testing.T) {
 	expect(t, report, "EXAMINE INBOX", StatusOK, "0 messages")
 	expect(t, report, "write checks", StatusSkip, "--write")
 
-	if len(report.Mailboxes) != 2 {
-		t.Errorf("mailboxes = %+v, want INBOX and Junk", report.Mailboxes)
-	}
+	require.Len(t, report.Mailboxes, 2, "want INBOX and Junk")
 }
 
 func TestRunWrite(t *testing.T) {
@@ -81,13 +76,9 @@ func TestRunWrite(t *testing.T) {
 	cfg.Write = true
 
 	report, err := Run(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if report.Failed() {
-		t.Errorf("unexpected failure: %+v", report.Checks)
-	}
+	require.False(t, report.Failed(), "%+v", report.Checks)
 
 	expect(t, report, "CREATE scratch", StatusOK, "tamis-probe-")
 	expect(t, report, "APPEND", StatusOK, "APPENDUID")
@@ -106,13 +97,9 @@ func TestRunWriteRev1(t *testing.T) {
 	cfg.Write = true
 
 	report, err := Run(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if !report.Failed() {
-		t.Error("missing UIDPLUS should fail the report")
-	}
+	require.True(t, report.Failed(), "missing UIDPLUS should fail the report")
 
 	expect(t, report, "UIDPLUS", StatusFail, "missing")
 	expect(t, report, opMove, StatusWarn, "missing")
@@ -126,9 +113,7 @@ func TestRunTLS(t *testing.T) {
 	report, err := Run(
 		config(imaptest.StartWith(t, imaptest.Options{Caps: imaptest.Rev2(), TLS: true})),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	expect(t, report, "login", StatusOK, "")
 }
@@ -139,25 +124,21 @@ func TestRunBadPassword(t *testing.T) {
 	cfg := config(imaptest.Start(t, imaptest.Rev2()))
 	cfg.Password = "wrong"
 
-	if _, err := Run(cfg); !errors.Is(err, ErrLogin) {
-		t.Errorf("err = %v, want ErrLogin", err)
-	}
+	_, err := Run(cfg)
+	require.ErrorIs(t, err, ErrLogin)
 }
 
 func TestRunConnectRefused(t *testing.T) {
 	t.Parallel()
 
 	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	addr := ln.Addr().String()
 	_ = ln.Close()
 
-	if _, err := Run(Config{Addr: addr, Plaintext: true}); err == nil {
-		t.Error("want error dialing a closed port")
-	}
+	_, err = Run(Config{Addr: addr, Plaintext: true})
+	require.Error(t, err, "dialing a closed port")
 }
 
 func TestWriteReport(t *testing.T) {
@@ -174,29 +155,19 @@ func TestWriteReport(t *testing.T) {
 	}
 
 	var text bytes.Buffer
-	if err := report.WriteText(&text); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, report.WriteText(&text))
 
 	for _, want := range []string{"imap.example.com:993", "IDLE MOVE", "native MOVE", `\Junk`, "WARN"} {
-		if !strings.Contains(text.String(), want) {
-			t.Errorf("text report missing %q:\n%s", want, text.String())
-		}
+		require.Contains(t, text.String(), want)
 	}
 
 	var buf bytes.Buffer
-	if err := report.WriteJSON(&buf); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, report.WriteJSON(&buf))
 
 	var decoded Report
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &decoded))
 
-	if decoded.Checks[0].Status != StatusOK {
-		t.Errorf("decoded = %+v", decoded)
-	}
+	require.Equal(t, StatusOK, decoded.Checks[0].Status)
 }
 
 func TestRunInjectedFailures(t *testing.T) {
@@ -244,9 +215,7 @@ func TestRunInjectedFailures(t *testing.T) {
 			cfg.IdleWait = 200 * time.Millisecond
 
 			report, err := Run(cfg)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			expect(t, report, tt.check, tt.status, "")
 		})
@@ -280,11 +249,19 @@ func TestWriteReportErrors(t *testing.T) {
 
 	report := &Report{Checks: []Check{{Name: "login", Status: StatusOK}}}
 
-	if err := report.WriteText(failWriter{}); err == nil {
-		t.Error("WriteText: want error from a failing writer")
+	tests := []struct {
+		name  string
+		write func(io.Writer) error
+	}{
+		{"text", report.WriteText},
+		{"json", report.WriteJSON},
 	}
 
-	if err := report.WriteJSON(failWriter{}); err == nil {
-		t.Error("WriteJSON: want error from a failing writer")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Error(t, tt.write(failWriter{}), "a failing writer")
+		})
 	}
 }

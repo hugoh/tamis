@@ -26,6 +26,7 @@ const (
 	defaultGoodMinAge = 7 * 24 * time.Hour
 	defaultLogLimit   = 20
 	passTimeout       = 10 * time.Minute
+	bootstrapTimeout  = time.Hour
 	tablePadding      = 2
 	stateDirMode      = 0o700
 )
@@ -35,6 +36,7 @@ type app struct {
 	env        Env
 	configPath string
 	finder     passwordFinder
+	ran        bool
 }
 
 // open loads the configuration and opens the state database.
@@ -90,6 +92,7 @@ func (a *app) withEngine(
 	cfg *config.Config,
 	database *store.Store,
 	logger *slog.Logger,
+	timeout time.Duration,
 	body func(context.Context, *engine.Engine) error,
 ) error {
 	client, err := a.connect(ctx, cfg)
@@ -99,7 +102,7 @@ func (a *app) withEngine(
 
 	defer func() { _ = client.Close() }()
 
-	ctx, cancel := context.WithTimeout(ctx, passTimeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	defer client.CloseWhenDone(ctx)()
@@ -141,7 +144,7 @@ func (a *app) bootstrapCommand() *cobra.Command {
 
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))
 
-			err = a.withEngine(ctx, cfg, database, logger,
+			err = a.withEngine(ctx, cfg, database, logger, bootstrapTimeout,
 				func(ctx context.Context, eng *engine.Engine) error {
 					var err error
 
@@ -192,8 +195,12 @@ func (a *app) runCommand() *cobra.Command {
 
 			for {
 				err := a.pass(ctx, cfg, database, logger)
-				if once {
+				if once || errors.Is(err, mail.ErrLogin) {
 					return err
+				}
+
+				if ctx.Err() != nil {
+					return nil
 				}
 
 				if err != nil {
@@ -225,6 +232,7 @@ func (a *app) pass(
 		cfg,
 		database,
 		logger,
+		passTimeout,
 		func(ctx context.Context, eng *engine.Engine) error {
 			summary, err := eng.RunOnce(ctx)
 			if err != nil {
@@ -343,6 +351,7 @@ func (a *app) undoCommand() *cobra.Command {
 				cfg,
 				database,
 				slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)),
+				passTimeout,
 				func(ctx context.Context, eng *engine.Engine) error {
 					return undoAll(ctx, cmd, eng, ids)
 				},

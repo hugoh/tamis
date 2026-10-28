@@ -52,6 +52,7 @@ state = "~/.local/state/tamis/tamis.db"  # $XDG_STATE_HOME/tamis/tamis.db
 [account]
 port = 993
 password_command = []      # e.g. ["pass", "show", "mail/icloud"]; see Passwords
+auth_server_id = ""        # your provider's Authentication-Results id, e.g. "mx.google.com"; when set, other headers are ignored
 
 [folders]
 watch = ["INBOX"]

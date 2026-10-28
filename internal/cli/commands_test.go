@@ -208,12 +208,12 @@ func TestRunLoopStopsOnCancel(t *testing.T) {
 	require.Contains(t, got.stderr, "pass complete")
 }
 
-func TestRunLoopSurvivesFailedPass(t *testing.T) {
+func TestRunLoopStopsOnRejectedLogin(t *testing.T) {
 	t.Parallel()
 
 	a := newAccount(t, `poll_interval = "50ms"`)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
 	got := execute(ctx, t, invocation{
@@ -221,8 +221,9 @@ func TestRunLoopSurvivesFailedPass(t *testing.T) {
 		env:  map[string]string{passwordKey: "wrong"},
 		srv:  a.srv,
 	})
-	require.Zero(t, got.code, "the daemon keeps retrying; stderr: %s", got.stderr)
-	require.Contains(t, got.stderr, "pass failed")
+	require.Equal(t, 1, got.code, "retrying a rejected login risks locking the account")
+	require.Contains(t, got.stderr, loginFailed)
+	require.NoError(t, ctx.Err(), "the daemon should exit on its own")
 }
 
 func TestCommandErrors(t *testing.T) {
@@ -238,7 +239,7 @@ func TestCommandErrors(t *testing.T) {
 	}{
 		{
 			"missing config",
-			[]string{"status", configFlag, missingConfig},
+			[]string{statusCmd, configFlag, missingConfig},
 			passwordEnv(),
 			"read config",
 		},
@@ -304,21 +305,24 @@ func TestBootstrapBadSource(t *testing.T) {
 
 	a := newAccount(t, "")
 
-	tests := map[string]string{
-		"Archive":      "invalid argument",
-		"Archive=many": "invalid argument",
-		"Archive=0":    "count",
-		"Archive=-1":   "count",
-		"=5":           "folder",
+	tests := map[string]struct {
+		code int
+		want string
+	}{
+		"Archive":      {2, "invalid argument"},
+		"Archive=many": {2, "invalid argument"},
+		"Archive=0":    {1, "count"},
+		"Archive=-1":   {1, "count"},
+		"=5":           {1, "folder"},
 	}
 
-	for value, want := range tests {
+	for value, tt := range tests {
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
 
 			got := a.run(t, "bootstrap", "--good", value)
-			require.Equal(t, 1, got.code)
-			require.Contains(t, got.stderr, want)
+			require.Equal(t, tt.code, got.code)
+			require.Contains(t, got.stderr, tt.want)
 		})
 	}
 }
@@ -383,10 +387,11 @@ func TestUndoArguments(t *testing.T) {
 
 	tests := map[string]struct {
 		args []string
+		code int
 		want string
 	}{
-		"no id":  {[]string{"undo"}, "requires at least 1 arg"},
-		"not id": {[]string{"undo", "abc"}, `invalid decision ID "abc"`},
+		"no id":  {[]string{"undo"}, 2, "requires at least 1 arg"},
+		"not id": {[]string{"undo", "abc"}, 1, `invalid decision ID "abc"`},
 	}
 
 	for name, tt := range tests {
@@ -394,7 +399,7 @@ func TestUndoArguments(t *testing.T) {
 			t.Parallel()
 
 			got := a.run(t, tt.args...)
-			require.Equal(t, 1, got.code)
+			require.Equal(t, tt.code, got.code)
 			require.Contains(t, got.stderr, tt.want)
 		})
 	}

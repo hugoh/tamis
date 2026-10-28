@@ -51,6 +51,9 @@ type Account struct {
 	// password. For example: ["security", "find-generic-password", "-s",
 	// "tamis", "-w"].
 	PasswordCommand []string `toml:"password_command"`
+	// AuthServerID is the authserv-id of the provider's Authentication-Results
+	// header, for example "mx.google.com". When set, other headers are ignored.
+	AuthServerID string `toml:"auth_server_id"`
 }
 
 // Folders names the mailboxes tamis reads and writes.
@@ -145,11 +148,15 @@ func defaults() Config {
 }
 
 // DefaultPath is $XDG_CONFIG_HOME/tamis/config.toml, falling back to
-// ~/.config.
+// ~/.config. It is empty when there is no home directory either.
 func DefaultPath(getenv func(string) string) string {
 	base := getenv("XDG_CONFIG_HOME")
 	if base == "" {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+
 		base = filepath.Join(home, ".config")
 	}
 
@@ -159,6 +166,10 @@ func DefaultPath(getenv func(string) string) string {
 // Load reads and validates the file at path, filling unset fields with
 // defaults. Unknown keys are errors, so typos don't pass silently.
 func Load(getenv func(string) string, path string) (*Config, error) {
+	if path == "" {
+		return nil, errNoHome
+	}
+
 	file, err := os.Open(path) //nolint:gosec // the path is the user's own config file
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
@@ -184,6 +195,10 @@ func Load(getenv func(string) string, path string) (*Config, error) {
 		cfg.State = DefaultStatePath(getenv)
 	}
 
+	if cfg.State == "" {
+		return nil, fmt.Errorf("state: %w", errNoHome)
+	}
+
 	cfg.State, err = expandHome(cfg.State)
 	if err != nil {
 		return nil, err
@@ -193,11 +208,15 @@ func Load(getenv func(string) string, path string) (*Config, error) {
 }
 
 // DefaultStatePath is $XDG_STATE_HOME/tamis/tamis.db, falling back to
-// ~/.local/state.
+// ~/.local/state. It is empty when there is no home directory either.
 func DefaultStatePath(getenv func(string) string) string {
 	base := getenv("XDG_STATE_HOME")
 	if base == "" {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+
 		base = filepath.Join(home, ".local", "state")
 	}
 
@@ -311,6 +330,10 @@ func (a Account) Password(ctx context.Context) (string, error) {
 
 	return password, nil
 }
+
+var errNoHome = errors.New(
+	"no home directory: set XDG_CONFIG_HOME and XDG_STATE_HOME, pass --config, or set state in the config file",
+)
 
 var errEmptyPassword = errors.New("printed an empty password")
 

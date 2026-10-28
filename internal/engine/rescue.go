@@ -70,7 +70,7 @@ func (e *Engine) isRescueCandidate(ctx context.Context, message mail.Message) (b
 // judgeRescue requires authentication for whitelisted senders whatever
 // whitelist_requires_auth says: impersonated contacts are what Junk catches.
 func (e *Engine) judgeRescue(ctx context.Context, message mail.Message) (judgement, bool, error) {
-	if message.From != "" && auth.Verified(message.Raw) {
+	if message.From != "" && auth.Verified(message.Raw, e.cfg.Account.AuthServerID) {
 		whitelisted, err := e.store.HasAddress(ctx, message.From)
 		if err != nil {
 			return judgement{}, false, fmt.Errorf("rescue: %w", err)

@@ -10,6 +10,7 @@ import (
 	"github.com/hugoh/tamis/internal/cli"
 	"github.com/hugoh/tamis/internal/imaptest"
 	"github.com/hugoh/tamis/internal/secret"
+	"github.com/hugoh/tamis/internal/secret/secrettest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,7 +33,7 @@ func TestLoginLogout(t *testing.T) {
 	t.Parallel()
 
 	a := newAccount(t, "")
-	ring := secret.NewMemory()
+	ring := secrettest.NewMemory()
 
 	got := execute(t.Context(), t, invocation{
 		args: []string{loginCmd, configFlag, a.config}, srv: a.srv, keyring: ring,
@@ -80,10 +81,10 @@ func TestLoginFailures(t *testing.T) {
 		keyring secret.Keyring
 		want    string
 	}{
-		{"wrong password", answer("wrong"), secret.NewMemory(), loginFailed},
+		{"wrong password", answer("wrong"), secrettest.NewMemory(), loginFailed},
 		{"no keychain", answer(imaptest.Password), brokenKeyring{}, "password_command"},
 		{"no keychain support at all", answer(imaptest.Password), nil, "password_command"},
-		{"empty password", answer(""), secret.NewMemory(), noPassword},
+		{"empty password", answer(""), secrettest.NewMemory(), noPassword},
 	}
 
 	for _, tt := range tests {
@@ -104,7 +105,7 @@ func TestLoginFromStdin(t *testing.T) {
 	t.Parallel()
 
 	a := newAccount(t, "")
-	ring := secret.NewMemory()
+	ring := secrettest.NewMemory()
 
 	got := execute(t.Context(), t, invocation{
 		args: []string{loginCmd, configFlag, a.config}, srv: a.srv, keyring: ring,
@@ -134,7 +135,7 @@ func TestPasswordSources(t *testing.T) {
 	t.Parallel()
 
 	stored := func(password string) secret.Keyring {
-		ring := secret.NewMemory()
+		ring := secrettest.NewMemory()
 		_ = ring.Set(loopbackService, imaptest.Username, password)
 
 		return ring
@@ -148,7 +149,7 @@ func TestPasswordSources(t *testing.T) {
 	}{
 		{"systemd credential beats the keychain", imaptest.Password, stored("wrong"), ""},
 		{"keychain beats the environment", "", stored(imaptest.Password), "wrong"},
-		{"environment when the keychain is empty", "", secret.NewMemory(), imaptest.Password},
+		{"environment when the keychain is empty", "", secrettest.NewMemory(), imaptest.Password},
 		{"environment when the keychain is broken", "", brokenKeyring{}, imaptest.Password},
 	}
 
@@ -189,7 +190,7 @@ func TestProbeUsesKeychain(t *testing.T) {
 	host, _, err := net.SplitHostPort(srv.Addr)
 	require.NoError(t, err)
 
-	ring := secret.NewMemory()
+	ring := secrettest.NewMemory()
 	require.NoError(t, ring.Set(secret.Service(host), imaptest.Username, imaptest.Password))
 
 	got := execute(t.Context(), t, invocation{args: probeArgs(t, srv), keyring: ring})

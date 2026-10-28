@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/hugoh/tamis/internal/secret"
+	"github.com/hugoh/tamis/internal/secret/secrettest"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
@@ -29,7 +30,7 @@ func exercise(t *testing.T, ring secret.Keyring) {
 func TestMemory(t *testing.T) {
 	t.Parallel()
 
-	exercise(t, secret.NewMemory())
+	exercise(t, secrettest.NewMemory())
 }
 
 // TestSystem runs against go-keyring's in-process mock, never the real

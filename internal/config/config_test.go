@@ -65,6 +65,7 @@ state = "~/tamis-test.db"
 host = "imap.example.com"
 port = 1993
 user = "me@example.com"
+auth_server_id = "mx.example.com"
 
 [folders]
 watch = ["INBOX", "Lists"]
@@ -85,6 +86,7 @@ rescue_threshold = 0.05
 	require.NoError(t, err)
 
 	require.Equal(t, "imap.example.com:1993", cfg.Account.Addr())
+	require.Equal(t, "mx.example.com", cfg.Account.AuthServerID)
 	require.Equal(t, []string{"INBOX", "Lists"}, cfg.Folders.Watch)
 	require.Equal(t, "Spam", cfg.Folders.Junk)
 	require.Equal(t, config.ModeLive, cfg.Policy.Mode)
@@ -206,6 +208,18 @@ func TestDefaultPath(t *testing.T) {
 		filepath.Join("tamis", "config.toml"),
 		filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path)),
 	)
+}
+
+func TestNoHomeDirectory(t *testing.T) {
+	t.Setenv("HOME", "")
+
+	none := func(string) string { return "" }
+
+	require.Empty(t, config.DefaultPath(none))
+	require.Empty(t, config.DefaultStatePath(none))
+
+	_, err := config.Load(none, "")
+	require.ErrorContains(t, err, "--config")
 }
 
 func TestStateFollowsXDG(t *testing.T) {

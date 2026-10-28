@@ -58,21 +58,25 @@ func TestInitRefusals(t *testing.T) {
 		name       string
 		args       []string
 		wantStderr string
+		wantCode   int
 	}{
 		{
 			name:       "existing file",
 			args:       []string{initCmd, configFlag, existing, hostFlag, "h", userFlag, "u"},
 			wantStderr: "already exists",
+			wantCode:   1,
 		},
 		{
 			name:       "without host",
 			args:       []string{initCmd, configFlag, existing, userFlag, "u"},
 			wantStderr: `"host" not set`,
+			wantCode:   2,
 		},
 		{
 			name:       "without user",
 			args:       []string{initCmd, configFlag, existing, hostFlag, "h"},
 			wantStderr: `"user" not set`,
+			wantCode:   2,
 		},
 	}
 
@@ -81,7 +85,7 @@ func TestInitRefusals(t *testing.T) {
 			t.Parallel()
 
 			got := execute(t.Context(), t, invocation{args: tt.args})
-			require.Equal(t, 1, got.code)
+			require.Equal(t, tt.wantCode, got.code)
 			require.Contains(t, got.stderr, tt.wantStderr)
 
 			kept, err := os.ReadFile(existing) //nolint:gosec // test temp file

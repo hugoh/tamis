@@ -19,8 +19,10 @@ var comments = regexp.MustCompile(`\([^)]*\)`)
 // Verified reports whether the provider recorded a DMARC pass, or a DKIM
 // pass aligned with the From domain. Only the topmost
 // Authentication-Results header counts: the provider prepends its own, and
-// anything below it may have been written by the sender.
-func Verified(raw []byte) bool {
+// anything below it may have been written by the sender. If serverID is not
+// empty, that header must also name it as its authserv-id: a provider that
+// adds no header would otherwise leave a sender-written one on top.
+func Verified(raw []byte, serverID string) bool {
 	header, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(raw)))
 	if err != nil {
 		return false
@@ -36,7 +38,12 @@ func Verified(raw []byte) bool {
 		return false
 	}
 
-	for _, result := range parse(results[0]) {
+	authservID, parsed := parse(results[0])
+	if serverID != "" && authservID != strings.ToLower(serverID) {
+		return false
+	}
+
+	for _, result := range parsed {
 		if result.passesFor(domain) {
 			return true
 		}
@@ -82,10 +89,11 @@ func (r methodResult) passesFor(domain string) bool {
 }
 
 // parse splits "authserv-id; method=result ptype.prop=value ...; ..." into
-// its method results.
-func parse(header string) []methodResult {
+// the authserv-id and its method results.
+func parse(header string) (string, []methodResult) {
 	parts := strings.Split(comments.ReplaceAllString(strings.ToLower(header), " "), ";")
 
+	authservID, _, _ := strings.Cut(strings.TrimSpace(parts[0]), " ")
 	results := make([]methodResult, 0, len(parts))
 
 	for _, part := range parts[1:] {
@@ -110,7 +118,7 @@ func parse(header string) []methodResult {
 		results = append(results, result)
 	}
 
-	return results
+	return authservID, results
 }
 
 // aligned implements DMARC's relaxed alignment: the signing domain is the

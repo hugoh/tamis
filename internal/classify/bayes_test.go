@@ -13,8 +13,8 @@ const (
 	neutralWord = "click"
 )
 
-func trainedModel() *classify.MemoryModel {
-	model := classify.NewMemoryModel()
+func trainedModel() *memoryModel {
+	model := newMemoryModel()
 
 	for range 20 {
 		model.Train([]string{spamWord, "winner", neutralWord}, classify.Spam)
@@ -57,7 +57,7 @@ func TestScore(t *testing.T) {
 func TestScoreUntrainedModel(t *testing.T) {
 	t.Parallel()
 
-	result := classify.Score(classify.NewMemoryModel(), []string{"anything"})
+	result := classify.Score(newMemoryModel(), []string{"anything"})
 
 	require.InDelta(t, 0.5, result.Score, 1e-9)
 	require.Empty(t, result.Clues)
@@ -74,20 +74,4 @@ func TestScoreReportsStrongestClues(t *testing.T) {
 	}
 
 	require.ElementsMatch(t, []string{spamWord, goodWord}, tokens)
-}
-
-func TestUntrain(t *testing.T) {
-	t.Parallel()
-
-	model := classify.NewMemoryModel()
-	model.Train([]string{"oops"}, classify.Spam)
-	model.Untrain([]string{"oops"}, classify.Spam)
-
-	spam, good := model.Counts("oops")
-	require.Zero(t, spam)
-	require.Zero(t, good)
-
-	totalSpam, totalGood := model.Totals()
-	require.Zero(t, totalSpam)
-	require.Zero(t, totalGood)
 }

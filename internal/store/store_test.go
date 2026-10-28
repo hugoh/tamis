@@ -2,7 +2,9 @@ package store_test
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -490,4 +492,39 @@ func TestRemoveAddress(t *testing.T) {
 	ok, err := db.HasAddress(t.Context(), "friend@example.com")
 	require.NoError(t, err)
 	require.False(t, ok)
+}
+
+func TestDatabaseIsPrivate(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permissions")
+	}
+
+	tests := map[string]bool{"new database": false, "existing readable database": true}
+
+	for name, exists := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "tamis.db")
+
+			if exists {
+				require.NoError(t, os.WriteFile(path, nil, 0o600))
+				require.NoError(t, os.Chmod(path, 0o644)) //nolint:gosec // the state under test
+			}
+
+			db, err := store.Open(t.Context(), path)
+			require.NoError(t, err)
+			require.NoError(t, db.AddAddress(t.Context(), "a@example.com", "test"))
+
+			for _, file := range []string{path, path + "-wal"} {
+				info, err := os.Stat(file)
+				require.NoError(t, err)
+				require.Equal(t, os.FileMode(0o600), info.Mode().Perm(), file)
+			}
+
+			require.NoError(t, db.Close())
+		})
+	}
 }

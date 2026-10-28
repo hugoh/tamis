@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -76,6 +77,10 @@ type Store struct {
 
 // Open opens or creates the database at path.
 func Open(ctx context.Context, path string) (*Store, error) {
+	if err := createPrivate(path); err != nil {
+		return nil, err
+	}
+
 	// Immediate transactions take the write lock up front, so two processes
 	// migrating a new database can't both decide the schema is missing.
 	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate"
@@ -97,6 +102,29 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 	return opened, nil
 }
+
+// createPrivate makes sure the database file exists and only its owner can
+// read it: it holds sender addresses and subjects. SQLite gives its -wal and
+// -shm files the database file's permissions.
+func createPrivate(path string) error {
+	// The path is the user's configured state file.
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, privateFile) //nolint:gosec // see above
+	if err != nil {
+		return fmt.Errorf("create %s: %w", path, err)
+	}
+
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("create %s: %w", path, err)
+	}
+
+	if err := os.Chmod(path, privateFile); err != nil {
+		return fmt.Errorf("restrict %s: %w", path, err)
+	}
+
+	return nil
+}
+
+const privateFile = 0o600
 
 // Close closes the database.
 func (s *Store) Close() error {

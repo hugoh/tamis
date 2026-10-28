@@ -169,7 +169,19 @@ func (e *Engine) trainSource(
 		return 0, fmt.Errorf("bootstrap from %s: %w", source.Folder, err)
 	}
 
-	return e.trainCorpus(ctx, source.Folder, latest(uids, source.Limit), label)
+	uids = latest(uids, source.Limit)
+	e.log.InfoContext(
+		ctx,
+		"training",
+		"folder",
+		source.Folder,
+		"label",
+		label,
+		"messages",
+		len(uids),
+	)
+
+	return e.trainCorpus(ctx, source.Folder, uids, label)
 }
 
 func (e *Engine) whitelistSent(ctx context.Context, limit int) (int, error) {
@@ -182,7 +194,11 @@ func (e *Engine) whitelistSent(ctx context.Context, limit int) (int, error) {
 		return 0, fmt.Errorf("bootstrap from %s: %w", e.cfg.Folders.Sent, err)
 	}
 
-	recipients, err := e.mail.Recipients(e.cfg.Folders.Sent, latest(uids, limit))
+	uids = latest(uids, limit)
+	e.log.InfoContext(ctx, "whitelisting recipients",
+		"folder", e.cfg.Folders.Sent, "messages", len(uids))
+
+	recipients, err := e.mail.Recipients(e.cfg.Folders.Sent, uids)
 	if err != nil {
 		return 0, fmt.Errorf("bootstrap from %s: %w", e.cfg.Folders.Sent, err)
 	}
@@ -233,6 +249,8 @@ func (e *Engine) trainCorpus(
 				trained++
 			}
 		}
+
+		e.log.InfoContext(ctx, "trained", "folder", folder, "trained", trained, "of", len(uids))
 	}
 
 	return trained, nil

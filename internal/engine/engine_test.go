@@ -448,6 +448,40 @@ func TestBootstrap(t *testing.T) {
 	require.Zero(t, e.run(t).Scanned, "bootstrap starts watching from current mail")
 }
 
+func TestBootstrapLogsProgress(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+
+	e.append(
+		t,
+		sent,
+		[]byte("From: me@example.com\r\nTo: friend@example.com\r\nSubject: hi\r\n\r\nhello\r\n"),
+	)
+	e.append(t, junk, e.spammy("a@spam.example"))
+	e.append(t, junk, e.spammy("b@spam.example"))
+
+	var logs bytes.Buffer
+
+	logged := engine.New(e.client, e.db, e.cfg, slog.New(slog.NewTextHandler(&logs, nil)))
+
+	_, err := logged.Bootstrap(t.Context(), engine.BootstrapOptions{
+		SentLimit: 100,
+		Spam:      []engine.Source{{Folder: junk, Limit: 100}},
+	})
+	require.NoError(t, err)
+
+	for _, want := range []string{
+		"whitelisting recipients",
+		"training",
+		"folder=Junk",
+		"messages=2",
+		"trained=2",
+	} {
+		require.Contains(t, logs.String(), want)
+	}
+}
+
 func TestBootstrapLimits(t *testing.T) {
 	t.Parallel()
 

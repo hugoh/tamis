@@ -472,11 +472,9 @@ func TestBootstrapLogsProgress(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, want := range []string{
-		"whitelisting recipients",
-		"training",
-		"folder=Junk",
-		"messages=2",
-		"trained=2",
+		"msg=\"whitelisting recipients\" folder=\"Sent Messages\" messages=1",
+		"msg=training folder=Junk label=spam messages=2",
+		"msg=\"training progress\" folder=Junk done=2 total=2",
 	} {
 		require.Contains(t, logs.String(), want)
 	}

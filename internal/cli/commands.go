@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"maps"
 	"os"
@@ -14,7 +13,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/charmbracelet/log"
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
 	"github.com/hugoh/tamis/internal/mail"
@@ -141,7 +139,7 @@ func (a *app) bootstrapCommand() *cobra.Command {
 
 			var summary engine.BootstrapSummary
 
-			logger := newLogger(cmd.ErrOrStderr())
+			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))
 
 			err = a.withEngine(ctx, cfg, database, logger,
 				func(ctx context.Context, eng *engine.Engine) error {
@@ -190,7 +188,7 @@ func (a *app) runCommand() *cobra.Command {
 
 			defer func() { _ = database.Close() }()
 
-			logger := newLogger(cmd.ErrOrStderr())
+			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))
 
 			for {
 				err := a.pass(ctx, cfg, database, logger)
@@ -340,10 +338,15 @@ func (a *app) undoCommand() *cobra.Command {
 
 			defer func() { _ = database.Close() }()
 
-			return a.withEngine(ctx, cfg, database, slog.New(slog.DiscardHandler),
+			return a.withEngine(
+				ctx,
+				cfg,
+				database,
+				slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)),
 				func(ctx context.Context, eng *engine.Engine) error {
 					return undoAll(ctx, cmd, eng, ids)
-				})
+				},
+			)
 		},
 	}
 }
@@ -476,9 +479,4 @@ func toSources(values map[string]int, fallback string) ([]engine.Source, error) 
 	}
 
 	return sources, nil
-}
-
-// newLogger logs to w, in color when w is a terminal.
-func newLogger(w io.Writer) *slog.Logger {
-	return slog.New(log.NewWithOptions(w, log.Options{ReportTimestamp: true}))
 }

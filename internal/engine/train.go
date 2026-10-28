@@ -169,19 +169,11 @@ func (e *Engine) trainSource(
 		return 0, fmt.Errorf("bootstrap from %s: %w", source.Folder, err)
 	}
 
-	uids = latest(uids, source.Limit)
-	e.log.InfoContext(
-		ctx,
-		"training",
-		"folder",
-		source.Folder,
-		"label",
-		label,
-		"messages",
-		len(uids),
-	)
+	picked := latest(uids, source.Limit)
+	e.log.InfoContext(ctx, "training",
+		"folder", source.Folder, "label", label, "messages", len(picked))
 
-	return e.trainCorpus(ctx, source.Folder, uids, label)
+	return e.trainCorpus(ctx, source.Folder, picked, label)
 }
 
 func (e *Engine) whitelistSent(ctx context.Context, limit int) (int, error) {
@@ -250,7 +242,16 @@ func (e *Engine) trainCorpus(
 			}
 		}
 
-		e.log.InfoContext(ctx, "trained", "folder", folder, "trained", trained, "of", len(uids))
+		e.log.InfoContext(
+			ctx,
+			"training progress",
+			"folder",
+			folder,
+			"done",
+			trained,
+			"total",
+			len(uids),
+		)
 	}
 
 	return trained, nil

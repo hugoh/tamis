@@ -11,6 +11,7 @@ import (
 
 	"github.com/hugoh/tamis/internal/cli"
 	"github.com/hugoh/tamis/internal/imaptest"
+	"github.com/hugoh/tamis/internal/secret"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,6 +24,10 @@ const (
 	missingConfig = "/nonexistent/config.toml"
 	onceFlag      = "--once"
 	hostFlag      = "--host"
+	loginCmd      = "login"
+	logoutCmd     = "logout"
+	noPassword    = "no password"
+	loginFailed   = "login failed"
 )
 
 type result struct {
@@ -36,6 +41,9 @@ type invocation struct {
 	env    map[string]string
 	srv    *imaptest.Server
 	prompt func(string) (string, error)
+	// keyring stands in for the system keychain; nil means none is
+	// available. Tests never touch the real one.
+	keyring secret.Keyring
 }
 
 func execute(ctx context.Context, t *testing.T, inv invocation) result {
@@ -44,11 +52,12 @@ func execute(ctx context.Context, t *testing.T, inv invocation) result {
 	var stdout, stderr bytes.Buffer
 
 	env := cli.Env{
-		Stdin:  strings.NewReader(inv.stdin),
-		Stdout: &stdout,
-		Stderr: &stderr,
-		Getenv: func(key string) string { return inv.env[key] },
-		Prompt: inv.prompt,
+		Stdin:   strings.NewReader(inv.stdin),
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+		Getenv:  func(key string) string { return inv.env[key] },
+		Prompt:  inv.prompt,
+		Keyring: inv.keyring,
 	}
 
 	if inv.srv != nil {
@@ -109,7 +118,7 @@ func TestRun(t *testing.T) {
 			name:       "probe without password",
 			args:       []string{probeCmd, hostFlag, "imap.example.com", userFlag, "me"},
 			wantCode:   1,
-			wantStderr: "no password",
+			wantStderr: noPassword,
 		},
 	}
 
@@ -187,7 +196,7 @@ func TestProbeLoginFailure(t *testing.T) {
 
 	got := execute(t.Context(), t, invocation{args: probeArgs(t, srv), stdin: "wrong\n"})
 	require.Equal(t, 1, got.code)
-	require.Contains(t, got.stderr, "login failed")
+	require.Contains(t, got.stderr, loginFailed)
 }
 
 func TestProbeFailedChecks(t *testing.T) {

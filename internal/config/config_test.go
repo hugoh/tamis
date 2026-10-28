@@ -157,61 +157,37 @@ func TestLoadMissingFile(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestPassword(t *testing.T) {
+func TestPasswordCommand(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		account config.Account
-		env     map[string]string
+		command []string
 		want    string
-		wantErr string
+		wantErr error
+		errText string
 	}{
-		{
-			name:    "command",
-			account: config.Account{PasswordCommand: []string{"echo", "s3cret"}},
-			want:    "s3cret",
-		},
-		{
-			name: "environment",
-			env:  map[string]string{"TAMIS_PASSWORD": "from-env"},
-			want: "from-env",
-		},
-		{
-			name:    "command wins over environment",
-			account: config.Account{PasswordCommand: []string{"echo", "cmd"}},
-			env:     map[string]string{"TAMIS_PASSWORD": "env"},
-			want:    "cmd",
-		},
-		{name: "none", wantErr: "password_command"},
-		{
-			name:    "failing command",
-			account: config.Account{PasswordCommand: []string{"false"}},
-			wantErr: "password_command",
-		},
-		{
-			name:    "empty output",
-			account: config.Account{PasswordCommand: []string{"true"}},
-			wantErr: "empty",
-		},
+		{name: "prints the password", command: []string{"echo", "s3cret"}, want: "s3cret"},
+		{name: "not configured", wantErr: config.ErrNoPasswordCommand},
+		{name: "fails", command: []string{"false"}, errText: "password_command"},
+		{name: "prints nothing", command: []string{"true"}, errText: "empty"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := tt.account.Password(
-				t.Context(),
-				func(key string) string { return tt.env[key] },
-			)
-			if tt.wantErr != "" {
-				require.ErrorContains(t, err, tt.wantErr)
+			got, err := config.Account{PasswordCommand: tt.command}.Password(t.Context())
 
-				return
+			switch {
+			case tt.wantErr != nil:
+				require.ErrorIs(t, err, tt.wantErr)
+			case tt.errText != "":
+				require.ErrorContains(t, err, tt.errText)
+			default:
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
 			}
-
-			require.NoError(t, err)
-			require.Equal(t, tt.want, got)
 		})
 	}
 }

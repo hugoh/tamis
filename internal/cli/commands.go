@@ -33,9 +33,7 @@ const (
 type app struct {
 	env        Env
 	configPath string
-	// prompted is a password typed at the terminal, kept so `run` asks
-	// only once.
-	prompted string
+	finder     passwordFinder
 }
 
 // open loads the configuration and opens the state database.
@@ -76,26 +74,13 @@ func (a *app) connect(ctx context.Context, cfg *config.Config) (*mail.Client, er
 	return client, nil
 }
 
-// password uses the configured source, falling back to asking on the
-// terminal when none is configured.
+// password finds the account's password; see passwordFinder.
 func (a *app) password(ctx context.Context, cfg *config.Config) (string, error) {
-	password, err := cfg.Account.Password(ctx, a.env.Getenv)
-	if !errors.Is(err, config.ErrNoPassword) {
-		return password, err //nolint:wrapcheck // the caller adds context
-	}
-
-	if a.prompted != "" {
-		return a.prompted, nil
-	}
-
-	prompted, asked, promptErr := promptPassword(a.env, cfg.Account.User)
-	if !asked {
-		return "", err //nolint:wrapcheck // the caller adds context
-	}
-
-	a.prompted = prompted
-
-	return prompted, promptErr
+	return a.finder.find(ctx, credentials{
+		host:    cfg.Account.Host,
+		user:    cfg.Account.User,
+		command: cfg.Account.PasswordCommand,
+	})
 }
 
 // withEngine runs fn against a fresh connection and the state database.

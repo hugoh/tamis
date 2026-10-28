@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/hugoh/tamis/internal/config"
+	"github.com/hugoh/tamis/internal/secret"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,8 @@ type Env struct {
 	// Prompt, if set, asks for a secret without echoing it. It returns
 	// ErrNotTerminal when there is no terminal to ask on.
 	Prompt func(prompt string) (string, error)
+	// Keyring is the system keychain, or nil where there is none.
+	Keyring secret.Keyring
 }
 
 // Run executes the command line in args and returns the process exit code.
@@ -55,7 +58,7 @@ func Run(ctx context.Context, args []string, env Env, version string) int {
 }
 
 func newRoot(env Env, version string) *cobra.Command {
-	app := &app{env: env}
+	app := &app{env: env, finder: passwordFinder{env: env}}
 
 	root := &cobra.Command{
 		Use:           "tamis",
@@ -75,6 +78,8 @@ func newRoot(env Env, version string) *cobra.Command {
 		app.logCommand(),
 		app.statusCommand(),
 		app.undoCommand(),
+		app.loginCommand(),
+		app.logoutCommand(),
 		probeCommand(env),
 		&cobra.Command{
 			Use:   "version",

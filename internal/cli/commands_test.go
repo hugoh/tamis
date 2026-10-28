@@ -246,19 +246,19 @@ func TestCommandErrors(t *testing.T) {
 			"run without password",
 			[]string{runCmd, onceFlag, configFlag, a.config},
 			nil,
-			"no password",
+			noPassword,
 		},
 		{
 			"bootstrap with wrong password",
 			[]string{"bootstrap", configFlag, a.config},
 			map[string]string{passwordKey: "x"},
-			"login failed",
+			loginFailed,
 		},
 		{
 			"run once with wrong password",
 			[]string{runCmd, onceFlag, configFlag, a.config},
 			map[string]string{passwordKey: "x"},
-			"login failed",
+			loginFailed,
 		},
 	}
 

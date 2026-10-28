@@ -28,12 +28,10 @@ const (
 	ModeLive Mode = "live"
 )
 
-const passwordEnv = "TAMIS_PASSWORD"
-
 var errInvalid = errors.New("invalid config")
 
-// ErrNoPassword means neither a password command nor $TAMIS_PASSWORD is set.
-var ErrNoPassword = errors.New("no password: set account.password_command or $" + passwordEnv)
+// ErrNoPasswordCommand means account.password_command isn't set.
+var ErrNoPasswordCommand = errors.New("account.password_command is not set")
 
 // Config is the whole configuration file.
 type Config struct {
@@ -293,14 +291,11 @@ func (a Account) Addr() string {
 	return net.JoinHostPort(a.Host, strconv.Itoa(a.Port))
 }
 
-// Password runs PasswordCommand if set, otherwise reads $TAMIS_PASSWORD.
-func (a Account) Password(ctx context.Context, getenv func(string) string) (string, error) {
+// Password runs PasswordCommand. It returns ErrNoPasswordCommand when none
+// is configured, so callers can try other sources.
+func (a Account) Password(ctx context.Context) (string, error) {
 	if len(a.PasswordCommand) == 0 {
-		if password := getenv(passwordEnv); password != "" {
-			return password, nil
-		}
-
-		return "", ErrNoPassword
+		return "", ErrNoPasswordCommand
 	}
 
 	//nolint:gosec // the command comes from the user's own config file

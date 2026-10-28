@@ -28,17 +28,24 @@ Create `~/.config/tamis/config.toml`:
 [account]
 host = "imap.mail.me.com"  # iCloud
 user = "you@icloud.com"
-# Run without a shell; prints the password. Or set $TAMIS_PASSWORD instead.
-password_command = ["security", "find-generic-password", "-s", "tamis", "-w"]
+```
+
+Then store the password (for iCloud, an
+[app-specific password](https://support.apple.com/en-us/102654)) in the
+system keychain:
+
+```sh
+tamis login
 ```
 
 Every other setting has a default:
 
 ```toml
-state = "~/.local/state/tamis/tamis.db"
+state = "~/.local/state/tamis/tamis.db"  # $XDG_STATE_HOME/tamis/tamis.db
 
 [account]
 port = 993
+password_command = []      # e.g. ["pass", "show", "mail/icloud"]; see Passwords
 
 [folders]
 watch = ["INBOX"]
@@ -103,6 +110,56 @@ recipients from (default 2000).
 When `tamis log` looks right for a week or two, set `mode = "live"`. If tamis
 then files something it shouldn't have, `tamis undo ID` moves it back, learns
 it as good and whitelists the sender.
+
+## Where tamis keeps things
+
+| What | Where |
+|---|---|
+| Configuration | `$XDG_CONFIG_HOME/tamis/config.toml`, by default `~/.config/tamis/config.toml`; or `--config` |
+| State: what it learnt, folder positions, the decision journal | `$XDG_STATE_HOME/tamis/tamis.db`, by default `~/.local/state/tamis/tamis.db`; or `state` in the config |
+| Password | The system keychain, never in the configuration or state (see Passwords) |
+
+The state database holds sender addresses and subjects, so tamis creates it
+(and its directory) readable by you only. It refuses a configuration file
+other users can write, since `password_command` runs whatever it names.
+
+## Passwords
+
+tamis looks for the password in this order:
+
+1. `account.password_command`, when set: a command run without a shell,
+   whose output is the password, e.g. `["pass", "show", "mail/icloud"]` or
+   `["op", "read", "op://Personal/iCloud/tamis"]`.
+2. A systemd credential named `password` (see below).
+3. The system keychain, filled by `tamis login`: the macOS Keychain, the
+   Secret Service (GNOME Keyring, KWallet) on Linux, or the Windows
+   Credential Manager. The entry is named `tamis/HOST`, with your user name
+   as the account. `tamis logout` removes it.
+4. `$TAMIS_PASSWORD`. Other processes running as you can read environment
+   variables, so prefer anything above.
+5. Asking, when run on a terminal. `tamis run` asks once and keeps the
+   answer in memory.
+
+On a headless Linux server there is usually no keychain. Run tamis as a
+systemd service with an encrypted credential instead:
+
+```sh
+systemd-ask-password -n | sudo systemd-creds encrypt --name=password - /etc/credstore.encrypted/tamis
+```
+
+```ini
+# /etc/systemd/system/tamis.service
+[Service]
+ExecStart=/usr/local/bin/tamis run --config /etc/tamis/config.toml
+LoadCredentialEncrypted=password:/etc/credstore.encrypted/tamis
+DynamicUser=yes
+StateDirectory=tamis
+StateDirectoryMode=0700
+Environment=XDG_STATE_HOME=/var/lib
+```
+
+systemd decrypts it into a private, in-memory directory only the service can
+read, and passes its location in `$CREDENTIALS_DIRECTORY`.
 
 ## Probe a server
 

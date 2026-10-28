@@ -1,13 +1,9 @@
 package cli
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hugoh/tamis/internal/probe"
@@ -15,12 +11,9 @@ import (
 )
 
 const (
-	passwordEnv     = "TAMIS_PASSWORD"
 	defaultPort     = 993
 	defaultIdleWait = 30 * time.Second
 )
-
-var errNoPassword = errors.New("no password: set " + passwordEnv + " or pipe it on stdin")
 
 func probeCommand(env Env) *cobra.Command {
 	var (
@@ -34,11 +27,14 @@ func probeCommand(env Env) *cobra.Command {
 		Use:   "probe",
 		Short: "Check which IMAP features a server supports",
 		Long: "Check which IMAP features a server supports.\n\n" +
-			"Reads the password (an app-specific password for iCloud) from $" + passwordEnv + ",\n" +
-			"or from the first line of stdin.",
+			"The password (an app-specific one for iCloud) comes from the system keychain\n" +
+			"if 'tamis login' stored one for this host and user, then $" + passwordEnv + ", then a\n" +
+			"prompt, or the first line of stdin when there is no terminal.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			password, err := readPassword(env, cmd.InOrStdin(), cfg.Username)
+			finder := &passwordFinder{env: env, stdin: cmd.InOrStdin()}
+
+			password, err := finder.find(cmd.Context(), credentials{host: host, user: cfg.Username})
 			if err != nil {
 				return err
 			}
@@ -97,49 +93,4 @@ func addProbeFlags(cmd *cobra.Command, cfg *probe.Config, host *string, port *in
 
 	_ = cmd.MarkFlagRequired("host")
 	_ = cmd.MarkFlagRequired("user")
-}
-
-// readPassword takes the password from $TAMIS_PASSWORD, a terminal prompt,
-// or the first line of stdin, in that order.
-func readPassword(env Env, stdin io.Reader, user string) (string, error) {
-	if password := env.Getenv(passwordEnv); password != "" {
-		return password, nil
-	}
-
-	if password, asked, err := promptPassword(env, user); asked {
-		return password, err
-	}
-
-	line, err := bufio.NewReader(stdin).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", fmt.Errorf("read password: %w", err)
-	}
-
-	password := strings.TrimRight(line, "\r\n")
-	if password == "" {
-		return "", errNoPassword
-	}
-
-	return password, nil
-}
-
-// promptPassword asks on the terminal. asked is false when there is no
-// terminal to ask on.
-func promptPassword(env Env, user string) (string, bool, error) {
-	if env.Prompt == nil {
-		return "", false, nil
-	}
-
-	password, err := env.Prompt(fmt.Sprintf("Password for %s: ", user))
-
-	switch {
-	case errors.Is(err, ErrNotTerminal):
-		return "", false, nil
-	case err != nil:
-		return "", true, fmt.Errorf("read password: %w", err)
-	case password == "":
-		return "", true, errNoPassword
-	default:
-		return password, true, nil
-	}
 }

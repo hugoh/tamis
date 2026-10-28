@@ -60,6 +60,19 @@ Content-Type: multipart/alternative; boundary=b1
 			raw:     message("Subject: x\nContent-Type: text/plain\n", "an ox is ok\r\n"),
 			notWant: []string{"an", "ox", "is", "ok"},
 		},
+		{
+			name: "iso-8859-1 body",
+			raw: message("Subject: x\nContent-Type: text/plain; charset=iso-8859-1\n"+
+				"Content-Transfer-Encoding: 8bit\n", "na\xefve r\xe9sum\xe9\r\n"),
+			want:    []string{"naïve", "résumé"},
+			notWant: []string{"na\ufffdve"},
+		},
+		{
+			name: "koi8-r body",
+			raw: message("Subject: x\nContent-Type: text/plain; charset=koi8-r\n"+
+				"Content-Transfer-Encoding: 8bit\n", "\xd3\xd0\xc1\xcd\r\n"),
+			want: []string{"спам"},
+		},
 	}
 
 	for _, tt := range tests {

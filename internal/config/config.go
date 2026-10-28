@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -122,7 +123,6 @@ func (d *Duration) UnmarshalText(text []byte) error {
 
 func defaults() Config {
 	return Config{
-		State: "~/.local/state/tamis/tamis.db",
 		Account: Account{
 			Port: 993, //nolint:mnd // IMAPS
 		},
@@ -160,13 +160,17 @@ func DefaultPath(getenv func(string) string) string {
 
 // Load reads and validates the file at path, filling unset fields with
 // defaults. Unknown keys are errors, so typos don't pass silently.
-func Load(path string) (*Config, error) {
+func Load(getenv func(string) string, path string) (*Config, error) {
 	file, err := os.Open(path) //nolint:gosec // the path is the user's own config file
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
 	defer func() { _ = file.Close() }()
+
+	if err := checkNotWritableByOthers(file); err != nil {
+		return nil, err
+	}
 
 	cfg := defaults()
 
@@ -178,12 +182,48 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	if cfg.State == "" {
+		cfg.State = DefaultStatePath(getenv)
+	}
+
 	cfg.State, err = expandHome(cfg.State)
 	if err != nil {
 		return nil, err
 	}
 
 	return &cfg, nil
+}
+
+// DefaultStatePath is $XDG_STATE_HOME/tamis/tamis.db, falling back to
+// ~/.local/state.
+func DefaultStatePath(getenv func(string) string) string {
+	base := getenv("XDG_STATE_HOME")
+	if base == "" {
+		home, _ := os.UserHomeDir()
+		base = filepath.Join(home, ".local", "state")
+	}
+
+	return filepath.Join(base, "tamis", "tamis.db")
+}
+
+// checkNotWritableByOthers refuses a config file other users could edit:
+// password_command runs whatever it names.
+func checkNotWritableByOthers(file *os.File) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("%w: %s is writable by others, and password_command runs what it names; "+
+			"fix with: chmod go-w %s", errInvalid, file.Name(), file.Name())
+	}
+
+	return nil
 }
 
 func decodeError(path string, err error) error {

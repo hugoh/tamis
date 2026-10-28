@@ -3,12 +3,15 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+func noEnv(string) string { return "" }
 
 func write(t *testing.T, body string) string {
 	t.Helper()
@@ -22,7 +25,7 @@ func write(t *testing.T, body string) string {
 func TestLoadDefaults(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := config.Load(write(t, `
+	cfg, err := config.Load(noEnv, write(t, `
 [account]
 host = "imap.mail.me.com"
 user = "me@icloud.com"
@@ -55,7 +58,7 @@ func TestLoadOverrides(t *testing.T) {
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 
-	cfg, err := config.Load(write(t, `
+	cfg, err := config.Load(noEnv, write(t, `
 state = "~/tamis-test.db"
 
 [account]
@@ -141,7 +144,7 @@ func TestLoadInvalid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := config.Load(write(t, tt.body))
+			_, err := config.Load(noEnv, write(t, tt.body))
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
@@ -150,7 +153,7 @@ func TestLoadInvalid(t *testing.T) {
 func TestLoadMissingFile(t *testing.T) {
 	t.Parallel()
 
-	_, err := config.Load(filepath.Join(t.TempDir(), "absent.toml"))
+	_, err := config.Load(noEnv, filepath.Join(t.TempDir(), "absent.toml"))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
@@ -227,4 +230,62 @@ func TestDefaultPath(t *testing.T) {
 		filepath.Join("tamis", "config.toml"),
 		filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path)),
 	)
+}
+
+func TestStateFollowsXDG(t *testing.T) {
+	t.Parallel()
+
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	const minimal = "[account]\nhost = \"h\"\nuser = \"u\"\n"
+
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{
+			"XDG_STATE_HOME set",
+			map[string]string{"XDG_STATE_HOME": "/xdg/state"},
+			"/xdg/state/tamis/tamis.db",
+		},
+		{"XDG_STATE_HOME unset", nil, filepath.Join(home, ".local", "state", "tamis", "tamis.db")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := config.Load(
+				func(key string) string { return tt.env[key] },
+				write(t, minimal),
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.State)
+		})
+	}
+}
+
+func TestLoadRefusesConfigOthersCanWrite(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permissions")
+	}
+
+	path := write(t, "[account]\nhost = \"h\"\nuser = \"u\"\n")
+
+	for _, mode := range []os.FileMode{0o620, 0o602} {
+		require.NoError(t, os.Chmod(path, mode))
+
+		_, err := config.Load(noEnv, path)
+		require.ErrorContains(t, err, "writable by others")
+	}
+
+	// Readable by others is allowed: the file holds no secrets.
+	require.NoError(t, os.Chmod(path, 0o644)) //nolint:gosec // see above
+
+	_, err := config.Load(noEnv, path)
+	require.NoError(t, err)
 }

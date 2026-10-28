@@ -40,7 +40,7 @@ type app struct {
 
 // open loads the configuration and opens the state database.
 func (a *app) open(ctx context.Context) (*config.Config, *store.Store, error) {
-	cfg, err := config.Load(a.configPath)
+	cfg, err := config.Load(a.env.Getenv, a.configPath)
 	if err != nil {
 		return nil, nil, err //nolint:wrapcheck // config errors already name the file
 	}

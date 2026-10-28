@@ -22,7 +22,13 @@ that only records what it would do. It starts in shadow mode.
 
 ## Quick start
 
-Create `~/.config/tamis/config.toml`:
+Create `~/.config/tamis/config.toml` with `tamis init`:
+
+```sh
+tamis init --host imap.mail.me.com --user you@icloud.com  # iCloud
+```
+
+It refuses to overwrite an existing file. Or write it by hand:
 
 ```toml
 [account]

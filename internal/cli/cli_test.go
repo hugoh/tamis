@@ -116,7 +116,7 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name:       "probe without password",
-			args:       []string{probeCmd, hostFlag, "imap.example.com", userFlag, "me"},
+			args:       []string{probeCmd, hostFlag, initHost, userFlag, "me"},
 			wantCode:   1,
 			wantStderr: noPassword,
 		},
@@ -226,7 +226,7 @@ func TestProbePasswordReadError(t *testing.T) {
 
 	code := cli.Run(
 		t.Context(),
-		[]string{probeCmd, hostFlag, "imap.example.com", userFlag, "me"},
+		[]string{probeCmd, hostFlag, initHost, userFlag, "me"},
 		cli.Env{
 			Stdin:  errReader{},
 			Stdout: &bytes.Buffer{},

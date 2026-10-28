@@ -73,6 +73,7 @@ func newRoot(env Env, version string) *cobra.Command {
 			"configuration file")
 
 	root.AddCommand(
+		app.initCommand(),
 		app.bootstrapCommand(),
 		app.runCommand(),
 		app.logCommand(),

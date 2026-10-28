@@ -110,6 +110,10 @@ how many recent messages to take from each, with `-s`/`--spam` and
 tamis bootstrap -s Junk=500 -g INBOX=500 -g Archive=300
 ```
 
+Naming any of `-s`, `-g` or `--sent` limits bootstrap to what you named: `-g
+INBOX=500` alone trains only from the inbox, and leaves the whitelist, Junk and
+the watch position alone. Run with no flags for the full first-time setup.
+
 Only read messages at least `--good-min-age` old (default a week) are
 trained as good. `--sent N` sets how many sent messages to whitelist
 recipients from (default 2000).

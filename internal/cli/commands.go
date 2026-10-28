@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -37,6 +39,17 @@ type app struct {
 	configPath string
 	finder     passwordFinder
 	ran        bool
+	verbose    bool
+}
+
+// logger logs to stderr, including debug lines under --verbose.
+func (a *app) logger(cmd *cobra.Command) *slog.Logger {
+	level := slog.LevelInfo
+	if a.verbose {
+		level = slog.LevelDebug
+	}
+
+	return slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level}))
 }
 
 // open loads the configuration and opens the state database.
@@ -58,7 +71,11 @@ func (a *app) open(ctx context.Context) (*config.Config, *store.Store, error) {
 	return cfg, database, nil
 }
 
-func (a *app) connect(ctx context.Context, cfg *config.Config) (*mail.Client, error) {
+func (a *app) connect(
+	ctx context.Context,
+	cfg *config.Config,
+	logger *slog.Logger,
+) (*mail.Client, error) {
 	password, err := a.password(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
@@ -69,6 +86,7 @@ func (a *app) connect(ctx context.Context, cfg *config.Config) (*mail.Client, er
 		Username:  cfg.Account.User,
 		Password:  password,
 		TLSConfig: a.env.TLSConfig,
+		Logger:    logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
@@ -95,7 +113,7 @@ func (a *app) withEngine(
 	timeout time.Duration,
 	body func(context.Context, *engine.Engine) error,
 ) error {
-	client, err := a.connect(ctx, cfg)
+	client, err := a.connect(ctx, cfg, logger)
 	if err != nil {
 		return err
 	}
@@ -132,17 +150,13 @@ func (a *app) bootstrapCommand() *cobra.Command {
 
 			defer func() { _ = database.Close() }()
 
-			if opts.Spam, err = toSources(spam, cfg.Folders.Junk); err != nil {
-				return err
-			}
-
-			if opts.Good, err = toSources(good, cfg.Folders.Watch[0]); err != nil {
+			if err := chooseSources(cmd, cfg, &opts, spam, good); err != nil {
 				return err
 			}
 
 			var summary engine.BootstrapSummary
 
-			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))
+			logger := a.logger(cmd)
 
 			err = a.withEngine(ctx, cfg, database, logger, bootstrapTimeout,
 				func(ctx context.Context, eng *engine.Engine) error {
@@ -156,11 +170,7 @@ func (a *app) bootstrapCommand() *cobra.Command {
 				return err
 			}
 
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
-				"Whitelisted %d addresses from %s.\nTrained %d spam and %d good messages.\n"+
-					"Watching %v from now on, in %s mode. Next: tamis run\n",
-				summary.Addresses, cfg.Folders.Sent, summary.Spam, summary.Good,
-				cfg.Folders.Watch, cfg.Policy.Mode)
+			printBootstrap(cmd.OutOrStdout(), cfg, opts, summary)
 
 			return nil
 		},
@@ -191,7 +201,7 @@ func (a *app) runCommand() *cobra.Command {
 
 			defer func() { _ = database.Close() }()
 
-			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil))
+			logger := a.logger(cmd)
 
 			for {
 				err := a.pass(ctx, cfg, database, logger)
@@ -350,7 +360,7 @@ func (a *app) undoCommand() *cobra.Command {
 				ctx,
 				cfg,
 				database,
-				slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)),
+				a.logger(cmd),
 				passTimeout,
 				func(ctx context.Context, eng *engine.Engine) error {
 					return undoAll(ctx, cmd, eng, ids)
@@ -440,6 +450,71 @@ func (a *app) statusCommand() *cobra.Command {
 
 			return nil
 		},
+	}
+}
+
+// chooseSources fills opts from the flags. Naming any of --sent, --spam or
+// --good limits bootstrap to what was named.
+func chooseSources(
+	cmd *cobra.Command,
+	cfg *config.Config,
+	opts *engine.BootstrapOptions,
+	spam, good map[string]int,
+) error {
+	flags := cmd.Flags()
+	only := flags.Changed("sent") || flags.Changed("spam") || flags.Changed("good")
+	opts.KeepCursors = only
+
+	wanted := func(flag string) bool { return !only || flags.Changed(flag) }
+
+	var err error
+
+	if wanted("spam") {
+		if opts.Spam, err = toSources(spam, cfg.Folders.Junk); err != nil {
+			return err
+		}
+	}
+
+	if wanted("good") {
+		if opts.Good, err = toSources(good, cfg.Folders.Watch[0]); err != nil {
+			return err
+		}
+	}
+
+	if !wanted("sent") {
+		opts.SentLimit = 0
+	}
+
+	return nil
+}
+
+func printBootstrap(
+	out io.Writer,
+	cfg *config.Config,
+	opts engine.BootstrapOptions,
+	summary engine.BootstrapSummary,
+) {
+	if opts.SentLimit > 0 {
+		_, _ = fmt.Fprintf(out, "Whitelisted %d addresses from %s.\n",
+			summary.Addresses, cfg.Folders.Sent)
+	}
+
+	var trained []string
+	if len(opts.Spam) > 0 {
+		trained = append(trained, fmt.Sprintf("%d spam", summary.Spam))
+	}
+
+	if len(opts.Good) > 0 {
+		trained = append(trained, fmt.Sprintf("%d good", summary.Good))
+	}
+
+	if len(trained) > 0 {
+		_, _ = fmt.Fprintf(out, "Trained %s messages.\n", strings.Join(trained, " and "))
+	}
+
+	if !opts.KeepCursors {
+		_, _ = fmt.Fprintf(out, "Watching %v from now on, in %s mode. Next: tamis run\n",
+			cfg.Folders.Watch, cfg.Policy.Mode)
 	}
 }
 

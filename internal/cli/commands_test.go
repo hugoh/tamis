@@ -300,6 +300,22 @@ func TestBootstrapSources(t *testing.T) {
 	require.Contains(t, got.stdout, "Trained 2 spam and 4 good messages")
 }
 
+func TestBootstrapOnlyTheNamedFolders(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	a.seedCorpus(t)
+
+	got := a.run(t, "bootstrap", "-g", "INBOX=5")
+	require.Zero(t, got.code, got.stderr)
+	require.Equal(t, "Trained 5 good messages.\n", got.stdout)
+
+	got = a.run(t, "status")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "0 spam, 5 good")
+	require.Contains(t, got.stdout, "0 addresses")
+}
+
 func TestBootstrapBadSource(t *testing.T) {
 	t.Parallel()
 

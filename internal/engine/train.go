@@ -98,6 +98,9 @@ type BootstrapOptions struct {
 	// looked at yet.
 	Good       []Source
 	GoodMinAge time.Duration
+	// KeepCursors leaves the watched folders' cursors alone, so a bootstrap
+	// of some folders doesn't skip mail that arrived unjudged in others.
+	KeepCursors bool
 }
 
 // BootstrapSummary counts what Bootstrap learnt.
@@ -141,6 +144,10 @@ func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (Bootstra
 		if err != nil {
 			return summary, err
 		}
+	}
+
+	if opts.KeepCursors {
+		return summary, nil
 	}
 
 	for _, folder := range e.cfg.Folders.Watch {

@@ -232,11 +232,9 @@ func (e *Engine) handle(
 		return fmt.Errorf("check training: %w", err)
 	}
 
-	if trained && slices.Contains(message.Flags, strings.ToLower(TrainedKeyword)) {
-		return nil
-	}
+	if why := skipReason(message, trained); why != "" {
+		e.log.DebugContext(ctx, "skipping", "folder", folder, "uid", message.UID, "why", why)
 
-	if slices.Contains(message.Flags, strings.ToLower(RescuedKeyword)) {
 		return nil
 	}
 
@@ -270,6 +268,18 @@ func (e *Engine) handle(
 	}
 
 	return e.record(ctx, folder, message, verdict, action, applied)
+}
+
+// skipReason says why a message needs no judging, or is empty if it does.
+func skipReason(message mail.Message, trained bool) string {
+	switch {
+	case trained && slices.Contains(message.Flags, strings.ToLower(TrainedKeyword)):
+		return "already trained"
+	case slices.Contains(message.Flags, strings.ToLower(RescuedKeyword)):
+		return "rescued by tamis"
+	default:
+		return ""
+	}
 }
 
 func (s *Summary) count(verdict string) {

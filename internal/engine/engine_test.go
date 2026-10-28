@@ -463,7 +463,12 @@ func TestBootstrapLogsProgress(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	logged := engine.New(e.client, e.db, e.cfg, slog.New(slog.NewTextHandler(&logs, nil)))
+	logged := engine.New(
+		e.client,
+		e.db,
+		e.cfg,
+		slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	)
 
 	_, err := logged.Bootstrap(t.Context(), engine.BootstrapOptions{
 		SentLimit: 100,
@@ -478,6 +483,23 @@ func TestBootstrapLogsProgress(t *testing.T) {
 	} {
 		require.Contains(t, logs.String(), want)
 	}
+}
+
+func TestBootstrapKeepCursors(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.append(t, junk, e.spammy("a@spam.example"))
+
+	_, err := e.engine.Bootstrap(t.Context(), engine.BootstrapOptions{
+		Spam:        []engine.Source{{Folder: junk, Limit: 100}},
+		KeepCursors: true,
+	})
+	require.NoError(t, err)
+
+	_, ok, err := e.db.Cursor(t.Context(), inbox)
+	require.NoError(t, err)
+	require.False(t, ok, "a bootstrap of other folders must not skip unjudged inbox mail")
 }
 
 func TestBootstrapLimits(t *testing.T) {

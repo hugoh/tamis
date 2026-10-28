@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"slices"
 	"strings"
@@ -40,16 +41,25 @@ type DialConfig struct {
 	// Plaintext dials without TLS. Only for local test servers.
 	Plaintext bool
 	TLSConfig *tls.Config
+	// Logger receives a debug line per IMAP exchange; nil discards them.
+	// Credentials and message contents are never logged.
+	Logger *slog.Logger
 }
 
 // Client is a logged-in IMAP connection. It is not safe for concurrent use.
 type Client struct {
 	imap     *imapclient.Client
+	log      *slog.Logger
 	selected string
 }
 
 // Dial connects and logs in.
-func Dial(_ context.Context, cfg DialConfig) (*Client, error) {
+func Dial(ctx context.Context, cfg DialConfig) (*Client, error) {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
 	options := &imapclient.Options{
 		TLSConfig: cfg.TLSConfig,
 		Dialer:    &net.Dialer{Timeout: dialTimeout},
@@ -76,7 +86,9 @@ func Dial(_ context.Context, cfg DialConfig) (*Client, error) {
 		return nil, fmt.Errorf("%w: %w", ErrLogin, err)
 	}
 
-	return &Client{imap: conn}, nil
+	logger.DebugContext(ctx, "connected", "addr", cfg.Addr, "plaintext", cfg.Plaintext)
+
+	return &Client{imap: conn, log: logger}, nil
 }
 
 // Close logs out and closes the connection.
@@ -110,6 +122,9 @@ func (c *Client) State(mailbox string) (State, error) {
 	if err != nil {
 		return State{}, fmt.Errorf("status %s: %w", mailbox, err)
 	}
+
+	c.log.Debug("status", "mailbox", mailbox, "uidvalidity", status.UIDValidity,
+		"uidnext", status.UIDNext)
 
 	return State{UIDValidity: status.UIDValidity, UIDNext: uint32(status.UIDNext)}, nil
 }
@@ -261,6 +276,8 @@ func (c *Client) Move(mailbox string, uids []uint32, dest string) error {
 		return fmt.Errorf("move from %s to %s: %w", mailbox, dest, err)
 	}
 
+	c.log.Debug("move", "mailbox", mailbox, "dest", dest, "messages", len(uids))
+
 	return nil
 }
 
@@ -301,6 +318,8 @@ func (c *Client) Append(
 		return 0, fmt.Errorf("append to %s: %w", mailbox, err)
 	}
 
+	c.log.Debug("append", "mailbox", mailbox, "bytes", len(raw), "uid", data.UID)
+
 	return uint32(data.UID), nil
 }
 
@@ -318,6 +337,8 @@ func (c *Client) Ensure(mailbox string) error {
 	if err := c.imap.Create(mailbox, nil).Wait(); err != nil {
 		return fmt.Errorf("create %s: %w", mailbox, err)
 	}
+
+	c.log.Debug("create", "mailbox", mailbox)
 
 	return nil
 }
@@ -364,6 +385,8 @@ func (c *Client) search(mailbox string, criteria *imap.SearchCriteria) ([]uint32
 
 	slices.Sort(uids)
 
+	c.log.Debug("search", "mailbox", mailbox, "matches", len(uids))
+
 	return uids, nil
 }
 
@@ -386,6 +409,8 @@ func (c *Client) fetch(
 		return nil, fmt.Errorf("fetch from %s: %w", mailbox, err)
 	}
 
+	c.log.Debug("fetch", "mailbox", mailbox, "requested", len(uids), "returned", len(buffers))
+
 	return buffers, nil
 }
 
@@ -404,6 +429,9 @@ func (c *Client) storeKeyword(
 		return fmt.Errorf("update %s in %s: %w", keyword, mailbox, err)
 	}
 
+	c.log.Debug("store", "mailbox", mailbox, "keyword", keyword, "op", operation,
+		"messages", len(uids))
+
 	return nil
 }
 
@@ -419,6 +447,8 @@ func (c *Client) selectMailbox(mailbox string) error {
 	}
 
 	c.selected = mailbox
+
+	c.log.Debug("select", "mailbox", mailbox)
 
 	return nil
 }

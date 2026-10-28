@@ -1,8 +1,10 @@
 package mail_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -550,4 +552,46 @@ func TestCloseWhenDoneUnblocksAHungServer(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("State still blocked after the context ended")
 	}
+}
+
+func TestDebugLogsExchanges(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+
+	srv := imaptest.Start(t, imaptest.Rev2())
+
+	client, err := mail.Dial(t.Context(), mail.DialConfig{
+		Addr:      srv.Addr,
+		Username:  imaptest.Username,
+		Password:  imaptest.Password,
+		Plaintext: true,
+		Logger: slog.New(
+			slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		),
+	})
+	require.NoError(t, err)
+
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+
+	uids := seed(t, client, "INBOX", raw("a@x", "b@y", "m1"))
+
+	_, err = client.Fetch("INBOX", uids)
+	require.NoError(t, err)
+	require.NoError(t, client.AddKeyword("INBOX", uids, "$Test"))
+	require.NoError(t, client.Move("INBOX", uids, "Junk"))
+
+	for _, want := range []string{
+		"msg=connected",
+		"msg=append mailbox=INBOX",
+		"msg=select mailbox=INBOX",
+		"msg=fetch mailbox=INBOX requested=1 returned=1",
+		"msg=store mailbox=INBOX keyword=$Test",
+		"msg=move mailbox=INBOX dest=Junk messages=1",
+	} {
+		require.Contains(t, logs.String(), want)
+	}
+
+	require.NotContains(t, logs.String(), imaptest.Password)
+	require.NotContains(t, logs.String(), imaptest.Username)
 }

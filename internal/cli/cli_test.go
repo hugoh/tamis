@@ -315,3 +315,19 @@ func TestUsageErrorsExitTwo(t *testing.T) {
 		})
 	}
 }
+
+func TestVerboseLogsDebug(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	quiet := a.run(t, runCmd, onceFlag)
+	require.Zero(t, quiet.code, quiet.stderr)
+	require.NotContains(t, quiet.stderr, "level=DEBUG")
+
+	verbose := a.run(t, "--verbose", runCmd, onceFlag)
+	require.Zero(t, verbose.code, verbose.stderr)
+	require.Contains(t, verbose.stderr, "level=DEBUG msg=connected")
+	require.NotContains(t, verbose.stderr, imaptest.Password)
+	require.NotContains(t, verbose.stderr, imaptest.Username)
+}

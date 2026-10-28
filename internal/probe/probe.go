@@ -3,13 +3,11 @@
 package probe
 
 import (
-	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -93,12 +91,7 @@ func wantedCapabilities() []capability {
 		{imap.CapIdle, "push notification of new mail", true},
 		{imap.CapUIDPlus, "safe UID EXPUNGE and APPENDUID", true},
 		{imap.CapMove, "atomic moves (otherwise COPY + STORE + EXPUNGE)", false},
-		{imap.CapCondStore, "efficient flag-change sync", false},
-		{imap.CapQResync, "efficient resync including expunges", false},
 		{imap.CapSpecialUse, "automatic Junk/Sent folder discovery", false},
-		{imap.CapEnable, "needed to turn on QRESYNC", false},
-		{imap.CapNamespace, "folder prefix discovery", false},
-		{imap.CapID, "client identification", false},
 	}
 }
 
@@ -107,7 +100,7 @@ var ErrLogin = errors.New("login failed")
 
 // Run probes the server. It returns an error only when it cannot connect or
 // log in; everything else is recorded as a check in the report.
-func Run(ctx context.Context, cfg Config) (*Report, error) {
+func Run(cfg Config) (*Report, error) {
 	report := &Report{Server: cfg.Addr}
 
 	client, err := dial(cfg, nil)
@@ -125,9 +118,8 @@ func Run(ctx context.Context, cfg Config) (*Report, error) {
 
 	report.Capabilities = sortedCaps(caps)
 	checkCapabilities(report, caps)
-	checkQResync(ctx, report, cfg, caps)
 	checkMailboxes(report, client, caps)
-	checkInbox(report, client, caps)
+	checkInbox(report, client)
 
 	if cfg.Write {
 		runWriteChecks(report, cfg, client, caps)
@@ -203,27 +195,6 @@ func checkCapabilities(report *Report, caps imap.CapSet) {
 	}
 }
 
-func checkQResync(ctx context.Context, report *Report, cfg Config, caps imap.CapSet) {
-	const name = "ENABLE QRESYNC"
-
-	if !caps.Has(imap.CapQResync) || !caps.Has(imap.CapEnable) {
-		report.addf(name, StatusSkip, "QRESYNC or ENABLE not advertised")
-
-		return
-	}
-
-	enabled, err := rawEnable(ctx, cfg, "CONDSTORE", "QRESYNC")
-
-	switch {
-	case err != nil:
-		report.addf(name, StatusFail, "%v", err)
-	case slices.Contains(enabled, "QRESYNC"):
-		report.addf(name, StatusOK, "server confirmed: ENABLED %s", strings.Join(enabled, " "))
-	default:
-		report.addf(name, StatusWarn, "advertised but not confirmed by an ENABLED response")
-	}
-}
-
 func checkMailboxes(report *Report, client *imapclient.Client, caps imap.CapSet) {
 	options := &imap.ListOptions{ReturnSpecialUse: caps.Has(imap.CapSpecialUse)}
 
@@ -277,8 +248,8 @@ func checkSpecialFolder(
 	report.addf(name, StatusWarn, "not found")
 }
 
-func checkInbox(report *Report, client *imapclient.Client, caps imap.CapSet) {
-	options := &imap.SelectOptions{ReadOnly: true, CondStore: caps.Has(imap.CapCondStore)}
+func checkInbox(report *Report, client *imapclient.Client) {
+	options := &imap.SelectOptions{ReadOnly: true}
 
 	data, err := client.Select("INBOX", options).Wait()
 	if err != nil {
@@ -289,15 +260,6 @@ func checkInbox(report *Report, client *imapclient.Client, caps imap.CapSet) {
 
 	report.addf("EXAMINE INBOX", StatusOK, "%d messages, UIDVALIDITY %d, UIDNEXT %d",
 		data.NumMessages, data.UIDValidity, data.UIDNext)
-
-	switch {
-	case !caps.Has(imap.CapCondStore):
-		report.addf("HIGHESTMODSEQ", StatusSkip, "CONDSTORE not advertised")
-	case data.HighestModSeq > 0:
-		report.addf("HIGHESTMODSEQ", StatusOK, "%d", data.HighestModSeq)
-	default:
-		report.addf("HIGHESTMODSEQ", StatusWarn, "CONDSTORE advertised but no HIGHESTMODSEQ")
-	}
 
 	if slices.Contains(data.PermanentFlags, imap.FlagWildcard) {
 		report.addf("custom keywords", StatusOK, `PERMANENTFLAGS includes \*`)

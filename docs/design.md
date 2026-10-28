@@ -147,11 +147,12 @@ The first target account is iCloud, the most constrained of the big
 providers:
 
 - IMAP only (`imap.mail.me.com:993`), app-specific password, no OAuth, no JMAP.
-- CONDSTORE/QRESYNC are advertised but have been buggy; MOVE is unconfirmed.
-  Every extension is optional, with a full UID/flags resync as fallback.
-  `tamis probe` measures what actually works.
-- go-imap v2 has no client-side QRESYNC; using it would need either an
-  upstream contribution or raw commands like the probe's ENABLE check.
+- CONDSTORE/QRESYNC are advertised but have been buggy, and iCloud never
+  confirms `ENABLE QRESYNC`. tamis doesn't use them: it searches
+  each pass instead of tracking flag changes. go-imap v2 has no client-side
+  QRESYNC either.
+- MOVE is missing. `tamis probe` measures what the extensions tamis relies on
+  (IDLE, UIDPLUS, MOVE, SPECIAL-USE, custom keywords) actually do.
 - Without MOVE, use COPY + `\Deleted` + `UID EXPUNGE`; never plain `EXPUNGE`
   without UIDPLUS.
 - Connection limits are undocumented: IDLE on the Inbox only, poll the rest.

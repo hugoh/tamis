@@ -1,7 +1,6 @@
 package probe
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -54,7 +53,7 @@ func expect(t *testing.T, r *Report, name string, status Status, detail string) 
 func TestRunReadOnly(t *testing.T) {
 	t.Parallel()
 
-	report, err := Run(t.Context(), config(imaptest.Start(t, imaptest.Rev2())))
+	report, err := Run(config(imaptest.Start(t, imaptest.Rev2())))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,12 +64,9 @@ func TestRunReadOnly(t *testing.T) {
 
 	expect(t, report, "login", StatusOK, imaptest.Username)
 	expect(t, report, "IDLE", StatusOK, "advertised")
-	expect(t, report, "CONDSTORE", StatusWarn, "missing")
-	expect(t, report, "ENABLE QRESYNC", StatusSkip, "not advertised")
 	expect(t, report, `folder \Junk`, StatusWarn, `guessed "Junk"`)
 	expect(t, report, `folder \Sent`, StatusWarn, "not found")
 	expect(t, report, "EXAMINE INBOX", StatusOK, "0 messages")
-	expect(t, report, "HIGHESTMODSEQ", StatusSkip, "CONDSTORE")
 	expect(t, report, "write checks", StatusSkip, "--write")
 
 	if len(report.Mailboxes) != 2 {
@@ -84,7 +80,7 @@ func TestRunWrite(t *testing.T) {
 	cfg := config(imaptest.Start(t, imaptest.Rev2()))
 	cfg.Write = true
 
-	report, err := Run(t.Context(), cfg)
+	report, err := Run(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +105,7 @@ func TestRunWriteRev1(t *testing.T) {
 	cfg := config(imaptest.Start(t, imaptest.Rev1()))
 	cfg.Write = true
 
-	report, err := Run(t.Context(), cfg)
+	report, err := Run(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +123,7 @@ func TestRunWriteRev1(t *testing.T) {
 func TestRunTLS(t *testing.T) {
 	t.Parallel()
 
-	report, err := Run(t.Context(),
+	report, err := Run(
 		config(imaptest.StartWith(t, imaptest.Options{Caps: imaptest.Rev2(), TLS: true})),
 	)
 	if err != nil {
@@ -143,7 +139,7 @@ func TestRunBadPassword(t *testing.T) {
 	cfg := config(imaptest.Start(t, imaptest.Rev2()))
 	cfg.Password = "wrong"
 
-	if _, err := Run(t.Context(), cfg); !errors.Is(err, ErrLogin) {
+	if _, err := Run(cfg); !errors.Is(err, ErrLogin) {
 		t.Errorf("err = %v, want ErrLogin", err)
 	}
 }
@@ -159,125 +155,8 @@ func TestRunConnectRefused(t *testing.T) {
 	addr := ln.Addr().String()
 	_ = ln.Close()
 
-	if _, err := Run(t.Context(), Config{Addr: addr, Plaintext: true}); err == nil {
+	if _, err := Run(Config{Addr: addr, Plaintext: true}); err == nil {
 		t.Error("want error dialing a closed port")
-	}
-
-	if _, err := rawEnable(t.Context(), Config{Addr: addr}); err == nil {
-		t.Error("want error dialing a closed port over TLS")
-	}
-}
-
-// fakeServer speaks scripted raw IMAP: it sends greeting (closing at once
-// if it is empty), then answers each command whose name is in replies with
-// that reply ("TAG" replaced by the command's tag) and anything else with OK.
-func fakeServer(t *testing.T, greeting string, replies map[string]string) Config {
-	t.Helper()
-
-	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() { _ = ln.Close() })
-
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer func() { _ = conn.Close() }()
-
-		if greeting == "" {
-			return
-		}
-
-		_, _ = conn.Write([]byte(greeting))
-		r := bufio.NewReader(conn)
-
-		for {
-			line, err := r.ReadString('\n')
-			if err != nil {
-				return
-			}
-
-			tag, cmd, _ := strings.Cut(strings.TrimSpace(line), " ")
-			name, _, _ := strings.Cut(cmd, " ")
-
-			reply, ok := replies[name]
-			if !ok {
-				reply = "TAG OK done\r\n"
-			}
-
-			_, _ = conn.Write([]byte(strings.ReplaceAll(reply, "TAG", tag)))
-		}
-	}()
-
-	return Config{Addr: ln.Addr().String(), Plaintext: true, Timeout: 5 * time.Second}
-}
-
-func TestCheckQResync(t *testing.T) {
-	t.Parallel()
-
-	caps := imap.CapSet{imap.CapQResync: {}, imap.CapEnable: {}}
-
-	tests := []struct {
-		name   string
-		reply  string
-		status Status
-		detail string
-	}{
-		{"confirmed", "* ENABLED CONDSTORE QRESYNC\r\nTAG OK enabled\r\n", StatusOK, "QRESYNC"},
-		{"silent", "TAG OK enabled\r\n", StatusWarn, "not confirmed"},
-		{"rejected", "TAG BAD no\r\n", StatusFail, "rejected"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			report := &Report{}
-			cfg := fakeServer(t, "* OK ready\r\n", map[string]string{"ENABLE": tt.reply})
-			checkQResync(t.Context(), report, cfg, caps)
-			expect(t, report, "ENABLE QRESYNC", tt.status, tt.detail)
-		})
-	}
-}
-
-func TestRawEnableFailures(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		greeting string
-		replies  map[string]string
-		want     string
-	}{
-		{"no greeting", "", nil, "greeting"},
-		{"login rejected", "* OK ready\r\n", map[string]string{"LOGIN": "TAG NO bad\r\n"}, "login"},
-		{"hangup", "* OK ready\r\n", map[string]string{"LOGIN": ""}, "read"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			cfg := fakeServer(t, tt.greeting, tt.replies)
-			cfg.Timeout = time.Second
-
-			_, err := rawEnable(t.Context(), cfg, "QRESYNC")
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("err = %v, want it to mention %q", err, tt.want)
-			}
-		})
-	}
-}
-
-func TestQuote(t *testing.T) {
-	t.Parallel()
-
-	if got, want := quote(`a"b\c`), `"a\"b\\c"`; got != want {
-		t.Errorf("quote = %s, want %s", got, want)
 	}
 }
 
@@ -364,7 +243,7 @@ func TestRunInjectedFailures(t *testing.T) {
 			cfg.Write = true
 			cfg.IdleWait = 200 * time.Millisecond
 
-			report, err := Run(t.Context(), cfg)
+			report, err := Run(cfg)
 			if err != nil {
 				t.Fatal(err)
 			}

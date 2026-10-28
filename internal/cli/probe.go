@@ -43,7 +43,7 @@ func probeCommand(env Env) *cobra.Command {
 			cfg.Password = password
 			cfg.TLSConfig = env.TLSConfig
 
-			report, err := probe.Run(cmd.Context(), cfg)
+			report, err := probe.Run(cfg)
 			if err != nil {
 				return fmt.Errorf("probe: %w", err)
 			}

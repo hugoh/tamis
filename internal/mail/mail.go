@@ -90,6 +90,13 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// CloseWhenDone drops the connection when ctx ends, which unblocks a command
+// waiting on a server that stopped answering. The returned function cancels
+// it.
+func (c *Client) CloseWhenDone(ctx context.Context) func() bool {
+	return context.AfterFunc(ctx, func() { _ = c.imap.Close() })
+}
+
 // State is a folder's UIDVALIDITY and next UID.
 type State struct {
 	UIDValidity uint32

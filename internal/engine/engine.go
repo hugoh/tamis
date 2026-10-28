@@ -31,6 +31,9 @@ const (
 	// RescuedKeyword marks mail tamis moved out of Junk. Seeing it back in
 	// Junk means the user disagreed.
 	RescuedKeyword = "$TamisRescued"
+	// TrainedKeyword marks mail tamis already learnt that it moved on to a
+	// folder it scans. Senders can't set keywords, unlike a Message-ID.
+	TrainedKeyword = "$TamisTrained"
 )
 
 // Verdicts and reasons recorded in the journal.
@@ -229,7 +232,7 @@ func (e *Engine) handle(
 		return fmt.Errorf("check training: %w", err)
 	}
 
-	if trained {
+	if trained && slices.Contains(message.Flags, strings.ToLower(TrainedKeyword)) {
 		return nil
 	}
 
@@ -240,10 +243,17 @@ func (e *Engine) handle(
 	tokens := classify.Tokenize(message.Raw)
 
 	if slices.Contains(message.Flags, strings.ToLower(FiledKeyword)) {
-		summary.Scanned++
-		summary.Corrected++
+		filed, err := e.movedByTamis(ctx, message, VerdictSpam)
+		if err != nil {
+			return err
+		}
 
-		return e.learnGood(ctx, folder, message, tokens, ReasonCorrection)
+		if filed {
+			summary.Scanned++
+			summary.Corrected++
+
+			return e.learnGood(ctx, folder, message, tokens, ReasonCorrection)
+		}
 	}
 
 	verdict, err := e.judge(ctx, message, tokens)
@@ -314,6 +324,23 @@ func (e *Engine) judge(
 	}
 
 	return judgement{verdict: verdict, reason: ReasonBayes, score: score}, nil
+}
+
+// movedByTamis reports whether the journal shows tamis moved this message
+// with the given verdict. A keyword alone doesn't: a move that failed on a
+// dropped connection leaves its keyword behind.
+func (e *Engine) movedByTamis(
+	ctx context.Context,
+	message mail.Message,
+	verdict string,
+) (bool, error) {
+	decision, found, err := e.store.LatestDecision(ctx, message.MessageID)
+	if err != nil {
+		return false, fmt.Errorf("look up decision: %w", err)
+	}
+
+	return found && decision.Applied && decision.Verdict == verdict &&
+		strings.HasPrefix(decision.Action, "move:"), nil
 }
 
 // act files a message according to its verdict; in shadow mode it only

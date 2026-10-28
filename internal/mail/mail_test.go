@@ -1,7 +1,9 @@
 package mail_test
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -497,4 +499,55 @@ func TestFetchEnvelopes(t *testing.T) {
 	require.Equal(t, "alice@example.com", messages[0].From)
 	require.Contains(t, messages[0].Flags, "$junk")
 	require.Empty(t, messages[0].Raw, "no body is downloaded")
+}
+
+func TestCloseWhenDoneUnblocksAHungServer(t *testing.T) {
+	t.Parallel()
+
+	var (
+		entered sync.Once
+		inside  = make(chan struct{})
+		release = make(chan struct{})
+	)
+
+	srv := imaptest.StartWith(t, imaptest.Options{
+		Caps: imaptest.Rev2(),
+		Fail: func(op, _ string) bool {
+			if op == "STATUS" {
+				entered.Do(func() { close(inside) })
+				<-release
+			}
+
+			return false
+		},
+	})
+	t.Cleanup(func() { close(release) })
+
+	client, err := mail.Dial(t.Context(), mail.DialConfig{
+		Addr: srv.Addr, Username: imaptest.Username, Password: imaptest.Password, Plaintext: true,
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	stop := client.CloseWhenDone(ctx)
+	defer stop()
+
+	failed := make(chan error, 1)
+
+	go func() {
+		_, err := client.State("INBOX")
+		failed <- err
+	}()
+
+	<-inside
+	cancel()
+
+	select {
+	case err := <-failed:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("State still blocked after the context ended")
+	}
 }

@@ -25,6 +25,7 @@ const (
 	defaultCorpusSize = 500
 	defaultGoodMinAge = 7 * 24 * time.Hour
 	defaultLogLimit   = 20
+	passTimeout       = 10 * time.Minute
 	tablePadding      = 2
 	stateDirMode      = 0o700
 )
@@ -97,6 +98,11 @@ func (a *app) withEngine(
 	}
 
 	defer func() { _ = client.Close() }()
+
+	ctx, cancel := context.WithTimeout(ctx, passTimeout)
+	defer cancel()
+
+	defer client.CloseWhenDone(ctx)()
 
 	return body(ctx, engine.New(client, database, cfg, logger))
 }
@@ -225,7 +231,8 @@ func (a *app) pass(
 
 			logger.InfoContext(ctx, "pass complete", "mode", cfg.Policy.Mode,
 				"scanned", summary.Scanned, "spam", summary.Spam, "uncertain", summary.Uncertain,
-				"good", summary.Good, "corrected", summary.Corrected, "trained", summary.Trained)
+				"good", summary.Good, "corrected", summary.Corrected, "trained", summary.Trained,
+				"rescued", summary.Rescued)
 
 			return nil
 		},

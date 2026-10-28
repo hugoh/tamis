@@ -13,7 +13,7 @@ import (
 
 // keywordWindow bounds how far back keyword marks are looked for, so each
 // pass's searches stay small.
-const keywordWindow = 30 * 24 * time.Hour
+const keywordWindow = 7 * 24 * time.Hour
 
 // junkMarks are the keywords mail clients set for Junk and Not Junk: the
 // IANA-registered ones and Apple Mail's.

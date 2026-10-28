@@ -47,10 +47,8 @@ func (e *Engine) rescue(ctx context.Context, message mail.Message, summary *Summ
 // it. Anything tamis judged, trained or filed, and anything the user marked
 // Junk, was put there deliberately.
 func (e *Engine) isRescueCandidate(ctx context.Context, message mail.Message) (bool, error) {
-	for _, keyword := range []string{FiledKeyword, RescuedKeyword} {
-		if slices.Contains(message.Flags, strings.ToLower(keyword)) {
-			return false, nil
-		}
+	if slices.Contains(message.Flags, strings.ToLower(FiledKeyword)) {
+		return false, nil
 	}
 
 	if hasAnyFlag(message.Flags, junkMarks()[classify.Spam]) {

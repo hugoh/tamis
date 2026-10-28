@@ -96,9 +96,9 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    msg([Message]) --> trained{Already trained?<br/>by Message-ID}
+    msg([Message]) --> trained{Has $TamisTrained<br/>and already trained?}
     trained -- yes --> skip([Skip])
-    trained -- no --> filed{Has $TamisFiled?}
+    trained -- no --> filed{Has $TamisFiled and<br/>journal shows tamis filed it?}
     filed -- yes --> correction[Correction:<br/>train good, whitelist sender]
     filed -- no --> listed{Sender whitelisted?}
     listed -- yes --> verified{Auth required?}
@@ -240,7 +240,7 @@ mail looks exactly the same, so turn `learn_from_junk` off if you run either.
 Mail clients' Junk / Not Junk buttons set keywords: `$Junk` / `$NotJunk`, or
 Apple Mail's `Junk` / `NotJunk`. With `policy.learn_from_keywords` on (the
 default), each pass searches the watched folders and Junk for them on mail
-from the last 30 days.
+from the last 7 days.
 
 A server-side search finds marks without tracking flag changes, so this works
 whether or not the server's CONDSTORE does. Headers come first; a message's
@@ -299,8 +299,15 @@ mail could be spam that slipped through and that nobody has looked at yet.
 - **Shadow mode is the default.** Watched-folder decisions are only journalled
   until `policy.mode = "live"`.
 - **No false corrections.** If moving a spam to Junk fails, tamis takes
-  `$TamisFiled` off again. Otherwise the retry would read the keyword as the
-  user moving the message back, and learn it as good.
+  `$TamisFiled` off again. If that fails too (a dropped connection), the
+  keyword alone is not believed: a correction needs the journal to show that
+  tamis moved the message. The same goes for `$TamisRescued`.
+- **Reused Message-IDs don't skip the filter.** Mail tamis already trained and
+  moved on carries `$TamisTrained`, which senders can't set. A message with a
+  trained Message-ID but no such keyword is judged like any other.
+- **No hung passes.** A pass lasts at most 10 minutes, and when it ends (or on
+  SIGTERM) the connection is dropped, so a server that stops answering can't
+  stall the loop. Progress is saved per message and resumes next pass.
 - **Peek only.** Fetches use `BODY.PEEK`, capped at 256 KiB per message.
 - **Train once per message.** Training is keyed by Message-ID (or a content
   hash when there is none). Training a message again with the other label

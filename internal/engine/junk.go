@@ -58,9 +58,8 @@ func (e *Engine) isMissedSpam(ctx context.Context, message mail.Message) (bool, 
 		return false, nil
 	}
 
-	// Rescued mail back in Junk: the user put it there.
-	if slices.Contains(message.Flags, strings.ToLower(RescuedKeyword)) {
-		return true, nil
+	if rescued, err := e.isRescueMovedBack(ctx, message); err != nil || rescued {
+		return rescued, err
 	}
 
 	label, trained, err := e.store.Trained(ctx, trainingKey(message))
@@ -72,6 +71,12 @@ func (e *Engine) isMissedSpam(ctx context.Context, message mail.Message) (bool, 
 		return false, nil
 	}
 
+	return e.wasLetThrough(ctx, message)
+}
+
+// wasLetThrough reports whether tamis's latest verdict on the message, in a
+// watched folder, left it there.
+func (e *Engine) wasLetThrough(ctx context.Context, message mail.Message) (bool, error) {
 	decision, found, err := e.store.LatestDecision(ctx, message.MessageID)
 	if err != nil {
 		return false, fmt.Errorf("look up decision: %w", err)
@@ -80,4 +85,14 @@ func (e *Engine) isMissedSpam(ctx context.Context, message mail.Message) (bool, 
 	return found &&
 		(decision.Verdict == VerdictGood || decision.Verdict == VerdictUncertain) &&
 		slices.Contains(e.cfg.Folders.Watch, decision.Mailbox), nil
+}
+
+// isRescueMovedBack reports whether this is mail tamis rescued from Junk that
+// the user put back.
+func (e *Engine) isRescueMovedBack(ctx context.Context, message mail.Message) (bool, error) {
+	if !slices.Contains(message.Flags, strings.ToLower(RescuedKeyword)) {
+		return false, nil
+	}
+
+	return e.movedByTamis(ctx, message, VerdictGood)
 }

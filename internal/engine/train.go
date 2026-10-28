@@ -52,6 +52,10 @@ func (e *Engine) train(ctx context.Context, folder trainFolder, summary *Summary
 			summary.Trained++
 		}
 
+		if err := e.mail.AddKeyword(folder.name, batch, TrainedKeyword); err != nil {
+			return fmt.Errorf("train from %s: %w", folder.name, err)
+		}
+
 		if err := e.mail.Move(folder.name, batch, folder.dest); err != nil {
 			return fmt.Errorf("train from %s: %w", folder.name, err)
 		}

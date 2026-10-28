@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -326,6 +327,25 @@ func TestTrainFolders(t *testing.T) {
 	require.Zero(t, e.run(t).Scanned, "mail returned to the inbox by training is not judged again")
 }
 
+func TestReusedMessageIDIsStillJudged(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.run(t)
+
+	e.append(t, trainGood, e.hammy("friend@good.example"))
+	require.Equal(t, engine.Summary{Trained: 1}, e.run(t))
+
+	trainedID := e.messages(t, inbox)[0].MessageID
+
+	spam := e.spammy("s@spam.example")
+	spam = bytes.Replace(spam, fmt.Appendf(nil, "<m%d@test>", e.serial), []byte(trainedID), 1)
+	e.append(t, inbox, spam)
+
+	require.Equal(t, engine.Summary{Scanned: 1, Spam: 1}, e.run(t))
+}
+
 func TestTrainFoldersAreCreated(t *testing.T) {
 	t.Parallel()
 
@@ -629,6 +649,78 @@ func TestFailedMoveIsNotACorrection(t *testing.T) {
 	whitelisted, err := e.db.HasAddress(t.Context(), "s@spam.example")
 	require.NoError(t, err)
 	require.False(t, whitelisted)
+}
+
+// dropAfterFlag makes Move fail while failing is set and, once it has, every
+// STORE too: what a dropped connection does between flagging and moving.
+func dropAfterFlag(failing *atomic.Bool) func(op, mailbox string) bool {
+	var moveFailed atomic.Bool
+
+	return func(op, _ string) bool {
+		if !failing.Load() {
+			moveFailed.Store(false)
+
+			return false
+		}
+
+		switch op {
+		case opMove:
+			moveFailed.Store(true)
+
+			return true
+		case opStore:
+			return moveFailed.Load()
+		default:
+			return false
+		}
+	}
+}
+
+func TestLeftoverFiledKeywordIsNotACorrection(t *testing.T) {
+	t.Parallel()
+
+	var failing atomic.Bool
+
+	e := setupWith(t, config.ModeLive, dropAfterFlag(&failing))
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.spammy("s@spam.example"))
+
+	failing.Store(true)
+
+	_, err := e.engine.RunOnce(t.Context())
+	require.ErrorContains(t, err, "file spam")
+
+	failing.Store(false)
+
+	require.Equal(t, engine.Summary{Scanned: 1, Spam: 1}, e.run(t))
+
+	whitelisted, err := e.db.HasAddress(t.Context(), "s@spam.example")
+	require.NoError(t, err)
+	require.False(t, whitelisted)
+}
+
+func TestLeftoverRescuedKeywordIsNotACorrection(t *testing.T) {
+	t.Parallel()
+
+	var failing atomic.Bool
+
+	e := setupWith(t, config.ModeLive, dropAfterFlag(&failing))
+	e.run(t)
+	e.fromFriend(t, dmarcOK)
+
+	failing.Store(true)
+
+	_, err := e.engine.RunOnce(t.Context())
+	require.ErrorContains(t, err, "rescue")
+
+	failing.Store(false)
+
+	require.Equal(t, engine.Summary{Rescued: 1}, e.run(t))
+
+	whitelisted, err := e.db.HasAddress(t.Context(), friend)
+	require.NoError(t, err)
+	require.True(t, whitelisted)
 }
 
 // latestDecisionID returns the newest journal entry's ID.

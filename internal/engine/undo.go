@@ -109,6 +109,10 @@ func (e *Engine) undoMove(ctx context.Context, decision store.Decision) (string,
 		return "", fmt.Errorf("clear %s: %w", reversal.keyword, err)
 	}
 
+	if err := e.mail.AddKeyword(movedTo, uids, TrainedKeyword); err != nil {
+		return "", fmt.Errorf("flag %s: %w", TrainedKeyword, err)
+	}
+
 	if err := e.mail.Move(movedTo, uids, decision.Mailbox); err != nil {
 		return "", fmt.Errorf("move back: %w", err)
 	}

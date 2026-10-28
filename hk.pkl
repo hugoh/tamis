@@ -1,7 +1,7 @@
 // DO NOT EDIT — managed by hugoh/go-tools via copier.
 amends "package://github.com/jdx/hk/releases/download/v2.9.0/hk@2.9.0#/Config.pkl"
 import "package://github.com/jdx/hk/releases/download/v2.9.0/hk@2.9.0#/Builtins.pkl"
-import "package://github.com/hugoh/hk-config/releases/download/v3.0.1/hk-config@3.0.1#/base.pkl" as Base
+import "package://github.com/hugoh/hk-config/releases/download/v3.1.0/hk-config@3.1.0#/base.pkl" as Base
 
 min_hk_version = Base.min_hk_version
 
@@ -32,6 +32,9 @@ local linters = new Mapping<String, Step> {
   // Same copier-serializer quirk as above: it omits the trailing newline
   // ryl's new-line-at-end-of-file rule expects
   ["ryl"] = (Builtins.ryl) {
+    exclude = List(".copier-answers.yml")
+  }
+  ["ryl_format"] = (Builtins.ryl_format) {
     exclude = List(".copier-answers.yml")
   }
   ["golangci_lint_config"] {

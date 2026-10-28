@@ -1,5 +1,5 @@
 # Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
-_commit: v1.26.32
+_commit: v1.26.34
 _src_path: https://github.com/hugoh/go-tools.git
 coverage_total: 90
 golangci_extra_disable: []

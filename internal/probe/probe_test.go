@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,7 +16,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const opMove = "MOVE"
+const (
+	opMove   = "MOVE"
+	opSelect = "SELECT"
+)
 
 func config(srv *imaptest.Server) Config {
 	return Config{
@@ -170,6 +174,16 @@ func TestWriteReport(t *testing.T) {
 	require.Equal(t, StatusOK, decoded.Checks[0].Status)
 }
 
+// secondScratchSelect fails the IDLE watcher's SELECT, the second one on the
+// scratch folder.
+func secondScratchSelect() func(op, mailbox string) bool {
+	var selects atomic.Int32
+
+	return func(op, mailbox string) bool {
+		return op == opSelect && strings.HasPrefix(mailbox, "tamis-probe-") && selects.Add(1) == 2
+	}
+}
+
 func TestRunInjectedFailures(t *testing.T) {
 	t.Parallel()
 
@@ -184,7 +198,7 @@ func TestRunInjectedFailures(t *testing.T) {
 		{"list", func(op, _ string) bool { return op == "LIST" }, "LIST", StatusFail},
 		{
 			"examine",
-			func(op, m string) bool { return op == "SELECT" && m == "INBOX" },
+			func(op, m string) bool { return op == opSelect && m == "INBOX" },
 			"EXAMINE INBOX",
 			StatusFail,
 		},
@@ -192,13 +206,14 @@ func TestRunInjectedFailures(t *testing.T) {
 		{"append", func(op, _ string) bool { return op == "APPEND" }, "APPEND", StatusFail},
 		{
 			"select",
-			func(op, m string) bool { return op == "SELECT" && scratch(m) },
+			func(op, m string) bool { return op == opSelect && scratch(m) },
 			"SELECT scratch",
 			StatusFail,
 		},
 		{"fetch", func(op, _ string) bool { return op == "FETCH" }, "BODY.PEEK", StatusFail},
 		{"store", func(op, _ string) bool { return op == "STORE" }, "STORE keyword", StatusFail},
 		{"idle", func(op, _ string) bool { return op == "IDLE" }, "IDLE push", StatusWarn},
+		{"watcher select", secondScratchSelect(), "IDLE push", StatusFail},
 		{"move", func(op, _ string) bool { return op == opMove }, "MOVE message", StatusFail},
 		{"status", func(op, _ string) bool { return op == "STATUS" }, "MOVE message", StatusFail},
 		{"delete", func(op, _ string) bool { return op == "DELETE" }, "DELETE scratch", StatusWarn},

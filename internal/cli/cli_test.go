@@ -16,19 +16,20 @@ import (
 )
 
 const (
-	probeCmd      = "probe"
-	userFlag      = "--user"
-	configFlag    = "--config"
-	runCmd        = "run"
-	passwordKey   = "TAMIS_PASSWORD"
-	missingConfig = "/nonexistent/config.toml"
-	onceFlag      = "--once"
-	hostFlag      = "--host"
-	loginCmd      = "login"
-	logoutCmd     = "logout"
-	noPassword    = "no password"
-	loginFailed   = "login failed"
-	statusCmd     = "status"
+	probeCmd         = "probe"
+	userFlag         = "--user"
+	configFlag       = "--config"
+	runCmd           = "run"
+	passwordKey      = "TAMIS_PASSWORD"
+	missingConfig    = "/nonexistent/config.toml"
+	readConfigFailed = "read config"
+	onceFlag         = "--once"
+	hostFlag         = "--host"
+	loginCmd         = "login"
+	logoutCmd        = "logout"
+	noPassword       = "no password"
+	loginFailed      = "login failed"
+	statusCmd        = "status"
 )
 
 type result struct {

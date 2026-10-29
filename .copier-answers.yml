@@ -16,5 +16,7 @@ has_test_int: false
 project_name: tamis
 testcoverage_excludes:
 - internal/imaptest/
+- internal/secret/secrettest/
+- ^main\.go$
 testcoverage_overrides: []
 

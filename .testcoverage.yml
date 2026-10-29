@@ -7,3 +7,5 @@ threshold:
 exclude:
   paths:
     - internal/imaptest/
+    - internal/secret/secrettest/
+    - ^main\.go$

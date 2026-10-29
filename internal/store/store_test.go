@@ -289,6 +289,12 @@ func TestClosedStoreFails(t *testing.T) {
 			_, err := db.Decisions(t.Context(), 1)
 			require.Error(t, err)
 		},
+		"prune decisions": func(t *testing.T) {
+			t.Helper()
+
+			_, err := db.PruneDecisions(t.Context(), time.Now())
+			require.Error(t, err)
+		},
 		"trained": func(t *testing.T) {
 			t.Helper()
 

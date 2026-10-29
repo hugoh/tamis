@@ -101,6 +101,38 @@ func TestVerified(t *testing.T) {
 			want:     false,
 		},
 		{
+			name: "pass smuggled inside a quoted reason",
+			raw: message(
+				`Authentication-Results: mx.icloud.com; dmarc=fail reason="x; dmarc=pass header.from=example.com ; y"`,
+				from,
+			),
+			want: false,
+		},
+		{
+			name: "pass smuggled after a nested comment",
+			raw: message(
+				"Authentication-Results: mx.icloud.com; dmarc=fail (a (b) ; dmarc=pass header.from=example.com )",
+				from,
+			),
+			want: false,
+		},
+		{
+			name: "pass smuggled after an escaped quote",
+			raw: message(
+				`Authentication-Results: mx.icloud.com; dmarc=fail reason="a\"; dmarc=pass header.from=example.com ; y"`,
+				from,
+			),
+			want: false,
+		},
+		{
+			name: "pass smuggled after an escaped parenthesis in a comment",
+			raw: message(
+				`Authentication-Results: mx.icloud.com; dmarc=fail (a \) ; dmarc=pass header.from=example.com )`,
+				from,
+			),
+			want: false,
+		},
+		{
 			name: "no results",
 			raw:  message(from),
 			want: false,

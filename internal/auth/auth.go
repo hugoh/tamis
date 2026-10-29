@@ -6,15 +6,14 @@ package auth
 import (
 	"bufio"
 	"bytes"
-	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-message/textproto"
+	"github.com/emersion/go-msgauth/authres"
 )
-
-var comments = regexp.MustCompile(`\([^)]*\)`)
 
 // Verified reports whether the provider recorded a DMARC pass, or a DKIM
 // pass aligned with the From domain. Only the topmost
@@ -38,18 +37,18 @@ func Verified(raw []byte, serverID string) bool {
 		return false
 	}
 
-	authservID, parsed := parse(results[0])
-	if serverID != "" && authservID != strings.ToLower(serverID) {
+	authservID, parsed, err := authres.Parse(stripComments(results[0]))
+	if err != nil {
 		return false
 	}
 
-	for _, result := range parsed {
-		if result.passesFor(domain) {
-			return true
-		}
+	if serverID != "" && !strings.EqualFold(authservID, serverID) {
+		return false
 	}
 
-	return false
+	return slices.ContainsFunc(parsed, func(result authres.Result) bool {
+		return passesFor(result, domain)
+	})
 }
 
 func fromDomain(header textproto.Header) (string, bool) {
@@ -65,60 +64,64 @@ func fromDomain(header textproto.Header) (string, bool) {
 	return domain, ok
 }
 
-type methodResult struct {
-	method, value string
-	props         map[string]string
-}
+// stripComments removes RFC 5322 comments, which nest and may hide ";" from a
+// parser that does not track the nesting.
+func stripComments(header string) string {
+	var stripper commentStripper
 
-// passesFor reports whether this result authenticates the From domain.
-func (r methodResult) passesFor(domain string) bool {
-	if r.value != "pass" {
-		return false
+	for _, char := range header {
+		stripper.next(char)
 	}
 
-	switch r.method {
-	case "dmarc":
-		headerFrom := r.props["header.from"]
+	return stripper.out.String()
+}
 
-		return headerFrom == "" || headerFrom == domain
-	case "dkim":
-		return aligned(r.props["header.d"], domain)
+type commentStripper struct {
+	out             strings.Builder
+	depth           int
+	quoted, escaped bool
+}
+
+func (s *commentStripper) keep(char rune) {
+	if s.depth == 0 {
+		s.out.WriteRune(char)
+	}
+}
+
+func (s *commentStripper) next(char rune) {
+	switch {
+	case s.escaped:
+		s.escaped = false
+		s.keep(char)
+	case char == '\\':
+		s.escaped = true
+		s.keep(char)
+	case s.quoted:
+		s.quoted = char != '"'
+		s.out.WriteRune(char)
+	case char == '(':
+		s.depth++
+	case char == ')' && s.depth > 0:
+		s.depth--
+		s.keep(' ')
+	case s.depth == 0:
+		s.quoted = char == '"'
+		s.out.WriteRune(char)
+	}
+}
+
+// passesFor reports whether result authenticates the From domain.
+func passesFor(result authres.Result, domain string) bool {
+	switch typed := result.(type) {
+	case *authres.DMARCResult:
+		from := strings.ToLower(typed.From)
+
+		return typed.Value == authres.ResultPass && (from == "" || from == domain)
+	case *authres.DKIMResult:
+		return typed.Value == authres.ResultPass && aligned(strings.ToLower(typed.Domain), domain)
 	default:
 		return false
 	}
-}
-
-// parse splits "authserv-id; method=result ptype.prop=value ...; ..." into
-// the authserv-id and its method results.
-func parse(header string) (string, []methodResult) {
-	parts := strings.Split(comments.ReplaceAllString(strings.ToLower(header), " "), ";")
-
-	authservID, _, _ := strings.Cut(strings.TrimSpace(parts[0]), " ")
-	results := make([]methodResult, 0, len(parts))
-
-	for _, part := range parts[1:] {
-		fields := strings.Fields(part)
-		if len(fields) == 0 {
-			continue
-		}
-
-		method, value, ok := strings.Cut(fields[0], "=")
-		if !ok {
-			continue
-		}
-
-		result := methodResult{method: method, value: value, props: map[string]string{}}
-
-		for _, field := range fields[1:] {
-			if key, val, ok := strings.Cut(field, "="); ok {
-				result.props[key] = val
-			}
-		}
-
-		results = append(results, result)
-	}
-
-	return authservID, results
 }
 
 // aligned implements DMARC's relaxed alignment: the signing domain is the

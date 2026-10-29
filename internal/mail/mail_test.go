@@ -627,6 +627,21 @@ func TestWaitForNewMail(t *testing.T) {
 			quick:   false,
 		},
 		{
+			name: "a message is marked",
+			prepare: func(t *testing.T, client *mail.Client, seen *mail.State) func() {
+				t.Helper()
+				uids := seed(t, client, "INBOX", raw("a@x", "b@y", "marked later"))
+
+				state, err := client.State("INBOX")
+				require.NoError(t, err)
+
+				*seen = state
+
+				return func() { require.NoError(t, client.AddKeyword("INBOX", uids, "Junk")) }
+			},
+			quick: true,
+		},
+		{
 			name: "message arrived before the wait",
 			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) func() {
 				t.Helper()

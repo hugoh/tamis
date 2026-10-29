@@ -37,13 +37,14 @@ flowchart LR
 `RunOnce` is one pass over the account. The daemon repeats it when new mail
 arrives in a watched folder, or after `policy.poll_interval` if none does.
 Between passes it IDLEs on one extra connection per watched folder, and the
-first to hear of mail ends the wait. A folder whose IDLE fails drops out and
+first to hear of new mail or changed flags ends the wait, so a junk mark set
+in another client is learnt straight away. A folder whose IDLE fails drops out and
 the others keep waiting; the loop falls back to sleeping only when all fail. Before idling it compares each folder's
 UIDNEXT with the cursor the pass saved, so mail that arrived in between starts
 the next pass at once. It falls
 back to plain sleeping when the server doesn't advertise IDLE, the connection
-fails, or the last pass failed. Everything else (training folders, Sent, Junk, marks)
-is still only looked at on a pass.
+fails, or the last pass failed. Everything else (training folders, Sent, Junk,
+including marks set in Junk) is still only looked at on a pass.
 
 ```mermaid
 flowchart TD

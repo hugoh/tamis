@@ -504,8 +504,8 @@ func bracket(messageID string) string {
 	return "<" + messageID + ">"
 }
 
-// WaitForNewMail returns when mailbox receives a message, after maxWait, or
-// when ctx ends, whichever comes first. seen is the folder state the caller
+// WaitForNewMail returns when mailbox receives a message or a message's flags
+// change, after maxWait, or when ctx ends, whichever comes first. seen is the folder state the caller
 // last handled: if the folder already holds newer mail, or has a new
 // UIDVALIDITY, it returns at once. It IDLEs on its own connection, so it can
 // run between passes without disturbing them. It returns ErrNoIdle without
@@ -517,15 +517,25 @@ func WaitForNewMail(
 	seen State,
 	maxWait time.Duration,
 ) error {
-	arrived := make(chan struct{}, 1)
+	changed := make(chan string, 1)
+	notify := func(reason string) {
+		select {
+		case changed <- reason:
+		default:
+		}
+	}
 	handler := &imapclient.UnilateralDataHandler{
 		Mailbox: func(data *imapclient.UnilateralDataMailbox) {
 			if data.NumMessages != nil {
-				select {
-				case arrived <- struct{}{}:
-				default:
-				}
+				notify("new mail")
 			}
+		},
+		// An unsolicited FETCH during IDLE reports changed flags, such as
+		// a junk mark set in another client.
+		Fetch: func(msg *imapclient.FetchMessageData) {
+			_, _ = msg.Collect()
+
+			notify("flags changed")
 		},
 	}
 
@@ -558,7 +568,7 @@ func WaitForNewMail(
 		return nil
 	}
 
-	return client.idleUntil(ctx, mailbox, arrived, maxWait)
+	return client.idleUntil(ctx, mailbox, changed, maxWait)
 }
 
 // Watch is a folder and the state the caller last handled in it.
@@ -610,12 +620,12 @@ func WaitForNewMailIn(
 	return failure
 }
 
-// idleUntil IDLEs until a message is reported on arrived, maxWait passes or
+// idleUntil IDLEs until a change is reported on changed, maxWait passes or
 // ctx ends.
 func (c *Client) idleUntil(
 	ctx context.Context,
 	mailbox string,
-	arrived <-chan struct{},
+	changed <-chan string,
 	maxWait time.Duration,
 ) error {
 	idle, err := c.imap.Idle()
@@ -628,10 +638,10 @@ func (c *Client) idleUntil(
 	waitCtx, cancel := context.WithTimeout(ctx, maxWait)
 	defer cancel()
 
-	reason := "new mail"
+	var reason string
 
 	select {
-	case <-arrived:
+	case reason = <-changed:
 	case <-waitCtx.Done():
 		reason = "timeout"
 		if ctx.Err() != nil {

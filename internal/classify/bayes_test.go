@@ -75,3 +75,10 @@ func TestScoreReportsStrongestClues(t *testing.T) {
 
 	require.ElementsMatch(t, []string{spamWord, goodWord}, tokens)
 }
+
+func TestLabelString(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "good", classify.Good.String())
+	require.Equal(t, "spam", classify.Spam.String())
+}

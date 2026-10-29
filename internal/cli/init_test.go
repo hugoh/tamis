@@ -94,3 +94,24 @@ func TestInitRefusals(t *testing.T) {
 		})
 	}
 }
+
+func TestInitFailsWhenConfigDirectoryCannotBeCreated(t *testing.T) {
+	t.Parallel()
+
+	blocker := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
+
+	got := execute(t.Context(), t, invocation{
+		args: []string{
+			initCmd,
+			configFlag,
+			filepath.Join(blocker, "config.toml"),
+			hostFlag,
+			"h",
+			userFlag,
+			"u",
+		},
+	})
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stderr, "create config directory")
+}

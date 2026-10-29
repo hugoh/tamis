@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const runCmd = "run"
+
 func message(from, subject, body string, at time.Time) []byte {
 	return fmt.Appendf(
 		nil,
@@ -34,7 +36,7 @@ func TestParseSpec(t *testing.T) {
 		limit   int
 		wantErr bool
 	}{
-		{"Junk=1000", "Junk", 1000, false},
+		{"Junk=1000", junkFolder, 1000, false},
 		{"work/some folder=5", "work/some folder", 5, false},
 		{"Junk", "", 0, true},
 		{"Junk=", "", 0, true},
@@ -139,7 +141,7 @@ func TestRunComparesVariants(t *testing.T) {
 
 	var out, errOut bytes.Buffer
 
-	err := run([]string{"run", "--warmup", "10", "--runs", "3", root}, &out, &errOut)
+	err := run([]string{runCmd, "--warmup", "10", "--runs", "3", root}, &out, &errOut)
 	require.NoError(t, err, errOut.String())
 	require.Contains(t, out.String(), "baseline")
 	require.Contains(t, out.String(), "recipient tokens")
@@ -154,5 +156,52 @@ func TestRunUsage(t *testing.T) {
 
 	require.Error(t, run(nil, &out, &errOut))
 	require.Error(t, run([]string{"bogus"}, &out, &errOut))
-	require.Error(t, run([]string{"run"}, &out, &errOut), "run needs a folder")
+	require.Error(t, run([]string{runCmd}, &out, &errOut), "run needs a folder")
+}
+
+func TestRunCommandRefusals(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"bad flag", []string{runCmd, "--bogus"}},
+		{"no folder", []string{runCmd, "--own", "me@example.com"}},
+		{"empty corpus folder", []string{runCmd, filepath.Join(t.TempDir(), "absent")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Error(t, run(tt.args, &bytes.Buffer{}, &bytes.Buffer{}))
+		})
+	}
+}
+
+func TestOwnAddressesSplitsTheFlag(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(
+		t,
+		[]string{"a@x.example", "b@x.example"},
+		ownAddresses("a@x.example,b@x.example"),
+	)
+}
+
+func TestOwnAddressesDefaultsToTheAccount(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tamis", "config.toml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(
+		t,
+		os.WriteFile(path, []byte("[account]\nhost = \"h\"\nuser = \"me@example.com\"\n"), 0o600),
+	)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	require.Equal(t, []string{"me@example.com"}, ownAddresses(""))
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	require.Nil(t, ownAddresses(""), "no config, no addresses")
 }

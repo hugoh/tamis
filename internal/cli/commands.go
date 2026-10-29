@@ -15,6 +15,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
 	"github.com/hugoh/tamis/internal/mail"
@@ -368,6 +369,90 @@ func (a *app) undoCommand() *cobra.Command {
 			)
 		},
 	}
+}
+
+func (a *app) learnCommand() *cobra.Command {
+	var good, spam bool
+
+	cmd := &cobra.Command{
+		Use:   "learn ID...",
+		Short: "Teach tamis the right answer for decisions it only recorded",
+		Long: "Teach tamis the right answer for decisions it recorded without acting on, by\n" +
+			"the IDs 'tamis log' shows (shadow mode). With no flag it learns the opposite\n" +
+			"of the verdict. The mail stays where it is. Use 'tamis undo' for decisions\n" +
+			"that were applied.",
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			ids, err := parseIDs(args)
+			if err != nil {
+				return err
+			}
+
+			var label *classify.Label
+
+			switch {
+			case good:
+				label = new(classify.Good)
+			case spam:
+				label = new(classify.Spam)
+			}
+
+			cfg, database, err := a.open(ctx)
+			if err != nil {
+				return err
+			}
+
+			defer func() { _ = database.Close() }()
+
+			return a.withEngine(
+				ctx,
+				cfg,
+				database,
+				a.logger(cmd),
+				passTimeout,
+				func(ctx context.Context, eng *engine.Engine) error {
+					return learnAll(ctx, cmd, eng, ids, label)
+				},
+			)
+		},
+	}
+	cmd.Flags().BoolVar(&good, "good", false, "learn as good")
+	cmd.Flags().BoolVar(&spam, "spam", false, "learn as spam")
+	cmd.MarkFlagsMutuallyExclusive("good", "spam")
+
+	return cmd
+}
+
+// learnAll learns from each decision in turn, reporting each outcome, and
+// fails if any of them did.
+func learnAll(
+	ctx context.Context,
+	cmd *cobra.Command,
+	eng *engine.Engine,
+	ids []int64,
+	label *classify.Label,
+) error {
+	failed := false
+
+	for _, decisionID := range ids {
+		summary, err := eng.Learn(ctx, decisionID, label)
+		if err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%d: %v\n", decisionID, err)
+			failed = true
+
+			continue
+		}
+
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d: %s\n", decisionID, summary)
+	}
+
+	if failed {
+		return errReported
+	}
+
+	return nil
 }
 
 func parseIDs(args []string) ([]int64, error) {

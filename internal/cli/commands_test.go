@@ -420,3 +420,38 @@ func TestUndoArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestLearn(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	a.seedCorpus(t)
+	require.Zero(t, a.run(t, "bootstrap").code)
+
+	a.add(
+		t,
+		"INBOX",
+		nil,
+		time.Now(),
+		"WINNER claim prize",
+		"Congratulations winner, claim your lottery prize.",
+	)
+	require.Zero(t, a.run(t, runCmd, onceFlag).code)
+
+	got := a.run(t, "learn", "1")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "1: learnt as good")
+
+	got = a.run(t, "learn", "--spam", "1")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "1: learnt as spam")
+
+	got = a.run(t, "learn", "--good", "--spam", "1")
+	require.Equal(t, 2, got.code)
+	require.Contains(t, got.stderr, "none of the others can be")
+
+	got = a.run(t, "learn", "42")
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stderr, "42: ")
+	require.Contains(t, got.stderr, "not found")
+}

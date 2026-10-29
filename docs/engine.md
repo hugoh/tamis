@@ -184,6 +184,17 @@ new UID. Undo refuses:
 The decision is marked undone last, so an undo that fails partway (say the
 move back fails) can simply be run again.
 
+## Learn
+
+`tamis learn [--good|--spam] ID...` teaches tamis the right answer for a
+decision it only recorded, which is what shadow mode produces. With no flag it
+learns the opposite of the verdict; an uncertain verdict needs a flag. It
+trains the message and updates the whitelist like an undo would, but moves
+nothing and sets no keyword, and journals the result as a `correction`.
+
+It refuses decisions that were applied (use `undo`) and anything that isn't
+tamis's own judgement, such as training and corrections.
+
 ## Rescue
 
 With `policy.rescue` on (the default), the Junk scan also looks for good

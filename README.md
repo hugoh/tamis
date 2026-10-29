@@ -82,6 +82,7 @@ tamis run         # judge new mail every poll_interval (--once for one pass)
 tamis log         # what it decided, and in shadow mode what it would have done
 tamis status      # mode, folders, how much it has learnt
 tamis undo 42     # reverse decision 42 from the log
+tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
 ```
 
 To correct it from any mail client, on any device:

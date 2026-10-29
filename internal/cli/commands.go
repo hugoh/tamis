@@ -18,6 +18,7 @@ import (
 	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
+	"github.com/hugoh/tamis/internal/health"
 	"github.com/hugoh/tamis/internal/mail"
 	"github.com/hugoh/tamis/internal/store"
 	"github.com/spf13/cobra"
@@ -613,6 +614,61 @@ func (a *app) statusCommand() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func (a *app) doctorCommand() *cobra.Command {
+	var asJSON bool
+
+	cmd := &cobra.Command{
+		Use:   "doctor",
+		Short: "Check that the filter is in good shape",
+		Long: "Check that the filter is in good shape: whether it has learnt from both kinds\n" +
+			"of mail, how it has been deciding lately, and whether it is still deciding.\n" +
+			"Exits non-zero when a check fails.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+
+			_, database, err := a.open(ctx)
+			if err != nil {
+				return err
+			}
+
+			defer func() { _ = database.Close() }()
+
+			stats, err := database.Stats(ctx)
+			if err != nil {
+				return err //nolint:wrapcheck // store errors carry their context
+			}
+
+			recent, err := database.Decisions(ctx, health.Window)
+			if err != nil {
+				return err //nolint:wrapcheck // store errors carry their context
+			}
+
+			report := health.Run(health.Input{Stats: stats, Recent: recent, Now: time.Now()})
+
+			if asJSON {
+				err = report.WriteJSON(cmd.OutOrStdout())
+			} else {
+				err = report.WriteText(cmd.OutOrStdout())
+			}
+
+			if err != nil {
+				return errors.Join(errReported, err)
+			}
+
+			if report.Failed() {
+				return errReported
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the report as JSON")
+
+	return cmd
 }
 
 // chooseSources fills opts from the flags. Naming any of --sent, --spam or

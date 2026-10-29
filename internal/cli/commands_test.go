@@ -474,3 +474,26 @@ func TestLearn(t *testing.T) {
 	require.Contains(t, got.stderr, "42: ")
 	require.Contains(t, got.stderr, "not found")
 }
+
+func TestDoctor(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	got := a.run(t, "doctor")
+	require.Equal(t, 1, got.code, "an untrained model is a failure")
+	require.Contains(t, got.stdout, "FAIL")
+	require.Contains(t, got.stdout, "class balance")
+
+	a.seedCorpus(t)
+	require.Zero(t, a.run(t, "bootstrap").code)
+
+	got = a.run(t, "doctor")
+	require.Zero(t, got.code, got.stdout)
+	require.Contains(t, got.stdout, "WARN")
+	require.Contains(t, got.stdout, "5 spam, 5 good")
+
+	got = a.run(t, "doctor", "--json")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, `"name": "class balance"`)
+}

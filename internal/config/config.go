@@ -330,7 +330,7 @@ func (a Account) Addr() string {
 
 // passwordCommandTimeout bounds password_command, so a hung command can't
 // block the run loop.
-const passwordCommandTimeout = 30 * time.Second
+const passwordCommandTimeout = 2 * time.Minute
 
 // Password runs PasswordCommand. It returns ErrNoPasswordCommand when none
 // is configured, so callers can try other sources.
@@ -352,6 +352,11 @@ func (a Account) passwordWithin(ctx context.Context, timeout time.Duration) (str
 	command.WaitDelay = time.Second
 
 	out, err := command.Output()
+
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return "", fmt.Errorf("account.password_command: %w after %s", errTimedOut, timeout)
+	}
+
 	if err != nil {
 		return "", fmt.Errorf("account.password_command: %w", err)
 	}
@@ -363,6 +368,8 @@ func (a Account) passwordWithin(ctx context.Context, timeout time.Duration) (str
 
 	return password, nil
 }
+
+var errTimedOut = errors.New("timed out")
 
 var errNoHome = errors.New(
 	"no home directory: set XDG_CONFIG_HOME and XDG_STATE_HOME, pass --config, or set state in the config file",

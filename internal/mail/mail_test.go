@@ -930,3 +930,54 @@ func TestWaitForNewMailInAnyFolder(t *testing.T) {
 		})
 	}
 }
+
+func TestWaitForNewMailInSurvivesAFailingFolder(t *testing.T) {
+	t.Parallel()
+
+	const maxWait = 2 * time.Second
+
+	tests := []struct {
+		name    string
+		folders []string
+		arrives bool
+		wantErr bool
+	}{
+		{"another folder still hears of mail", []string{"Missing", "INBOX"}, true, false},
+		{"every folder fails", []string{"Missing", "AlsoMissing"}, false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := imaptest.Start(t, imaptest.Rev2())
+			client := connect(t, srv)
+
+			state, err := client.State("INBOX")
+			require.NoError(t, err)
+
+			watches := make([]mail.Watch, 0, len(tt.folders))
+			for _, folder := range tt.folders {
+				watches = append(watches, mail.Watch{Mailbox: folder, Seen: state})
+			}
+
+			if tt.arrives {
+				time.AfterFunc(200*time.Millisecond, func() {
+					seed(t, client, "INBOX", raw("a@x", "b@y", "pushed"))
+				})
+			}
+
+			start := time.Now()
+			err = mail.WaitForNewMailIn(t.Context(), dialConfig(srv), watches, maxWait)
+
+			if tt.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Less(t, time.Since(start), maxWait)
+		})
+	}
+}

@@ -284,6 +284,9 @@ func (e *Engine) handleSent(ctx context.Context, _ string, message mail.Message)
 	for _, header := range []string{"To", "Cc"} {
 		list, err := parsed.Header.AddressList(header)
 		if err != nil {
+			e.log.DebugContext(ctx, "unreadable recipients in sent message",
+				"uid", message.UID, "header", header, "error", err)
+
 			continue
 		}
 

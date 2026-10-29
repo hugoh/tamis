@@ -47,16 +47,29 @@ type passwordFinder struct {
 	env   Env
 	stdin io.Reader
 	typed string
+	// command is what password_command printed, so a long-running command
+	// doesn't call the vault on every pass.
+	command string
+}
+
+func (f *passwordFinder) findFromCommand(ctx context.Context, command []string) (string, error) {
+	if f.command != "" {
+		return f.command, nil
+	}
+
+	password, err := config.Account{PasswordCommand: command}.Password(ctx)
+	if err != nil {
+		return "", fmt.Errorf("password: %w", err)
+	}
+
+	f.command = password
+
+	return password, nil
 }
 
 func (f *passwordFinder) find(ctx context.Context, who credentials) (string, error) {
 	if len(who.command) > 0 {
-		password, err := config.Account{PasswordCommand: who.command}.Password(ctx)
-		if err != nil {
-			return "", fmt.Errorf("password: %w", err)
-		}
-
-		return password, nil
+		return f.findFromCommand(ctx, who.command)
 	}
 
 	if password, found, err := systemdCredential(f.env); found || err != nil {

@@ -158,8 +158,8 @@ tamis looks for the password in this order:
 
 1. `account.password_command`, when set: a command run without a shell,
    whose output is the password, e.g. `["pass", "show", "mail/icloud"]` or
-   `["op", "read", "op://Personal/iCloud/tamis"]`. It is stopped after 30
-   seconds.
+   `["op", "read", "op://Personal/iCloud/tamis"]`. It is stopped after two
+   minutes, and its output is kept for as long as `tamis run` is up.
 2. A systemd credential named `password` (see below).
 3. The system keychain, filled by `tamis login`: the macOS Keychain, the
    Secret Service (GNOME Keyring, KWallet) on Linux, or the Windows

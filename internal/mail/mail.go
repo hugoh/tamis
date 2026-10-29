@@ -568,8 +568,9 @@ type Watch struct {
 }
 
 // WaitForNewMailIn is WaitForNewMail over several folders: it IDLEs on one
-// connection per folder and returns as soon as any of them has mail, ends
-// or fails. That result is the one returned; the other waits are stopped.
+// connection per folder and returns as soon as any of them has mail or ends.
+// A folder that fails drops out; the first failure is returned only when
+// every folder failed. The other waits are stopped on return.
 func WaitForNewMailIn(
 	ctx context.Context,
 	cfg DialConfig,
@@ -593,11 +594,20 @@ func WaitForNewMailIn(
 		group.Wait()
 	}()
 
-	if len(watches) == 0 {
-		return nil
+	var failure error
+
+	for range watches {
+		err := <-results
+		if err == nil {
+			return nil
+		}
+
+		if failure == nil {
+			failure = err
+		}
 	}
 
-	return <-results
+	return failure
 }
 
 // idleUntil IDLEs until a message is reported on arrived, maxWait passes or

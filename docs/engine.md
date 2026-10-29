@@ -37,7 +37,8 @@ flowchart LR
 `RunOnce` is one pass over the account. The daemon repeats it when new mail
 arrives in a watched folder, or after `policy.poll_interval` if none does.
 Between passes it IDLEs on one extra connection per watched folder, and the
-first to hear of mail ends the wait. Before idling it compares each folder's
+first to hear of mail ends the wait. A folder whose IDLE fails drops out and
+the others keep waiting; the loop falls back to sleeping only when all fail. Before idling it compares each folder's
 UIDNEXT with the cursor the pass saved, so mail that arrived in between starts
 the next pass at once. It falls
 back to plain sleeping when the server doesn't advertise IDLE, the connection

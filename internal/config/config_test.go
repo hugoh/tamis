@@ -297,6 +297,6 @@ func TestPasswordCommandTimesOut(t *testing.T) {
 		PasswordCommand: []string{"sh", "-c", "sleep 10 & wait"},
 	}.PasswordWithin(t.Context(), 200*time.Millisecond)
 
-	require.ErrorContains(t, err, "password_command")
+	require.ErrorContains(t, err, "timed out after 200ms")
 	require.Less(t, time.Since(start), 5*time.Second)
 }

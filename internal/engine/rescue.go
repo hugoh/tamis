@@ -15,15 +15,16 @@ import (
 
 // rescue moves mail the provider filed to Junk back out when its sender is
 // whitelisted and authenticated, or (if enabled) its score is very low.
-func (e *Engine) rescue(ctx context.Context, message mail.Message, summary *Summary) error {
-	candidate, err := e.isRescueCandidate(ctx, message)
+// It reports whether it rescued the message.
+func (e *Engine) rescue(ctx context.Context, message mail.Message, summary *Summary) (bool, error) {
+	candidate, err := e.isProviderFiled(ctx, message)
 	if err != nil || !candidate {
-		return err
+		return false, err
 	}
 
 	verdict, rescued, err := e.judgeRescue(ctx, message)
 	if err != nil || !rescued {
-		return err
+		return false, err
 	}
 
 	summary.Rescued++
@@ -34,19 +35,19 @@ func (e *Engine) rescue(ctx context.Context, message mail.Message, summary *Summ
 
 	if e.cfg.Policy.Mode == config.ModeLive {
 		if err := e.moveRescued(message.UID, dest); err != nil {
-			return fmt.Errorf("rescue: %w", err)
+			return false, fmt.Errorf("rescue: %w", err)
 		}
 
 		applied = true
 	}
 
-	return e.record(ctx, e.cfg.Folders.Junk, message, verdict, action, applied)
+	return true, e.record(ctx, e.cfg.Folders.Junk, message, verdict, action, applied)
 }
 
-// isRescueCandidate keeps rescue to mail tamis never saw: the provider filed
-// it. Anything tamis judged, trained or filed, and anything the user marked
-// Junk, was put there deliberately.
-func (e *Engine) isRescueCandidate(ctx context.Context, message mail.Message) (bool, error) {
+// isProviderFiled reports whether a message in Junk is mail tamis never saw:
+// the provider filed it. Anything tamis judged, trained or filed, and
+// anything the user marked Junk, was put there deliberately.
+func (e *Engine) isProviderFiled(ctx context.Context, message mail.Message) (bool, error) {
 	if slices.Contains(message.Flags, strings.ToLower(FiledKeyword)) {
 		return false, nil
 	}

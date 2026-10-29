@@ -50,8 +50,8 @@ flowchart TD
     trainGood --> watch{Next watched folder?}
     watch -- yes --> scan[Scan folder]
     scan --> watch
-    watch -- no --> learn{learn_from_junk<br/>or rescue?}
-    learn -- yes --> junk[Scan Junk<br/>learn missed spam, rescue]
+    watch -- no --> learn{learn_from_junk, rescue<br/>or learn_provider_junk?}
+    learn -- yes --> junk[Scan Junk<br/>learn missed spam, rescue,<br/>learn provider spam]
     learn -- no --> marks{learn_from_keywords?}
     junk --> marks
     marks -- yes --> keywords[Search Junk / Not Junk marks<br/>learn contradictions]
@@ -65,7 +65,7 @@ skips it instead of judging it again.
 
 Training folders are processed in both modes. Dropping a message into one is
 an explicit request, not a judgement tamis makes on its own. The same goes for
-the Junk scan, which only learns from your moves.
+the Junk scan, which learns from your moves and from the provider's filing.
 
 ## Scanning a folder
 
@@ -154,7 +154,7 @@ falls in the uncertain band.
 | good | nothing | nothing | `none` |
 
 Every decision is journalled with its verdict, reason (`bayes`,
-`whitelisted`, `correction`, `train folder`), score, planned action and
+`whitelisted`, `correction`, `train folder`, `provider junk`), score, planned action and
 whether that action was applied. In shadow mode, the journal shows what live
 mode would have done; `tamis log` prints it.
 
@@ -230,6 +230,39 @@ flowchart TD
 - A rescued message is not judged again in the inbox. Move it back to Junk and
   tamis learns it as spam and drops the sender from the whitelist; `tamis
   undo` does the same.
+
+## Provider-filed Junk
+
+With `policy.learn_provider_junk` on (the default), mail the provider files to
+Junk that tamis never saw is also training data. After rescue has had its
+turn, each such arrival is scored:
+
+```mermaid
+flowchart TD
+    arrival([New in Junk]) --> mine{Judged, trained, filed<br/>or marked Junk before?}
+    mine -- yes --> ignore([Ignore: handled elsewhere])
+    mine -- no --> rescued{Rescued?}
+    rescued -- yes --> done([Not trained])
+    rescued -- no --> score{Score}
+    score -- "≥ spam_threshold" --> sure([Skip: already sure])
+    score -- below --> learn[Train as spam<br/>reason: provider junk]
+    learn --> journal[(Journal: spam, train:spam)]
+```
+
+- **Only what it doesn't already know.** Mail scoring at or above
+  `spam_threshold` would only reinforce the model; the mistakes and doubts are
+  what it learns from.
+- **Tokens only.** The sender stays on the whitelist if they are on it: a
+  forged message from a contact lands in Junk too, and learning it must not
+  cost you the real contact.
+- **Both modes.** Like the other learning from the Junk folder, it happens in
+  shadow mode too. It counts towards `Trained` in the pass summary.
+- **Fixing a wrong one.** If the provider was wrong, drop the message in
+  **TrainGood**: training it as good reverses the spam training and
+  whitelists the sender. A Not Junk mark or a plain move to the inbox is not
+  learnt, since tamis's decision for the message was made in Junk.
+- Turn it off with `learn_provider_junk = false` if another program files mail
+  to Junk that you don't want as training data.
 
 ## Missed spam
 

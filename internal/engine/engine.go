@@ -42,10 +42,11 @@ const (
 	VerdictUncertain = "uncertain"
 	VerdictGood      = "good"
 
-	ReasonBayes       = "bayes"
-	ReasonWhitelisted = "whitelisted"
-	ReasonCorrection  = "correction"
-	ReasonTrainFolder = "train folder"
+	ReasonBayes        = "bayes"
+	ReasonWhitelisted  = "whitelisted"
+	ReasonCorrection   = "correction"
+	ReasonTrainFolder  = "train folder"
+	ReasonProviderJunk = "provider junk"
 
 	actionNone = "none"
 )
@@ -124,14 +125,8 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		}
 	}
 
-	if e.cfg.Policy.LearnFromJunk || e.cfg.Policy.Rescue {
-		junk := func(ctx context.Context, _ string, message mail.Message) error {
-			return e.handleJunk(ctx, message, &summary)
-		}
-
-		if err := e.scan(ctx, e.cfg.Folders.Junk, junk); err != nil {
-			return summary, err
-		}
+	if err := e.scanJunk(ctx, &summary); err != nil {
+		return summary, err
 	}
 
 	if e.cfg.Policy.LearnFromKeywords {
@@ -141,6 +136,19 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	}
 
 	return summary, nil
+}
+
+// scanJunk hands new arrivals in Junk to handleJunk when any policy wants them.
+func (e *Engine) scanJunk(ctx context.Context, summary *Summary) error {
+	policy := e.cfg.Policy
+	if !policy.LearnFromJunk && !policy.Rescue && !policy.LearnProviderJunk {
+		return nil
+	}
+
+	return e.scan(ctx, e.cfg.Folders.Junk,
+		func(ctx context.Context, _ string, message mail.Message) error {
+			return e.handleJunk(ctx, message, summary)
+		})
 }
 
 // handler processes one newly arrived message in a scanned folder.

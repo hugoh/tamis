@@ -45,6 +45,7 @@ user = "me@icloud.com"
 	require.Equal(t, 2*time.Minute, cfg.Policy.PollInterval.Duration)
 	require.True(t, cfg.Policy.WhitelistRequiresAuth)
 	require.True(t, cfg.Policy.LearnFromJunk)
+	require.True(t, cfg.Policy.LearnProviderJunk)
 	require.True(t, cfg.Policy.LearnFromKeywords)
 	require.True(t, cfg.Policy.Rescue)
 	require.Zero(t, cfg.Policy.RescueThreshold)

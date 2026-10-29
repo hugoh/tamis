@@ -69,6 +69,7 @@ good_threshold = 0.2       # score <= this is good; between is uncertain
 poll_interval = "2m"
 whitelist_requires_auth = true  # trust a whitelisted sender only if DKIM/DMARC passed
 learn_from_junk = true     # mail tamis let through that you move to Junk is learnt as spam
+learn_provider_junk = true # mail the provider files to Junk that tamis isn't sure is spam is learnt
 learn_from_keywords = true # Junk / Not Junk buttons that disagree with tamis are learnt
 rescue = true              # move mail from verified whitelisted senders out of Junk
 rescue_threshold = 0       # also rescue mail scoring at or below this, e.g. 0.05; 0 is off
@@ -99,9 +100,15 @@ To correct it from any mail client, on any device:
 - Moving a message tamis rescued from Junk back into Junk teaches it that the
   message is spam.
 
+Tamis also learns from mail your provider files to Junk, with no action from
+you, when it scores below `spam_threshold` and isn't rescued. Mail it is
+already sure about teaches it nothing, and the sender's whitelist entry is
+left alone.
+
 If another program also moves mail to Junk (Mail.app's own junk filter, or
 SpamSieve), set `learn_from_junk = false`: tamis can't tell its moves from
-yours.
+yours. Set `learn_provider_junk = false` too if you don't trust that program's
+verdicts as training data.
 
 `bootstrap` trains on Junk and the inbox by default. Name other folders, and
 how many recent messages to take from each, with `-s`/`--spam` and

@@ -36,7 +36,7 @@ func (e *Engine) learnFromJunk(
 }
 
 // handleJunk learns from what the user moved to Junk, then considers
-// rescuing what the provider put there.
+// rescuing what the provider put there, and learns from what stays.
 func (e *Engine) handleJunk(ctx context.Context, message mail.Message, summary *Summary) error {
 	if e.cfg.Policy.LearnFromJunk {
 		if learnt, err := e.learnFromJunk(ctx, message, summary); err != nil || learnt {
@@ -45,10 +45,53 @@ func (e *Engine) handleJunk(ctx context.Context, message mail.Message, summary *
 	}
 
 	if e.cfg.Policy.Rescue {
-		return e.rescue(ctx, message, summary)
+		if rescued, err := e.rescue(ctx, message, summary); err != nil || rescued {
+			return err
+		}
+	}
+
+	if e.cfg.Policy.LearnProviderJunk {
+		return e.learnProviderJunk(ctx, message, summary)
 	}
 
 	return nil
+}
+
+// learnProviderJunk trains mail the provider filed to Junk as spam when tamis
+// isn't already sure it is: only those teach the model something. It trains
+// the tokens and leaves the whitelist alone, since a forged message from a
+// contact lands here too.
+func (e *Engine) learnProviderJunk(
+	ctx context.Context,
+	message mail.Message,
+	summary *Summary,
+) error {
+	filed, err := e.isProviderFiled(ctx, message)
+	if err != nil || !filed {
+		return err
+	}
+
+	tokens := classify.Tokenize(message.Raw)
+
+	model, err := e.store.Model(ctx, tokens)
+	if err != nil {
+		return fmt.Errorf("learn provider junk: %w", err)
+	}
+
+	score := classify.Score(model, tokens).Score
+	if score >= e.cfg.Policy.SpamThreshold {
+		return nil
+	}
+
+	if _, err := e.store.Train(ctx, trainingKey(message), tokens, classify.Spam); err != nil {
+		return fmt.Errorf("learn provider junk: %w", err)
+	}
+
+	summary.Trained++
+
+	return e.record(ctx, e.cfg.Folders.Junk, message,
+		judgement{verdict: VerdictSpam, reason: ReasonProviderJunk, score: score},
+		"train:spam", true)
 }
 
 // isMissedSpam reports whether the user moved this message to Junk after

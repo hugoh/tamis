@@ -92,6 +92,11 @@ type Policy struct {
 	// later appears in Junk as one the user moved there: missed spam. Turn
 	// it off if another program (e.g. Mail.app's junk filter) moves mail.
 	LearnFromJunk bool `toml:"learn_from_junk"`
+	// LearnProviderJunk trains mail the provider filed to Junk as spam when
+	// tamis scores it below SpamThreshold: the provider knew something the
+	// model didn't. Turn it off if another program (e.g. Mail.app's junk
+	// filter) also files mail there and you don't trust it.
+	LearnProviderJunk bool `toml:"learn_provider_junk"`
 	// LearnFromKeywords learns from the Junk / Not Junk marks mail clients
 	// set ($Junk, $NotJunk, and Apple Mail's Junk, NotJunk) when they
 	// contradict tamis's own verdict.
@@ -141,6 +146,7 @@ func defaults() Config {
 			PollInterval:          Duration{2 * time.Minute},
 			WhitelistRequiresAuth: true,
 			LearnFromJunk:         true,
+			LearnProviderJunk:     true,
 			LearnFromKeywords:     true,
 			Rescue:                true,
 		},

@@ -9,6 +9,7 @@ import (
 
 	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/store"
 )
 
 // keywordWindow bounds how far back keyword marks are looked for, so each
@@ -34,19 +35,79 @@ func (e *Engine) learnFromKeywords(ctx context.Context, summary *Summary) error 
 	folders := append(slices.Clone(e.cfg.Folders.Watch), e.cfg.Folders.Junk)
 
 	for _, folder := range folders {
-		for label, keywords := range junkMarks() {
-			uids, err := e.mail.SearchKeywords(folder, keywords, since)
-			if err != nil {
-				return fmt.Errorf("search %s for %v: %w", folder, keywords, err)
-			}
-
-			if err := e.learnMarked(ctx, folder, uids, label, summary); err != nil {
-				return err
-			}
+		if err := e.learnFolderKeywords(ctx, folder, since, summary); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// learnFolderKeywords searches one folder for marks. With CONDSTORE it only
+// looks at flags changed since its last search, then saves how far it got.
+func (e *Engine) learnFolderKeywords(
+	ctx context.Context,
+	folder string,
+	since time.Time,
+	summary *Summary,
+) error {
+	current, condstore, err := e.mail.ModState(folder)
+	if err != nil {
+		return fmt.Errorf("search %s for marks: %w", folder, err)
+	}
+
+	changedSince, err := e.changedSince(ctx, folder, current, condstore)
+	if err != nil {
+		return err
+	}
+
+	for label, keywords := range junkMarks() {
+		uids, err := e.mail.SearchKeywords(folder, keywords, since, changedSince)
+		if err != nil {
+			return fmt.Errorf("search %s for %v: %w", folder, keywords, err)
+		}
+
+		if err := e.learnMarked(ctx, folder, uids, label, summary); err != nil {
+			return err
+		}
+	}
+
+	if !condstore {
+		return nil
+	}
+
+	err = e.store.SetModSeq(ctx, folder,
+		store.ModSeq{UIDValidity: current.UIDValidity, Highest: current.HighestModSeq})
+	if err != nil {
+		return fmt.Errorf("search %s for marks: %w", folder, err)
+	}
+
+	return nil
+}
+
+// changedSince is the mod-sequence the folder's last search reached, or 0
+// to search every flag: without CONDSTORE, on the first search, or after
+// UIDVALIDITY changed.
+func (e *Engine) changedSince(
+	ctx context.Context,
+	folder string,
+	current mail.ModState,
+	condstore bool,
+) (uint64, error) {
+	if !condstore {
+		return 0, nil
+	}
+
+	saved, found, err := e.store.ModSeq(ctx, folder)
+	if err != nil {
+		return 0, fmt.Errorf("search %s for marks: %w", folder, err)
+	}
+
+	if !found || saved.UIDValidity != current.UIDValidity {
+		return 0, nil
+	}
+
+	return saved.Highest, nil
 }
 
 // learnMarked decides from headers alone which marked messages to learn,

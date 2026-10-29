@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1606,4 +1607,100 @@ func TestUndoRescue(t *testing.T) {
 	require.False(t, whitelisted)
 
 	require.Equal(t, engine.Summary{}, e.run(t), "not rescued again")
+}
+
+// condstore plays a CONDSTORE server over the in-memory one, which lacks it:
+// it reports a set HIGHESTMODSEQ and records the bound each keyword search
+// asks for.
+type condstore struct {
+	*mail.Client
+
+	uidValidity uint32
+	highest     uint64
+	searched    []uint64
+}
+
+func (c *condstore) ModState(string) (mail.ModState, bool, error) {
+	return mail.ModState{UIDValidity: c.uidValidity, HighestModSeq: c.highest}, true, nil
+}
+
+func (c *condstore) SearchKeywords(
+	mailbox string,
+	keywords []string,
+	since time.Time,
+	changedSince uint64,
+) ([]uint32, error) {
+	c.searched = append(c.searched, changedSince)
+
+	return c.Client.SearchKeywords(mailbox, keywords, since, 0) //nolint:wrapcheck // test double
+}
+
+func (e *env) withCondstore() *condstore {
+	server := &condstore{Client: e.client, uidValidity: 1}
+	e.engine = engine.New(server, e.db, e.cfg, slog.New(slog.DiscardHandler))
+
+	return server
+}
+
+func TestKeywordSearchesWithCondstore(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// between runs after the first pass, before the second.
+		between func(server *condstore)
+		want    uint64
+	}{
+		{"start after the saved mod-sequence", func(server *condstore) { server.highest = 20 }, 10},
+		{
+			"new UIDVALIDITY searches everything",
+			func(server *condstore) { server.uidValidity++ },
+			0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, config.ModeShadow)
+			server := e.withCondstore()
+			server.highest = 10
+
+			e.run(t)
+			require.NotEmpty(t, server.searched)
+			require.Equal(t, uint64(0), slices.Max(server.searched), "nothing saved yet")
+
+			tt.between(server)
+			server.searched = nil
+
+			e.run(t)
+
+			require.NotEmpty(t, server.searched)
+
+			for _, bound := range server.searched {
+				require.Equal(t, tt.want, bound)
+			}
+
+			saved, ok, err := e.db.ModSeq(t.Context(), inbox)
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(
+				t,
+				store.ModSeq{UIDValidity: server.uidValidity, Highest: server.highest},
+				saved,
+			)
+		})
+	}
+}
+
+func TestKeywordSearchesWithoutCondstoreSaveNothing(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.run(t)
+
+	_, ok, err := e.db.ModSeq(t.Context(), inbox)
+	require.NoError(t, err)
+	require.False(t, ok)
 }

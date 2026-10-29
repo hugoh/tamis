@@ -181,17 +181,51 @@ func (c *Client) FindMessageID(mailbox, messageID string) ([]uint32, error) {
 	})
 }
 
+// ModState is a folder's CONDSTORE position.
+type ModState struct {
+	UIDValidity   uint32
+	HighestModSeq uint64
+}
+
+// ModState returns the folder's HIGHESTMODSEQ, or false when the server
+// doesn't advertise CONDSTORE.
+func (c *Client) ModState(mailbox string) (ModState, bool, error) {
+	if !c.imap.Caps().Has(imap.CapCondStore) {
+		return ModState{}, false, nil
+	}
+
+	status, err := c.imap.Status(mailbox, &imap.StatusOptions{UIDValidity: true, HighestModSeq: true}).
+		Wait()
+	if err != nil {
+		return ModState{}, false, fmt.Errorf("status %s: %w", mailbox, err)
+	}
+
+	c.log.Debug("mod state", "mailbox", mailbox, "uidvalidity", status.UIDValidity,
+		"highestmodseq", status.HighestModSeq)
+
+	return ModState{UIDValidity: status.UIDValidity, HighestModSeq: status.HighestModSeq}, true, nil
+}
+
 // SearchKeywords lists messages carrying any of the keywords that arrived
-// on or after since (zero for no bound). No keywords match nothing.
+// on or after since (zero for no bound) and, with CONDSTORE, whose flags
+// changed after the changedSince mod-sequence (zero for no bound). No
+// keywords match nothing.
 func (c *Client) SearchKeywords(
 	mailbox string,
 	keywords []string,
 	since time.Time,
+	changedSince uint64,
 ) ([]uint32, error) {
 	if len(keywords) == 0 {
 		return nil, nil
 	}
 
+	criteria := keywordCriteria(keywords, since, changedSince)
+
+	return c.search(mailbox, &criteria)
+}
+
+func keywordCriteria(keywords []string, since time.Time, changedSince uint64) imap.SearchCriteria {
 	criteria := imap.SearchCriteria{Flag: []imap.Flag{imap.Flag(keywords[0])}}
 
 	for _, keyword := range keywords[1:] {
@@ -202,7 +236,12 @@ func (c *Client) SearchKeywords(
 
 	criteria.Since = since
 
-	return c.search(mailbox, &criteria)
+	if changedSince > 0 {
+		// MODSEQ n matches mod-sequences of n or more.
+		criteria.ModSeq = &imap.SearchCriteriaModSeq{ModSeq: changedSince + 1}
+	}
+
+	return criteria
 }
 
 // SeenBefore lists read messages that arrived before the given day.

@@ -172,6 +172,30 @@ func TestCursor(t *testing.T) {
 	require.Equal(t, store.Cursor{UIDValidity: 7, LastUID: 43}, cursor)
 }
 
+func TestModSeq(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	_, ok, err := db.ModSeq(t.Context(), inbox)
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	require.NoError(
+		t,
+		db.SetModSeq(t.Context(), inbox, store.ModSeq{UIDValidity: 7, Highest: 1 << 40}),
+	)
+	require.NoError(
+		t,
+		db.SetModSeq(t.Context(), inbox, store.ModSeq{UIDValidity: 7, Highest: 1<<40 + 1}),
+	)
+
+	modSeq, ok, err := db.ModSeq(t.Context(), inbox)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, store.ModSeq{UIDValidity: 7, Highest: 1<<40 + 1}, modSeq)
+}
+
 func TestDecisions(t *testing.T) {
 	t.Parallel()
 
@@ -276,6 +300,17 @@ func TestClosedStoreFails(t *testing.T) {
 			t.Helper()
 
 			require.Error(t, db.SetCursor(t.Context(), inbox, store.Cursor{}))
+		},
+		"mod seq": func(t *testing.T) {
+			t.Helper()
+
+			_, _, err := db.ModSeq(t.Context(), inbox)
+			require.Error(t, err)
+		},
+		"set mod seq": func(t *testing.T) {
+			t.Helper()
+
+			require.Error(t, db.SetModSeq(t.Context(), inbox, store.ModSeq{}))
 		},
 		"record decision": func(t *testing.T) {
 			t.Helper()

@@ -25,6 +25,11 @@ func migrations() []string {
 		`ALTER TABLE decisions ADD COLUMN undone INTEGER NOT NULL DEFAULT 0;`,
 		`CREATE INDEX decisions_by_message_id ON decisions (message_id);`,
 		`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+		`CREATE TABLE mod_seqs (
+			mailbox      TEXT PRIMARY KEY,
+			uid_validity INTEGER NOT NULL,
+			highest      INTEGER NOT NULL
+		);`,
 	}
 }
 
@@ -377,6 +382,45 @@ func (s *Store) SetCursor(ctx context.Context, mailbox string, cursor Cursor) er
 		mailbox, cursor.UIDValidity, cursor.LastUID)
 	if err != nil {
 		return fmt.Errorf("save cursor for %s: %w", mailbox, err)
+	}
+
+	return nil
+}
+
+// ModSeq is a folder's CONDSTORE HIGHESTMODSEQ as of the last keyword
+// search, valid only while the folder's UIDVALIDITY is unchanged.
+type ModSeq struct {
+	UIDValidity uint32
+	Highest     uint64
+}
+
+// ModSeq returns the folder's saved mod-sequence, if one was saved.
+func (s *Store) ModSeq(ctx context.Context, mailbox string) (ModSeq, bool, error) {
+	var modSeq ModSeq
+
+	err := s.db.QueryRowContext(ctx,
+		"SELECT uid_validity, highest FROM mod_seqs WHERE mailbox = ?", mailbox).
+		Scan(&modSeq.UIDValidity, &modSeq.Highest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ModSeq{}, false, nil
+	}
+
+	if err != nil {
+		return ModSeq{}, false, fmt.Errorf("read mod-sequence for %s: %w", mailbox, err)
+	}
+
+	return modSeq, true, nil
+}
+
+// SetModSeq saves the folder's mod-sequence.
+func (s *Store) SetModSeq(ctx context.Context, mailbox string, modSeq ModSeq) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO mod_seqs (mailbox, uid_validity, highest) VALUES (?, ?, ?)
+		 ON CONFLICT(mailbox) DO UPDATE SET
+		 uid_validity = excluded.uid_validity, highest = excluded.highest`,
+		mailbox, modSeq.UIDValidity, modSeq.Highest)
+	if err != nil {
+		return fmt.Errorf("save mod-sequence for %s: %w", mailbox, err)
 	}
 
 	return nil

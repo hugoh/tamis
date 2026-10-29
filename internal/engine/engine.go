@@ -66,7 +66,13 @@ type MailboxReader interface {
 	UIDsAfter(mailbox string, after uint32) ([]uint32, error)
 	SeenBefore(mailbox string, before time.Time) ([]uint32, error)
 	FindMessageID(mailbox, messageID string) ([]uint32, error)
-	SearchKeywords(mailbox string, keywords []string, since time.Time) ([]uint32, error)
+	ModState(mailbox string) (mail.ModState, bool, error)
+	SearchKeywords(
+		mailbox string,
+		keywords []string,
+		since time.Time,
+		changedSince uint64,
+	) ([]uint32, error)
 	Fetch(mailbox string, uids []uint32) ([]mail.Message, error)
 	FetchEnvelopes(mailbox string, uids []uint32) ([]mail.Message, error)
 	Recipients(mailbox string, uids []uint32) ([]string, error)

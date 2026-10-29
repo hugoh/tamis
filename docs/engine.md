@@ -29,7 +29,7 @@ flowchart LR
 | `mail` | IMAP operations: folder state, UID search, peeked fetch, move, keywords |
 | `classify` | Turns a message into tokens and scores them (SpamBayes-style chi-square) |
 | `auth` | Decides whether the provider authenticated the `From` domain |
-| `store` | Token counts, trained messages, whitelist, folder cursors, decision journal |
+| `store` | Token counts, trained messages, whitelist, folder cursors and mod-sequences, decision journal |
 | `engine` | Runs passes: trains, judges, files and records |
 
 ## A pass
@@ -347,8 +347,13 @@ default), each pass searches the watched folders and Junk for them on mail
 from the last 7 days.
 
 A server-side search finds marks without tracking flag changes, so this works
-whether or not the server's CONDSTORE does. Headers come first; a message's
-body is only downloaded once it is known to be learnt.
+on any server. When the server advertises CONDSTORE, tamis saves each folder's
+HIGHESTMODSEQ after searching it, and the next search only covers messages
+whose flags changed since (`MODSEQ`). A new UIDVALIDITY, or a first search,
+covers the whole window again. So with CONDSTORE a mark is weighed once, when
+it is set: one that didn't count then (say, on mail tamis hadn't judged yet)
+isn't reconsidered unless the message's flags change again. Headers come
+first; a message's body is only downloaded once it is known to be learnt.
 
 | Mark | Learnt when tamis judged it | Learns |
 |---|---|---|

@@ -425,6 +425,16 @@ const (
 	appleJunkKeyword = "Junk"
 )
 
+func TestModStateWithoutCondstore(t *testing.T) {
+	t.Parallel()
+
+	client := connect(t, imaptest.Start(t, imaptest.Rev2()))
+
+	_, ok, err := client.ModState("INBOX")
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
 func TestSearchKeywords(t *testing.T) {
 	t.Parallel()
 
@@ -471,7 +481,7 @@ func TestSearchKeywords(t *testing.T) {
 			_, err = client.Append("INBOX", raw("a@x", "b@y", "three"), nil, time.Now())
 			require.NoError(t, err)
 
-			got, err := client.SearchKeywords("INBOX", tt.keywords, tt.since)
+			got, err := client.SearchKeywords("INBOX", tt.keywords, tt.since, 0)
 			require.NoError(t, err)
 
 			if tt.want == nil {

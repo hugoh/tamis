@@ -168,7 +168,8 @@ none. Only good mail teaches which addresses are expected, so a spammer's
 target address stays unexpected. The token depends on what the model has
 learnt, so it is worked out each time a message is scored or trained, and
 stored with the training. Messages learnt before this existed carry no
-recipient tokens; the model picks them up from new mail.
+recipient tokens; the model picks them up from new mail, or from
+`tamis bootstrap --refresh`, which learns them again.
 
 ## Actions
 
@@ -378,6 +379,14 @@ flowchart TD
 
 Good mail is learnt before spam, because the recipient status of a message
 depends on which addresses good mail has gone to.
+
+`--refresh` learns mail that was already learnt again: each message is
+untrained, then trained with today's tokens, under its folder's label. That
+brings what was learnt before up to date after the tokenizer gains a feature.
+It leaves the whitelist and the watch positions alone (unless `--sent` is
+named), and counts as "Refreshed" the messages that had been learnt. Mail
+learnt from a folder it has since left, or through a training folder, isn't
+found; name the folders it is in now with `-s` and `-g`.
 
 Bootstrap also learns the provider's authserv-id domain from the messages it
 reads (see Sender verification), including when named folders limit it.

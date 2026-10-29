@@ -127,6 +127,11 @@ Naming any of `-s`, `-g` or `--sent` limits bootstrap to what you named: `-g
 INBOX=500` alone trains only from the inbox, and leaves the whitelist, Junk and
 the watch position alone. Run with no flags for the full first-time setup.
 
+`tamis bootstrap --refresh` learns mail that was already learnt again, with the
+current tokenizer: run it after an upgrade that adds features, so what was
+learnt before gets them too. It leaves the whitelist and the watch position
+alone; name folders with `-s` and `-g` to limit it.
+
 Only read messages at least `--good-min-age` old (default a week) are
 trained as good. `--sent N` sets how many sent messages to whitelist
 recipients from (default 2000).

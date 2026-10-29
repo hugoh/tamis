@@ -654,3 +654,39 @@ func TestDecisionCorrectedBy(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, secondFix, latest.ID)
 }
+
+func TestUntrain(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	_, err := db.Train(t.Context(), "m1", []string{"a", "b"}, classify.Good)
+	require.NoError(t, err)
+	_, err = db.Train(t.Context(), "m2", []string{"a"}, classify.Spam)
+	require.NoError(t, err)
+
+	found, err := db.Untrain(t.Context(), "m1")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	spam, good, totalSpam, totalGood := counts(t, db, "a")
+	require.Equal(t, 1, spam, "m2 still counts")
+	require.Zero(t, good)
+	require.Equal(t, 1, totalSpam)
+	require.Zero(t, totalGood)
+
+	spam, good, _, _ = counts(t, db, "b")
+	require.Zero(t, spam+good, "m1's own token is gone")
+
+	_, trained, err := db.Trained(t.Context(), "m1")
+	require.NoError(t, err)
+	require.False(t, trained)
+
+	found, err = db.Untrain(t.Context(), "m1")
+	require.NoError(t, err)
+	require.False(t, found, "nothing to reverse the second time")
+
+	changed, err := db.Train(t.Context(), "m1", []string{"c"}, classify.Good)
+	require.NoError(t, err)
+	require.True(t, changed, "a message can be trained again, with new tokens")
+}

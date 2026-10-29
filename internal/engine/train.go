@@ -105,6 +105,17 @@ type BootstrapOptions struct {
 	// KeepCursors leaves the watched folders' cursors alone, so a bootstrap
 	// of some folders doesn't skip mail that arrived unjudged in others.
 	KeepCursors bool
+	// Refresh re-learns messages that were already learnt: each is untrained
+	// and trained again with today's tokens, so a change to the tokenizer
+	// reaches what was learnt before. Their label is the folder's.
+	Refresh bool
+}
+
+// bootstrapRun is what Bootstrap gathers while it trains.
+type bootstrapRun struct {
+	tally     auth.Tally
+	refresh   bool
+	refreshed int
 }
 
 // BootstrapSummary counts what Bootstrap learnt.
@@ -112,6 +123,8 @@ type BootstrapSummary struct {
 	Addresses int
 	Spam      int
 	Good      int
+	// Refreshed counts the messages that had been learnt and were learnt again.
+	Refreshed int
 	// AuthServerID is the provider's domain, when the sample named one.
 	AuthServerID string
 }
@@ -121,7 +134,7 @@ type BootstrapSummary struct {
 func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (BootstrapSummary, error) {
 	var (
 		summary BootstrapSummary
-		tally   auth.Tally
+		run     = bootstrapRun{refresh: opts.Refresh}
 		err     error
 	)
 
@@ -133,7 +146,7 @@ func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (Bootstra
 	// addresses good mail has gone to, and spam should be seen as live mail
 	// would be.
 	for _, source := range opts.Good {
-		trained, err := e.trainSource(ctx, source, classify.Good, &tally, func() ([]uint32, error) {
+		trained, err := e.trainSource(ctx, source, classify.Good, &run, func() ([]uint32, error) {
 			return e.mail.SeenBefore(source.Folder, time.Now().Add(-opts.GoodMinAge))
 		})
 
@@ -145,7 +158,7 @@ func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (Bootstra
 	}
 
 	for _, source := range opts.Spam {
-		trained, err := e.trainSource(ctx, source, classify.Spam, &tally, func() ([]uint32, error) {
+		trained, err := e.trainSource(ctx, source, classify.Spam, &run, func() ([]uint32, error) {
 			return e.mail.UIDsAfter(source.Folder, 0)
 		})
 
@@ -156,7 +169,9 @@ func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (Bootstra
 		}
 	}
 
-	if summary.AuthServerID, err = e.learnAuthServerID(ctx, &tally); err != nil {
+	summary.Refreshed = run.refreshed
+
+	if summary.AuthServerID, err = e.learnAuthServerID(ctx, &run.tally); err != nil {
 		return summary, err
 	}
 
@@ -188,7 +203,7 @@ func (e *Engine) trainSource(
 	ctx context.Context,
 	source Source,
 	label classify.Label,
-	tally *auth.Tally,
+	run *bootstrapRun,
 	candidates func() ([]uint32, error),
 ) (int, error) {
 	uids, err := candidates()
@@ -200,7 +215,7 @@ func (e *Engine) trainSource(
 	e.log.InfoContext(ctx, "training",
 		"folder", source.Folder, "label", label, "messages", len(picked))
 
-	return e.trainCorpus(ctx, source.Folder, picked, label, tally)
+	return e.trainCorpus(ctx, source.Folder, picked, label, run)
 }
 
 func (e *Engine) whitelistSent(ctx context.Context, limit int) (int, error) {
@@ -244,7 +259,7 @@ func (e *Engine) trainCorpus(
 	folder string,
 	uids []uint32,
 	label classify.Label,
-	tally *auth.Tally,
+	run *bootstrapRun,
 ) (int, error) {
 	trained := 0
 
@@ -255,7 +270,20 @@ func (e *Engine) trainCorpus(
 		}
 
 		for _, message := range messages {
-			tally.Add(message.Raw)
+			run.tally.Add(message.Raw)
+
+			if run.refresh {
+				// Before the tokens are worked out, so the recipient status
+				// doesn't count the message's own earlier training.
+				untrained, err := e.store.Untrain(ctx, trainingKey(message))
+				if err != nil {
+					return trained, fmt.Errorf("bootstrap from %s: %w", folder, err)
+				}
+
+				if untrained {
+					run.refreshed++
+				}
+			}
 
 			tokens, err := e.tokens(ctx, message.Raw)
 			if err != nil {

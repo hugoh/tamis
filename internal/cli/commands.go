@@ -747,8 +747,18 @@ func authServerIDLine(ctx context.Context, cfg *config.Config, database *store.S
 	return string(pin.Source)
 }
 
+// changeChecker is the part of a flag set chooseSources asks about.
+type changeChecker interface {
+	Changed(name string) bool
+}
+
+func anyChanged(flags changeChecker, names ...string) bool {
+	return slices.ContainsFunc(names, flags.Changed)
+}
+
 // chooseSources fills opts from the flags. Naming any of --sent, --spam or
-// --good limits bootstrap to what was named.
+// --good limits bootstrap to what was named. Refreshing re-learns mail and
+// leaves the whitelist and the watch position alone, unless --sent is named.
 func chooseSources(
 	cmd *cobra.Command,
 	cfg *config.Config,
@@ -756,27 +766,41 @@ func chooseSources(
 	spam, good map[string]int,
 ) error {
 	flags := cmd.Flags()
-	only := flags.Changed("sent") || flags.Changed("spam") || flags.Changed("good")
-	opts.KeepCursors = only
+	named := anyChanged(flags, "sent", "spam", "good")
+	opts.KeepCursors = named || opts.Refresh
 
-	wanted := func(flag string) bool { return !only || flags.Changed(flag) }
+	wantSpam, wantGood := !named || flags.Changed("spam"), !named || flags.Changed("good")
+	if err := chooseFolders(cfg, opts, spam, good, wantSpam, wantGood); err != nil {
+		return err
+	}
 
+	if (named || opts.Refresh) && !flags.Changed("sent") {
+		opts.SentLimit = 0
+	}
+
+	return nil
+}
+
+// chooseFolders sets the spam and good folders bootstrap learns from, for
+// the kinds that are wanted.
+func chooseFolders(
+	cfg *config.Config,
+	opts *engine.BootstrapOptions,
+	spam, good map[string]int,
+	wantSpam, wantGood bool,
+) error {
 	var err error
 
-	if wanted("spam") {
+	if wantSpam {
 		if opts.Spam, err = toSources(spam, cfg.Folders.Junk); err != nil {
 			return err
 		}
 	}
 
-	if wanted("good") {
+	if wantGood {
 		if opts.Good, err = toSources(good, cfg.Folders.Watch[0]); err != nil {
 			return err
 		}
-	}
-
-	if !wanted("sent") {
-		opts.SentLimit = 0
 	}
 
 	return nil
@@ -804,6 +828,14 @@ func printBootstrap(
 
 	if len(trained) > 0 {
 		_, _ = fmt.Fprintf(out, "Trained %s messages.\n", strings.Join(trained, " and "))
+	}
+
+	if summary.Refreshed > 0 {
+		_, _ = fmt.Fprintf(
+			out,
+			"Refreshed %d messages that had been learnt before.\n",
+			summary.Refreshed,
+		)
 	}
 
 	if summary.AuthServerID != "" {
@@ -838,6 +870,12 @@ func addBootstrapFlags(
 		"FOLDER=N: train the latest N read messages as good (default: first watched folder=500)")
 	flags.DurationVar(&opts.GoodMinAge, "good-min-age", defaultGoodMinAge,
 		"only train read mail at least this old as good")
+	flags.BoolVar(
+		&opts.Refresh,
+		"refresh",
+		false,
+		"learn already-learnt mail again with the current tokenizer; leaves the whitelist and watch position alone",
+	)
 }
 
 var errBadSource = errors.New("want FOLDER=N with N > 0")

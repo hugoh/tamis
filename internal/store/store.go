@@ -198,6 +198,48 @@ func (s *Store) Train(
 	return changed, err
 }
 
+// Untrain reverses the training of the message identified by key, and reports
+// whether it had been trained.
+func (s *Store) Untrain(ctx context.Context, key string) (bool, error) {
+	found := false
+
+	err := s.inTx(ctx, func(txn *sql.Tx) error {
+		var (
+			label  classify.Label
+			stored string
+		)
+
+		err := txn.QueryRowContext(ctx, "SELECT label, tokens FROM trained WHERE key = ?", key).
+			Scan(&label, &stored)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+
+		if err != nil {
+			return fmt.Errorf("look up %s: %w", key, err)
+		}
+
+		var tokens []string
+		if err := json.Unmarshal([]byte(stored), &tokens); err != nil {
+			return fmt.Errorf("decode tokens of %s: %w", key, err)
+		}
+
+		if err := adjust(ctx, txn, tokens, label, -1); err != nil {
+			return err
+		}
+
+		if _, err := txn.ExecContext(ctx, "DELETE FROM trained WHERE key = ?", key); err != nil {
+			return fmt.Errorf("forget training of %s: %w", key, err)
+		}
+
+		found = true
+
+		return nil
+	})
+
+	return found, err
+}
+
 // Trained returns the label a message was trained with, if it was.
 func (s *Store) Trained(ctx context.Context, key string) (classify.Label, bool, error) {
 	var label classify.Label

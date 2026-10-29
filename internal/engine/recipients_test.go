@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
 	"github.com/stretchr/testify/require"
@@ -115,4 +116,68 @@ func TestMailToAnUnexpectedAddressScoresWorse(t *testing.T) {
 
 	require.Greater(t, scores["new@elsewhere.example"], scores["new@somewhere.example"],
 		"the same words, but only one went to an address good mail goes to")
+}
+
+func TestBootstrapRefreshRetokenizesWhatWasLearnt(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		refresh   bool
+		wantTo    int // good messages that now carry to:<alias>
+		wantStale int // good messages still carrying the old token
+		refreshed int
+	}{
+		{"a plain bootstrap leaves what was learnt alone", false, 0, 4, 0},
+		{"refresh re-tokenizes it", true, 4, 0, 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, config.ModeShadow)
+			old := time.Now().AddDate(0, 0, -30)
+
+			// Messages learnt by an older tokenizer: one token, "legacy".
+			for i := range 4 {
+				_, err := e.client.Append(
+					inbox,
+					e.sentTo(alias, fmt.Sprintf("friend%d@good.example", i), "Hello"),
+					[]string{seenFlag},
+					old,
+				)
+				require.NoError(t, err)
+			}
+
+			for _, message := range e.messages(t, inbox) {
+				_, err := e.db.Train(
+					t.Context(),
+					message.MessageID,
+					[]string{"legacy"},
+					classify.Good,
+				)
+				require.NoError(t, err)
+			}
+
+			summary, err := e.engine.Bootstrap(t.Context(), engine.BootstrapOptions{
+				Good:       []engine.Source{{Folder: inbox, Limit: 100}},
+				GoodMinAge: 7 * 24 * time.Hour,
+				Refresh:    tt.refresh,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.refreshed, summary.Refreshed)
+
+			model, err := e.db.Model(t.Context(), []string{"legacy", "to:" + alias})
+			require.NoError(t, err)
+
+			_, stale := model.Counts("legacy")
+			_, withTo := model.Counts("to:" + alias)
+			_, totalGood := model.Totals()
+
+			require.Equal(t, tt.wantStale, stale)
+			require.Equal(t, tt.wantTo, withTo)
+			require.Equal(t, 4, totalGood, "refreshing never counts a message twice")
+		})
+	}
 }

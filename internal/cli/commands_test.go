@@ -566,3 +566,28 @@ func TestLogColor(t *testing.T) {
 	require.Equal(t, 1, bad.code)
 	require.Contains(t, bad.stderr, "--color")
 }
+
+func TestBootstrapRefresh(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	a.seedCorpus(t)
+	require.Zero(t, a.run(t, "bootstrap").code)
+
+	a.add(t, "INBOX", nil, time.Now(), "Lunch", "Are we still on for lunch?")
+
+	got := a.run(t, "bootstrap", "--refresh")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "Refreshed 10")
+	require.NotContains(t, got.stdout, "Watching", "refreshing doesn't move the watch position")
+	require.NotContains(t, got.stdout, "Whitelisted", "or touch the whitelist")
+
+	got = a.run(t, runCmd, onceFlag)
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(
+		t,
+		got.stderr,
+		"scanned=1",
+		"the message that arrived meanwhile is still judged",
+	)
+}

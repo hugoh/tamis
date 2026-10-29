@@ -139,8 +139,8 @@ func (a *app) dialConfig(cfg *config.Config, password string, logger *slog.Logge
 	}
 }
 
-// waitForNextPass blocks until new mail arrives in the first watched folder
-// or poll_interval passes. It reports whether IDLE is still worth trying:
+// waitForNextPass blocks until new mail arrives in a watched folder or
+// poll_interval passes. It reports whether IDLE is still worth trying:
 // a transient failure falls back to sleeping for this round only.
 func (a *app) waitForNextPass(
 	ctx context.Context,
@@ -175,24 +175,31 @@ func pause(ctx context.Context, d time.Duration) {
 	}
 }
 
-// idle waits for mail the last pass hasn't seen. A pass leaves a cursor for
-// the folder, which tells the server's UIDNEXT whether mail slipped in
-// since.
+// idle waits for mail the last pass hasn't seen in any watched folder. A pass
+// leaves a cursor for each, which tells the server's UIDNEXT whether mail
+// slipped in since.
 func (a *app) idle(
 	ctx context.Context,
 	cfg *config.Config,
 	database *store.Store,
 	logger *slog.Logger,
 ) error {
-	folder := cfg.Folders.Watch[0]
+	watches := make([]mail.Watch, 0, len(cfg.Folders.Watch))
 
-	cursor, found, err := database.Cursor(ctx, folder)
-	if err != nil {
-		return fmt.Errorf("idle: %w", err)
-	}
+	for _, folder := range cfg.Folders.Watch {
+		cursor, found, err := database.Cursor(ctx, folder)
+		if err != nil {
+			return fmt.Errorf("idle: %w", err)
+		}
 
-	if !found {
-		return fmt.Errorf("idle: no cursor for %s", folder) //nolint:err113 // not a sentinel
+		if !found {
+			return fmt.Errorf("idle: no cursor for %s", folder) //nolint:err113 // not a sentinel
+		}
+
+		watches = append(watches, mail.Watch{
+			Mailbox: folder,
+			Seen:    mail.State{UIDValidity: cursor.UIDValidity, UIDNext: cursor.LastUID + 1},
+		})
 	}
 
 	password, err := a.password(ctx, cfg)
@@ -200,11 +207,10 @@ func (a *app) idle(
 		return fmt.Errorf("idle: %w", err)
 	}
 
-	return mail.WaitForNewMail( //nolint:wrapcheck // mail errors carry their context
+	return mail.WaitForNewMailIn( //nolint:wrapcheck // mail errors carry their context
 		ctx,
 		a.dialConfig(cfg, password, logger),
-		folder,
-		mail.State{UIDValidity: cursor.UIDValidity, UIDNext: cursor.LastUID + 1},
+		watches,
 		cfg.Policy.PollInterval.Duration,
 	)
 }

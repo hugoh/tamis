@@ -12,6 +12,7 @@ import (
 	"net"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -558,6 +559,45 @@ func WaitForNewMail(
 	}
 
 	return client.idleUntil(ctx, mailbox, arrived, maxWait)
+}
+
+// Watch is a folder and the state the caller last handled in it.
+type Watch struct {
+	Mailbox string
+	Seen    State
+}
+
+// WaitForNewMailIn is WaitForNewMail over several folders: it IDLEs on one
+// connection per folder and returns as soon as any of them has mail, ends
+// or fails. That result is the one returned; the other waits are stopped.
+func WaitForNewMailIn(
+	ctx context.Context,
+	cfg DialConfig,
+	watches []Watch,
+	maxWait time.Duration,
+) error {
+	ctx, cancel := context.WithCancel(ctx)
+
+	results := make(chan error, len(watches))
+
+	var group sync.WaitGroup
+
+	for _, watch := range watches {
+		group.Go(func() {
+			results <- WaitForNewMail(ctx, cfg, watch.Mailbox, watch.Seen, maxWait)
+		})
+	}
+
+	defer func() {
+		cancel()
+		group.Wait()
+	}()
+
+	if len(watches) == 0 {
+		return nil
+	}
+
+	return <-results
 }
 
 // idleUntil IDLEs until a message is reported on arrived, maxWait passes or

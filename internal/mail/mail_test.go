@@ -854,3 +854,79 @@ func TestWaitForNewMailLogsWhatItDoes(t *testing.T) {
 		})
 	}
 }
+
+func TestWaitForNewMailInAnyFolder(t *testing.T) {
+	t.Parallel()
+
+	const (
+		maxWait = 2 * time.Second
+		second  = "Work"
+	)
+
+	tests := []struct {
+		name string
+		// prepare runs before the wait and may return a function to run shortly after it starts.
+		prepare func(t *testing.T, client *mail.Client) func()
+		quick   bool
+	}{
+		{
+			name: "message arrives in the second folder",
+			prepare: func(t *testing.T, client *mail.Client) func() {
+				t.Helper()
+
+				return func() { seed(t, client, second, raw("a@x", "b@y", "pushed")) }
+			},
+			quick: true,
+		},
+		{
+			name: "message arrived in the second folder before the wait",
+			prepare: func(t *testing.T, client *mail.Client) func() {
+				t.Helper()
+				seed(t, client, second, raw("a@x", "b@y", "early"))
+
+				return nil
+			},
+			quick: true,
+		},
+		{
+			name:    "no mail arrives",
+			prepare: func(*testing.T, *mail.Client) func() { return nil },
+			quick:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := imaptest.Start(t, imaptest.Rev2())
+			client := connect(t, srv)
+			require.NoError(t, client.Ensure(second))
+
+			watches := make([]mail.Watch, 0, 2)
+
+			for _, folder := range []string{"INBOX", second} {
+				state, err := client.State(folder)
+				require.NoError(t, err)
+
+				watches = append(watches, mail.Watch{Mailbox: folder, Seen: state})
+			}
+
+			if later := tt.prepare(t, client); later != nil {
+				time.AfterFunc(200*time.Millisecond, later)
+			}
+
+			start := time.Now()
+			err := mail.WaitForNewMailIn(t.Context(), dialConfig(srv), watches, maxWait)
+			elapsed := time.Since(start)
+
+			require.NoError(t, err)
+
+			if tt.quick {
+				require.Less(t, elapsed, maxWait)
+			} else {
+				require.GreaterOrEqual(t, elapsed, maxWait)
+			}
+		})
+	}
+}

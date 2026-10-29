@@ -155,7 +155,7 @@ providers:
   (IDLE, UIDPLUS, MOVE, SPECIAL-USE, custom keywords) actually do.
 - Without MOVE, use COPY + `\Deleted` + `UID EXPUNGE`; never plain `EXPUNGE`
   without UIDPLUS.
-- Connection limits are undocumented: IDLE on the Inbox only, poll the rest.
+- Connection limits are undocumented: IDLE on the watched folders only, poll the rest.
 - Apple's server filter, Mail.app's local filter and SpamSieve all move mail
   too; tamis must tolerate other actors.
 - No server-side Sieve, which is part of why this project exists.

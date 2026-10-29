@@ -35,10 +35,11 @@ flowchart LR
 ## A pass
 
 `RunOnce` is one pass over the account. The daemon repeats it when new mail
-arrives in the first watched folder, or after `policy.poll_interval` if none
-does. Between passes it IDLEs on a second connection to the first watched
-folder. Before idling it compares the folder's UIDNEXT with the cursor the pass
-saved, so mail that arrived in between starts the next pass at once. It falls
+arrives in a watched folder, or after `policy.poll_interval` if none does.
+Between passes it IDLEs on one extra connection per watched folder, and the
+first to hear of mail ends the wait. Before idling it compares each folder's
+UIDNEXT with the cursor the pass saved, so mail that arrived in between starts
+the next pass at once. It falls
 back to plain sleeping when the server doesn't advertise IDLE, the connection
 fails, or the last pass failed. Everything else (training folders, Sent, Junk, marks)
 is still only looked at on a pass.
@@ -430,8 +431,10 @@ mail could be spam that slipped through and that nobody has looked at yet.
 
 ## Limitations
 
-- IDLE watches only the first watched folder.
-- One connection per pass, reopened every pass, plus one for IDLE between them.
+- IDLE watches only the watched folders; Sent, Junk and the training folders
+  wait for the next pass.
+- One connection per pass, reopened every pass, plus one per watched folder for
+  IDLE between them. A server that limits concurrent sessions may refuse some.
 - Corrections rely on `$TamisFiled` surviving a move back from Junk. Servers
   that drop keywords on MOVE won't report corrections; the training folders
   still work.

@@ -9,3 +9,6 @@ dist/
 *.db
 go.work
 go.work.sum
+
+# Mail copied for evaluation (see docs/evaluation.md)
+eval-data/

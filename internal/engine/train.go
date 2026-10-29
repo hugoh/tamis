@@ -79,8 +79,14 @@ func (e *Engine) trainOne(ctx context.Context, folder trainFolder, message mail.
 		return fmt.Errorf("train spam: %w", err)
 	}
 
+	score, err := e.rescore(ctx, message.Raw)
+	if err != nil {
+		return fmt.Errorf("train spam: %w", err)
+	}
+
 	return e.record(ctx, folder.name, message,
-		judgement{verdict: VerdictSpam, reason: ReasonTrainFolder}, "train:spam", true)
+		judgement{verdict: VerdictSpam, reason: ReasonTrainFolder, score: score},
+		"train:spam", true)
 }
 
 // Source is a folder to learn from and how many of its most recent messages

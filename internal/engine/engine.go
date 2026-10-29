@@ -427,8 +427,13 @@ func (e *Engine) learnGood(
 		}
 	}
 
+	score, err := e.rescore(ctx, message.Raw)
+	if err != nil {
+		return fmt.Errorf("learn good: %w", err)
+	}
+
 	return e.record(ctx, folder, message,
-		judgement{verdict: VerdictGood, reason: reason}, "train:good", true)
+		judgement{verdict: VerdictGood, reason: reason, score: score}, "train:good", true)
 }
 
 // learnSpam trains a message as spam and takes its sender off the
@@ -450,8 +455,13 @@ func (e *Engine) learnSpam(
 		}
 	}
 
+	score, err := e.rescore(ctx, message.Raw)
+	if err != nil {
+		return fmt.Errorf("learn spam: %w", err)
+	}
+
 	return e.record(ctx, folder, message,
-		judgement{verdict: VerdictSpam, reason: reason}, "train:spam", true)
+		judgement{verdict: VerdictSpam, reason: reason, score: score}, "train:spam", true)
 }
 
 func (e *Engine) record(

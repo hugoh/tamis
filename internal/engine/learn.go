@@ -52,13 +52,28 @@ func (e *Engine) Learn(
 		return "", fmt.Errorf("learn decision %d: %w", decisionID, err)
 	}
 
+	score, err := e.rescore(ctx, messages[0].Raw)
+	if err != nil {
+		return "", fmt.Errorf("learn decision %d: %w", decisionID, err)
+	}
+
 	verdict := VerdictGood
 	if learnt == classify.Spam {
 		verdict = VerdictSpam
 	}
 
-	err = e.record(ctx, decision.Mailbox, messages[0],
-		judgement{verdict: verdict, reason: ReasonCorrection}, "train:"+learnt.String(), true)
+	err = e.record(
+		ctx,
+		decision.Mailbox,
+		messages[0],
+		judgement{
+			verdict: verdict,
+			reason:  ReasonCorrection,
+			score:   score,
+		},
+		"train:"+learnt.String(),
+		true,
+	)
 	if err != nil {
 		return "", fmt.Errorf("learn decision %d: %w", decisionID, err)
 	}

@@ -327,6 +327,36 @@ func TestTrainFolders(t *testing.T) {
 	require.Zero(t, e.run(t).Scanned, "mail returned to the inbox by training is not judged again")
 }
 
+func TestTrainFoldersRecordTheRescore(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		folder string
+		mail   func(e *env) []byte
+		spammy bool
+	}{
+		{"spam", trainSpam, func(e *env) []byte { return e.spammy("s@spam.example") }, true},
+		{"good", trainGood, func(e *env) []byte { return e.hammy("f@good.example") }, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, config.ModeShadow)
+			e.trainModel(t)
+			e.run(t)
+			e.append(t, tt.folder, tt.mail(e))
+			e.run(t)
+
+			score := e.decisions(t)[0].Score
+			require.NotZero(t, score)
+			require.Equal(t, tt.spammy, score > 0.5)
+		})
+	}
+}
+
 func TestReusedMessageIDIsStillJudged(t *testing.T) {
 	t.Parallel()
 

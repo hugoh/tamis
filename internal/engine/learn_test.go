@@ -41,10 +41,17 @@ func TestLearnShadowGoodIsLearntAsSpam(t *testing.T) {
 	require.NoError(t, e.db.AddAddress(t.Context(), "friend@example.org", "test"))
 	e.append(t, inbox, e.hammy("friend@example.org"))
 	e.run(t)
+	before := e.decisions(t)[0].Score
 
 	summary, err := e.engine.Learn(t.Context(), e.latestDecisionID(t), nil)
 	require.NoError(t, err)
 	require.Contains(t, summary, "learnt as spam")
+	require.Greater(
+		t,
+		e.decisions(t)[0].Score,
+		before,
+		"the correction records the rescored message",
+	)
 
 	whitelisted, err := e.db.HasAddress(t.Context(), "friend@example.org")
 	require.NoError(t, err)

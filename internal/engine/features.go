@@ -33,3 +33,13 @@ func (e *Engine) tokens(ctx context.Context, raw []byte) ([]string, error) {
 
 	return tokens, err
 }
+
+// rescore is the score the model gives raw now, after it has been trained on it.
+func (e *Engine) rescore(ctx context.Context, raw []byte) (float64, error) {
+	tokens, model, err := e.features(ctx, raw)
+	if err != nil {
+		return 0, err
+	}
+
+	return classify.Score(model, tokens).Score, nil
+}

@@ -29,9 +29,11 @@ const (
 	defaultGoodMinAge = 7 * 24 * time.Hour
 	defaultLogLimit   = 20
 	passTimeout       = 10 * time.Minute
-	bootstrapTimeout  = time.Hour
-	tablePadding      = 2
-	stateDirMode      = 0o700
+	// newMailSettle lets a burst of arrivals land before the next pass.
+	newMailSettle    = time.Second
+	bootstrapTimeout = time.Hour
+	tablePadding     = 2
+	stateDirMode     = 0o700
 )
 
 // app holds what the account-based commands share.
@@ -82,18 +84,92 @@ func (a *app) connect(
 		return nil, fmt.Errorf("connect: %w", err)
 	}
 
-	client, err := mail.Dial(ctx, mail.DialConfig{
-		Addr:      cfg.Account.Addr(),
-		Username:  cfg.Account.User,
-		Password:  password,
-		TLSConfig: a.env.TLSConfig,
-		Logger:    logger,
-	})
+	client, err := mail.Dial(ctx, a.dialConfig(cfg, password, logger))
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
 
 	return client, nil
+}
+
+func (a *app) dialConfig(cfg *config.Config, password string, logger *slog.Logger) mail.DialConfig {
+	return mail.DialConfig{
+		Addr:      cfg.Account.Addr(),
+		Username:  cfg.Account.User,
+		Password:  password,
+		TLSConfig: a.env.TLSConfig,
+		Logger:    logger,
+	}
+}
+
+// waitForNextPass blocks until new mail arrives in the first watched folder
+// or poll_interval passes. It reports whether IDLE is still worth trying:
+// a transient failure falls back to sleeping for this round only.
+func (a *app) waitForNextPass(
+	ctx context.Context,
+	cfg *config.Config,
+	database *store.Store,
+	logger *slog.Logger,
+) bool {
+	err := a.idle(ctx, cfg, database, logger)
+
+	switch {
+	case err == nil:
+		pause(ctx, newMailSettle)
+
+		return true
+	case errors.Is(err, mail.ErrNoIdle):
+		logger.InfoContext(ctx, "server has no IDLE; polling")
+		pause(ctx, cfg.Policy.PollInterval.Duration)
+
+		return false
+	default:
+		logger.WarnContext(ctx, "idle failed; sleeping instead", "err", err)
+		pause(ctx, cfg.Policy.PollInterval.Duration)
+
+		return true
+	}
+}
+
+func pause(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
+}
+
+// idle waits for mail the last pass hasn't seen. A pass leaves a cursor for
+// the folder, which tells the server's UIDNEXT whether mail slipped in
+// since.
+func (a *app) idle(
+	ctx context.Context,
+	cfg *config.Config,
+	database *store.Store,
+	logger *slog.Logger,
+) error {
+	folder := cfg.Folders.Watch[0]
+
+	cursor, found, err := database.Cursor(ctx, folder)
+	if err != nil {
+		return fmt.Errorf("idle: %w", err)
+	}
+
+	if !found {
+		return fmt.Errorf("idle: no cursor for %s", folder) //nolint:err113 // not a sentinel
+	}
+
+	password, err := a.password(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("idle: %w", err)
+	}
+
+	return mail.WaitForNewMail( //nolint:wrapcheck // mail errors carry their context
+		ctx,
+		a.dialConfig(cfg, password, logger),
+		folder,
+		mail.State{UIDValidity: cursor.UIDValidity, UIDNext: cursor.LastUID + 1},
+		cfg.Policy.PollInterval.Duration,
+	)
 }
 
 // password finds the account's password; see passwordFinder.
@@ -203,6 +279,7 @@ func (a *app) runCommand() *cobra.Command {
 			defer func() { _ = database.Close() }()
 
 			logger := a.logger(cmd)
+			useIdle := true
 
 			for {
 				err := a.pass(ctx, cfg, database, logger)
@@ -218,10 +295,10 @@ func (a *app) runCommand() *cobra.Command {
 					logger.ErrorContext(ctx, "pass failed", "err", err)
 				}
 
-				select {
-				case <-ctx.Done():
-					return nil
-				case <-time.After(cfg.Policy.PollInterval.Duration):
+				if useIdle && err == nil {
+					useIdle = a.waitForNextPass(ctx, cfg, database, logger)
+				} else {
+					pause(ctx, cfg.Policy.PollInterval.Duration)
 				}
 			}
 		},

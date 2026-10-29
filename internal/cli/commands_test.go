@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,6 +207,24 @@ func TestRunLoopStopsOnCancel(t *testing.T) {
 	require.Zero(t, got.code, got.stderr)
 	require.Less(t, time.Since(start), time.Minute)
 	require.Contains(t, got.stderr, "pass complete")
+}
+
+func TestRunLoopWakesOnNewMail(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, `poll_interval = "1h"`)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	time.AfterFunc(time.Second, func() {
+		a.add(t, "INBOX", nil, time.Now(), "Lunch", "Are we still on for lunch?")
+	})
+
+	got := a.runContext(ctx, t, runCmd)
+	require.Zero(t, got.code, got.stderr)
+	require.Equal(t, 2, strings.Count(got.stderr, "pass complete"),
+		"new mail should start a pass long before poll_interval")
 }
 
 func TestRunLoopStopsOnRejectedLogin(t *testing.T) {

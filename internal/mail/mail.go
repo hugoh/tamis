@@ -22,7 +22,12 @@ import (
 // headers and the text that classification looks at.
 const MaxMessageBytes = 256 << 10
 
-const dialTimeout = 30 * time.Second
+const (
+	dialTimeout = 30 * time.Second
+	// idleStopTimeout bounds how long ending IDLE may take before the
+	// connection is dropped.
+	idleStopTimeout = 5 * time.Second
+)
 
 var (
 	// ErrLogin means the server rejected the credentials.
@@ -31,6 +36,8 @@ var (
 	// only way to move would be an EXPUNGE that could purge other messages
 	// already marked \Deleted.
 	ErrUnsafeMove = errors.New("server supports neither MOVE nor UIDPLUS; refusing an unsafe move")
+	// ErrNoIdle means the server doesn't advertise IDLE.
+	ErrNoIdle = errors.New("server does not support IDLE")
 )
 
 // DialConfig says how to connect.
@@ -55,14 +62,23 @@ type Client struct {
 
 // Dial connects and logs in.
 func Dial(ctx context.Context, cfg DialConfig) (*Client, error) {
+	return dial(ctx, cfg, nil)
+}
+
+func dial(
+	ctx context.Context,
+	cfg DialConfig,
+	handler *imapclient.UnilateralDataHandler,
+) (*Client, error) {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
 
 	options := &imapclient.Options{
-		TLSConfig: cfg.TLSConfig,
-		Dialer:    &net.Dialer{Timeout: dialTimeout},
+		TLSConfig:             cfg.TLSConfig,
+		Dialer:                &net.Dialer{Timeout: dialTimeout},
+		UnilateralDataHandler: handler,
 	}
 
 	var (
@@ -440,17 +456,24 @@ func (c *Client) selectMailbox(mailbox string) error {
 		return nil
 	}
 
-	if _, err := c.imap.Select(mailbox, nil).Wait(); err != nil {
+	_, err := c.selectData(mailbox)
+
+	return err
+}
+
+func (c *Client) selectData(mailbox string) (*imap.SelectData, error) {
+	data, err := c.imap.Select(mailbox, nil).Wait()
+	if err != nil {
 		c.selected = ""
 
-		return fmt.Errorf("select %s: %w", mailbox, err)
+		return nil, fmt.Errorf("select %s: %w", mailbox, err)
 	}
 
 	c.selected = mailbox
 
 	c.log.Debug("select", "mailbox", mailbox)
 
-	return nil
+	return data, nil
 }
 
 func uidSet(uids []uint32) imap.UIDSet {
@@ -469,4 +492,83 @@ func bracket(messageID string) string {
 	}
 
 	return "<" + messageID + ">"
+}
+
+// WaitForNewMail returns when mailbox receives a message, after maxWait, or
+// when ctx ends, whichever comes first. seen is the folder state the caller
+// last handled: if the folder already holds newer mail, or has a new
+// UIDVALIDITY, it returns at once. It IDLEs on its own connection, so it can
+// run between passes without disturbing them. It returns ErrNoIdle without
+// waiting when the server doesn't advertise IDLE.
+func WaitForNewMail(
+	ctx context.Context,
+	cfg DialConfig,
+	mailbox string,
+	seen State,
+	maxWait time.Duration,
+) error {
+	arrived := make(chan struct{}, 1)
+	handler := &imapclient.UnilateralDataHandler{
+		Mailbox: func(data *imapclient.UnilateralDataMailbox) {
+			if data.NumMessages != nil {
+				select {
+				case arrived <- struct{}{}:
+				default:
+				}
+			}
+		},
+	}
+
+	client, err := dial(ctx, cfg, handler)
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = client.Close() }()
+
+	if !client.imap.Caps().Has(imap.CapIdle) {
+		return ErrNoIdle
+	}
+
+	data, err := client.selectData(mailbox)
+	if err != nil {
+		return err
+	}
+
+	if data.UIDValidity != seen.UIDValidity || uint32(data.UIDNext) > seen.UIDNext {
+		return nil
+	}
+
+	return client.idleUntil(ctx, mailbox, arrived, maxWait)
+}
+
+// idleUntil IDLEs until a message is reported on arrived, maxWait passes or
+// ctx ends.
+func (c *Client) idleUntil(
+	ctx context.Context,
+	mailbox string,
+	arrived <-chan struct{},
+	maxWait time.Duration,
+) error {
+	idle, err := c.imap.Idle()
+	if err != nil {
+		return fmt.Errorf("idle %s: %w", mailbox, err)
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, maxWait)
+	defer cancel()
+
+	select {
+	case <-arrived:
+	case <-waitCtx.Done():
+	}
+
+	stopCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), idleStopTimeout)
+	defer stop()
+
+	defer c.CloseWhenDone(stopCtx)()
+
+	_ = idle.Close()
+
+	return nil
 }

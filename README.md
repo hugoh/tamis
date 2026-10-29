@@ -78,7 +78,7 @@ Then:
 
 ```sh
 tamis bootstrap   # whitelist Sent recipients, train on Junk and old read mail
-tamis run         # judge new mail every poll_interval (--once for one pass)
+tamis run         # judge new mail as it arrives (IDLE), or every poll_interval (--once for one pass)
 tamis log         # what it decided, and in shadow mode what it would have done
 tamis status      # mode, folders, how much it has learnt
 tamis undo 42     # reverse decision 42 from the log

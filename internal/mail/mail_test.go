@@ -1,10 +1,13 @@
 package mail_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -594,4 +597,153 @@ func TestDebugLogsExchanges(t *testing.T) {
 
 	require.NotContains(t, logs.String(), imaptest.Password)
 	require.NotContains(t, logs.String(), imaptest.Username)
+}
+
+func TestWaitForNewMail(t *testing.T) {
+	t.Parallel()
+
+	const maxWait = 2 * time.Second
+
+	tests := []struct {
+		name string
+		// prepare runs after the caller's state is noted and before the
+		// wait, and may return a function to run shortly after it starts.
+		prepare func(t *testing.T, client *mail.Client, seen *mail.State) func()
+		quick   bool
+	}{
+		{
+			name: "message arrives",
+			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) func() {
+				t.Helper()
+
+				return func() { seed(t, client, "INBOX", raw("a@x", "b@y", "pushed")) }
+			},
+			quick: true,
+		},
+		{
+			name:    "nothing arrives",
+			prepare: func(*testing.T, *mail.Client, *mail.State) func() { return nil },
+			quick:   false,
+		},
+		{
+			name: "message arrived before the wait",
+			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) func() {
+				t.Helper()
+				seed(t, client, "INBOX", raw("a@x", "b@y", "early"))
+
+				return nil
+			},
+			quick: true,
+		},
+		{
+			name: "mailbox was replaced",
+			prepare: func(_ *testing.T, _ *mail.Client, seen *mail.State) func() {
+				seen.UIDValidity++
+
+				return nil
+			},
+			quick: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := imaptest.Start(t, imaptest.Rev2())
+			client := connect(t, srv)
+
+			seen, err := client.State("INBOX")
+			require.NoError(t, err)
+
+			if later := tt.prepare(t, client, &seen); later != nil {
+				time.AfterFunc(200*time.Millisecond, later)
+			}
+
+			start := time.Now()
+			err = mail.WaitForNewMail(t.Context(), dialConfig(srv), "INBOX", seen, maxWait)
+			elapsed := time.Since(start)
+
+			require.NoError(t, err)
+
+			if tt.quick {
+				require.Less(t, elapsed, maxWait)
+			} else {
+				require.GreaterOrEqual(t, elapsed, maxWait)
+			}
+		})
+	}
+}
+
+func TestWaitForNewMailWithoutIdle(t *testing.T) {
+	t.Parallel()
+
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go serveWithoutIdle(listener)
+
+	cfg := mail.DialConfig{
+		Addr:      listener.Addr().String(),
+		Username:  imaptest.Username,
+		Password:  imaptest.Password,
+		Plaintext: true,
+	}
+
+	err = mail.WaitForNewMail(t.Context(), cfg, "INBOX", mail.State{}, time.Second)
+	require.ErrorIs(t, err, mail.ErrNoIdle)
+}
+
+// serveWithoutIdle answers every command with OK and advertises only
+// IMAP4rev1, which is all a client needs to log in and see IDLE is missing.
+func serveWithoutIdle(listener net.Listener) {
+	conn, err := listener.Accept()
+	if err != nil {
+		return
+	}
+
+	defer func() { _ = conn.Close() }()
+
+	_, _ = fmt.Fprint(conn, "* OK [CAPABILITY IMAP4rev1] ready\r\n")
+
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		tag, _, _ := strings.Cut(scanner.Text(), " ")
+		_, _ = fmt.Fprintf(conn, "%s OK [CAPABILITY IMAP4rev1] done\r\n", tag)
+	}
+}
+
+func TestWaitForNewMailStopsWithContext(t *testing.T) {
+	t.Parallel()
+
+	srv := imaptest.Start(t, imaptest.Rev2())
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+
+	defer cancel()
+
+	start := time.Now()
+	err := mail.WaitForNewMail(ctx, dialConfig(srv), "INBOX", currentState(t, srv), time.Minute)
+
+	require.NoError(t, err)
+	require.Less(t, time.Since(start), 5*time.Second)
+}
+
+func currentState(t *testing.T, srv *imaptest.Server) mail.State {
+	t.Helper()
+
+	state, err := connect(t, srv).State("INBOX")
+	require.NoError(t, err)
+
+	return state
+}
+
+func dialConfig(srv *imaptest.Server) mail.DialConfig {
+	return mail.DialConfig{
+		Addr:      srv.Addr,
+		Username:  imaptest.Username,
+		Password:  imaptest.Password,
+		Plaintext: srv.TLSConfig == nil,
+		TLSConfig: srv.TLSConfig,
+	}
 }

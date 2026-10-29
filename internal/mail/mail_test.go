@@ -16,6 +16,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/hugoh/tamis/internal/imaptest"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -745,5 +746,111 @@ func dialConfig(srv *imaptest.Server) mail.DialConfig {
 		Password:  imaptest.Password,
 		Plaintext: srv.TLSConfig == nil,
 		TLSConfig: srv.TLSConfig,
+	}
+}
+
+const (
+	idleStarted = "msg=idle "
+	idleEnded   = `msg="idle ended"`
+)
+
+func TestWaitForNewMailLogsWhatItDoes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		maxWait time.Duration
+		// prepare returns the context to wait under, and may add mail.
+		prepare func(t *testing.T, client *mail.Client, seen *mail.State) context.Context
+		want    []string
+		notWant []string
+	}{
+		{
+			name:    "new mail arrives",
+			maxWait: 5 * time.Second,
+			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) context.Context {
+				t.Helper()
+				time.AfterFunc(200*time.Millisecond, func() {
+					_, err := client.Append("INBOX", raw("a@x", "b@y", "pushed"), nil, time.Time{})
+					assert.NoError(t, err)
+				})
+
+				return t.Context()
+			},
+			want: []string{idleStarted, "max_wait=5s", idleEnded, `reason="new mail"`},
+		},
+		{
+			name:    "nothing arrives",
+			maxWait: 300 * time.Millisecond,
+			prepare: func(t *testing.T, _ *mail.Client, _ *mail.State) context.Context {
+				t.Helper()
+
+				return t.Context()
+			},
+			want: []string{idleStarted, idleEnded, "reason=timeout"},
+		},
+		{
+			name:    "mail was already waiting",
+			maxWait: 5 * time.Second,
+			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) context.Context {
+				t.Helper()
+				seed(t, client, "INBOX", raw("a@x", "b@y", "early"))
+
+				return t.Context()
+			},
+			want:    []string{idleEnded, `reason="mail already waiting"`},
+			notWant: []string{idleStarted},
+		},
+		{
+			name:    "stopped from outside",
+			maxWait: time.Minute,
+			prepare: func(t *testing.T, _ *mail.Client, _ *mail.State) context.Context {
+				t.Helper()
+
+				ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+				t.Cleanup(cancel)
+
+				return ctx
+			},
+			want: []string{idleStarted, idleEnded, "reason=stopped"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := imaptest.Start(t, imaptest.Rev2())
+			client := connect(t, srv)
+
+			seen, err := client.State("INBOX")
+			require.NoError(t, err)
+
+			ctx := tt.prepare(t, client, &seen)
+
+			var logs bytes.Buffer
+
+			cfg := dialConfig(srv)
+			cfg.Logger = slog.New(
+				slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}),
+			)
+
+			require.NoError(t, mail.WaitForNewMail(ctx, cfg, "INBOX", seen, tt.maxWait))
+
+			for _, want := range tt.want {
+				require.Contains(t, logs.String(), want)
+			}
+
+			for _, notWant := range tt.notWant {
+				require.NotContains(t, logs.String(), notWant)
+			}
+
+			require.Contains(
+				t,
+				logs.String(),
+				"msg=disconnected",
+				"closing the connection is logged",
+			)
+		})
 	}
 }

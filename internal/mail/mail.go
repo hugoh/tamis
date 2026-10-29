@@ -57,6 +57,7 @@ type DialConfig struct {
 type Client struct {
 	imap     *imapclient.Client
 	log      *slog.Logger
+	addr     string
 	selected string
 }
 
@@ -104,14 +105,18 @@ func dial(
 
 	logger.DebugContext(ctx, "connected", "addr", cfg.Addr, "plaintext", cfg.Plaintext)
 
-	return &Client{imap: conn, log: logger}, nil
+	return &Client{imap: conn, log: logger, addr: cfg.Addr}, nil
 }
 
 // Close logs out and closes the connection.
 func (c *Client) Close() error {
 	_ = c.imap.Logout().Wait()
 
-	if err := c.imap.Close(); err != nil {
+	err := c.imap.Close()
+
+	c.log.Debug("disconnected", "addr", c.addr)
+
+	if err != nil {
 		return fmt.Errorf("close connection: %w", err)
 	}
 
@@ -122,7 +127,11 @@ func (c *Client) Close() error {
 // waiting on a server that stopped answering. The returned function cancels
 // it.
 func (c *Client) CloseWhenDone(ctx context.Context) func() bool {
-	return context.AfterFunc(ctx, func() { _ = c.imap.Close() })
+	return context.AfterFunc(ctx, func() {
+		_ = c.imap.Close()
+
+		c.log.Debug("connection dropped: its context ended", "addr", c.addr)
+	})
 }
 
 // State is a folder's UIDVALIDITY and next UID.
@@ -536,6 +545,15 @@ func WaitForNewMail(
 	}
 
 	if data.UIDValidity != seen.UIDValidity || uint32(data.UIDNext) > seen.UIDNext {
+		client.log.DebugContext(
+			ctx,
+			"idle ended",
+			"mailbox",
+			mailbox,
+			"reason",
+			"mail already waiting",
+		)
+
 		return nil
 	}
 
@@ -555,12 +573,20 @@ func (c *Client) idleUntil(
 		return fmt.Errorf("idle %s: %w", mailbox, err)
 	}
 
+	c.log.DebugContext(ctx, "idle", "mailbox", mailbox, "max_wait", maxWait)
+
 	waitCtx, cancel := context.WithTimeout(ctx, maxWait)
 	defer cancel()
+
+	reason := "new mail"
 
 	select {
 	case <-arrived:
 	case <-waitCtx.Done():
+		reason = "timeout"
+		if ctx.Err() != nil {
+			reason = "stopped"
+		}
 	}
 
 	stopCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), idleStopTimeout)
@@ -569,6 +595,8 @@ func (c *Client) idleUntil(
 	defer c.CloseWhenDone(stopCtx)()
 
 	_ = idle.Close()
+
+	c.log.DebugContext(ctx, "idle ended", "mailbox", mailbox, "reason", reason)
 
 	return nil
 }

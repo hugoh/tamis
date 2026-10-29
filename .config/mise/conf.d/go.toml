@@ -4,4 +4,4 @@
 # here directly, so they don't get bundled into unrelated go-tools
 # template updates.
 [tools]
-go = "1.27.2"
+go = "1.27.3"

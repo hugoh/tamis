@@ -515,3 +515,14 @@ func TestDoctor(t *testing.T) {
 	require.Zero(t, got.code, got.stderr)
 	require.Contains(t, got.stdout, `"name": "class balance"`)
 }
+
+func TestStatusShowsAuthServerID(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	got := a.run(t, "status")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "Auth server id:")
+	require.Contains(t, got.stdout, "not set")
+}

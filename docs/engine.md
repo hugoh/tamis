@@ -134,8 +134,22 @@ whitelists the sender.
 `Authentication-Results` header shows DMARC passing for the `From` domain, or
 DKIM passing for that domain or a parent of it (relaxed alignment). Only the
 topmost header is read: the provider prepends its own, and anything further
-down may have been written by the sender. Set
-`policy.whitelist_requires_auth = false` to trust the address alone.
+down may have been written by the sender.
+
+iCloud prepends one header per check (`bimi.icloud.com`, `dmarc.icloud.com`,
+`dkim-verifier.icloud.com`, ...), so its topmost header never carries a DMARC
+or DKIM result. Given the provider's domain, tamis reads the leading headers
+whose authserv-id is that domain or a subdomain, up to the first that isn't,
+and only the first header per id. The domain comes from `account.auth_server_id`
+if set (`"none"` turns this off), else from what `tamis bootstrap` learnt: it
+counts the registered domain of the topmost header's authserv-id over the
+messages it trains on, and takes the one that heads nine in ten of at least 20.
+A sample that can't tell leaves what was learnt before. The domain is saved
+with the IMAP host it was learnt for: if `account.host` later differs (you moved
+to another provider), the learnt domain is not used, only the topmost header
+counts, and `tamis status`, `tamis doctor` and the `run` log say to run
+`tamis bootstrap` again. `tamis status` shows which is in use. Set `policy.whitelist_requires_auth = false` to trust the
+address alone.
 
 **Scoring.** `classify` tokenizes the subject, the `From` address and domain,
 the words in text and HTML parts, and the hosts of links. Each token's spam
@@ -342,6 +356,9 @@ flowchart TD
     spam --> good[Each good folder, default the inbox:<br/>latest N read messages older than min age → train good]
     good --> cursors[Watched folders: cursor = UIDNEXT - 1]
 ```
+
+Bootstrap also learns the provider's authserv-id domain from the messages it
+reads (see Sender verification), including when named folders limit it.
 
 Only *read* mail past a minimum age is trained as good. Unread or recent
 mail could be spam that slipped through and that nobody has looked at yet.

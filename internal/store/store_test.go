@@ -579,3 +579,21 @@ func TestPruneDecisions(t *testing.T) {
 	require.Len(t, left, 1)
 	require.Equal(t, now.Add(-time.Hour), left[0].At)
 }
+
+func TestSettings(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	_, found, err := db.Setting(t.Context(), "auth_server_id")
+	require.NoError(t, err)
+	require.False(t, found)
+
+	require.NoError(t, db.SetSetting(t.Context(), "auth_server_id", "icloud.com"))
+	require.NoError(t, db.SetSetting(t.Context(), "auth_server_id", "google.com"))
+
+	value, found, err := db.Setting(t.Context(), "auth_server_id")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "google.com", value)
+}

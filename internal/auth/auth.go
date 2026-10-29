@@ -16,11 +16,17 @@ import (
 )
 
 // Verified reports whether the provider recorded a DMARC pass, or a DKIM
-// pass aligned with the From domain. Only the topmost
-// Authentication-Results header counts: the provider prepends its own, and
-// anything below it may have been written by the sender. If serverID is not
-// empty, that header must also name it as its authserv-id: a provider that
-// adds no header would otherwise leave a sender-written one on top.
+// pass aligned with the From domain.
+//
+// Without serverID only the topmost Authentication-Results header counts: the
+// provider prepends its own, and anything below it may have been written by
+// the sender. Some providers (iCloud) prepend several, one per check, each
+// with its own authserv-id such as dmarc.icloud.com; serverID then names the
+// provider's domain ("icloud.com") and the leading headers whose authserv-id
+// is that domain or a subdomain of it count, up to the first one that is not.
+// Only the first header per authserv-id counts, so a forged copy of one of the
+// provider's ids below the genuine one is ignored. A forged header with an id
+// the provider never uses, directly below its block, would still be believed.
 func Verified(raw []byte, serverID string) bool {
 	header, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(raw)))
 	if err != nil {
@@ -32,23 +38,45 @@ func Verified(raw []byte, serverID string) bool {
 		return false
 	}
 
-	results := header.Values("Authentication-Results")
-	if len(results) == 0 {
-		return false
+	seen := map[string]bool{}
+
+	for _, value := range header.Values("Authentication-Results") {
+		authservID, parsed, err := authres.Parse(stripComments(value))
+		if err != nil || !fromProvider(authservID, serverID) {
+			return false
+		}
+
+		id := strings.ToLower(authservID)
+		if seen[id] {
+			continue
+		}
+
+		seen[id] = true
+
+		if slices.ContainsFunc(parsed, func(result authres.Result) bool {
+			return passesFor(result, domain)
+		}) {
+			return true
+		}
+
+		if serverID == "" {
+			return false
+		}
 	}
 
-	authservID, parsed, err := authres.Parse(stripComments(results[0]))
-	if err != nil {
-		return false
+	return false
+}
+
+// fromProvider reports whether authservID is the configured provider's: its
+// domain or a subdomain. Any id will do when none is configured.
+func fromProvider(authservID, serverID string) bool {
+	if serverID == "" {
+		return true
 	}
 
-	if serverID != "" && !strings.EqualFold(authservID, serverID) {
-		return false
-	}
+	authservID, serverID = strings.ToLower(authservID), strings.ToLower(serverID)
 
-	return slices.ContainsFunc(parsed, func(result authres.Result) bool {
-		return passesFor(result, domain)
-	})
+	return authservID == serverID || strings.HasSuffix(authservID, "."+serverID)
 }
 
 func fromDomain(header textproto.Header) (string, bool) {

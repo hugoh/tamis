@@ -613,6 +613,7 @@ func (a *app) statusCommand() *cobra.Command {
 			_, _ = fmt.Fprintf(table, "Learnt:\t%d spam, %d good messages (%d tokens)\n",
 				stats.Spam, stats.Good, stats.Tokens)
 			_, _ = fmt.Fprintf(table, "Whitelist:\t%d addresses\n", stats.Addresses)
+			_, _ = fmt.Fprintf(table, "Auth server id:\t%s\n", authServerIDLine(ctx, cfg, database))
 			_, _ = fmt.Fprintf(table, "State:\t%s\n", cfg.State)
 
 			if err := table.Flush(); err != nil {
@@ -649,6 +650,11 @@ func (a *app) doctorCommand() *cobra.Command {
 				return err //nolint:wrapcheck // store errors carry their context
 			}
 
+			pin, err := engine.ResolveAuthPin(ctx, database, cfg)
+			if err != nil {
+				return err //nolint:wrapcheck // store errors carry their context
+			}
+
 			recent, err := database.Decisions(ctx, health.Window)
 			if err != nil {
 				return err //nolint:wrapcheck // store errors carry their context
@@ -658,6 +664,7 @@ func (a *app) doctorCommand() *cobra.Command {
 				Stats:     stats,
 				Recent:    recent,
 				Retention: cfg.Policy.JournalRetention.Duration,
+				Auth:      pin,
 				Now:       time.Now(),
 			})
 
@@ -682,6 +689,29 @@ func (a *app) doctorCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the report as JSON")
 
 	return cmd
+}
+
+// authServerIDLine says which authserv-id tamis pins Authentication-Results to,
+// and where that came from.
+func authServerIDLine(ctx context.Context, cfg *config.Config, database *store.Store) string {
+	pin, err := engine.ResolveAuthPin(ctx, database, cfg)
+	if err != nil {
+		return "unknown: " + err.Error()
+	}
+
+	switch pin.Source {
+	case engine.AuthStale:
+		return fmt.Sprintf("not used: learnt for %s, the account now uses %s (run tamis bootstrap)",
+			pin.LearntFor, pin.Host)
+	case engine.AuthOff:
+		return "off (configured)"
+	case engine.AuthUnset:
+		return "not set; only the topmost header counts (run tamis bootstrap to learn it)"
+	case engine.AuthConfigured, engine.AuthLearnt:
+		return fmt.Sprintf("%s (%s)", pin.ID, pin.Source)
+	}
+
+	return string(pin.Source)
 }
 
 // chooseSources fills opts from the flags. Naming any of --sent, --spam or
@@ -741,6 +771,14 @@ func printBootstrap(
 
 	if len(trained) > 0 {
 		_, _ = fmt.Fprintf(out, "Trained %s messages.\n", strings.Join(trained, " and "))
+	}
+
+	if summary.AuthServerID != "" {
+		_, _ = fmt.Fprintf(
+			out,
+			"Your provider's authentication results come from %s; set account.auth_server_id to override.\n",
+			summary.AuthServerID,
+		)
 	}
 
 	if !opts.KeepCursors {

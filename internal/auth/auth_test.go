@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const icloud = "icloud.com"
+
 func message(headers ...string) []byte {
 	return []byte(strings.Join(headers, "\r\n") + "\r\n\r\nbody\r\n")
 }
@@ -131,6 +133,78 @@ func TestVerified(t *testing.T) {
 				from,
 			),
 			want: false,
+		},
+		{
+			name: "provider splits its results across several headers",
+			raw: message(
+				"Authentication-Results: bimi.icloud.com; bimi=skipped reason=\"insufficient dmarc\"",
+				"Authentication-Results: arc.icloud.com; arc=none",
+				"Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=example.com",
+				"Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=example.com",
+				"Authentication-Results: spf.icloud.com; spf=pass smtp.mailfrom=example.com",
+				from,
+			),
+			serverID: icloud,
+			want:     true,
+		},
+		{
+			name: "a dkim pass in the provider's own header",
+			raw: message(
+				"Authentication-Results: bimi.icloud.com; bimi=none",
+				"Authentication-Results: dmarc.icloud.com; dmarc=none",
+				"Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=example.com",
+				from,
+			),
+			serverID: icloud,
+			want:     true,
+		},
+		{
+			name: "split headers without a configured provider are not trusted",
+			raw: message(
+				"Authentication-Results: bimi.icloud.com; bimi=none",
+				"Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=example.com",
+				from,
+			),
+			want: false,
+		},
+		{
+			name: "the provider's headers end at the first one that is not its own",
+			raw: message(
+				"Authentication-Results: bimi.icloud.com; bimi=none",
+				"Authentication-Results: mx.google.com; dmarc=none",
+				"Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=example.com",
+				from,
+			),
+			serverID: icloud,
+			want:     false,
+		},
+		{
+			name: "a second header with the same id is ignored",
+			raw: message(
+				"Authentication-Results: dmarc.icloud.com; dmarc=fail header.from=example.com",
+				"Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=example.com",
+				from,
+			),
+			serverID: icloud,
+			want:     false,
+		},
+		{
+			name: "an id that only ends like the provider's",
+			raw: message(
+				"Authentication-Results: dmarc.icloud.com.evil.net; dmarc=pass header.from=example.com",
+				from,
+			),
+			serverID: icloud,
+			want:     false,
+		},
+		{
+			name: "an id that merely contains the provider's name",
+			raw: message(
+				"Authentication-Results: evilicloud.com; dmarc=pass header.from=example.com",
+				from,
+			),
+			serverID: icloud,
+			want:     false,
 		},
 		{
 			name: "no results",

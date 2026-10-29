@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hugoh/tamis/internal/auth"
 	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/mail"
 )
@@ -108,6 +109,8 @@ type BootstrapSummary struct {
 	Addresses int
 	Spam      int
 	Good      int
+	// AuthServerID is the provider's domain, when the sample named one.
+	AuthServerID string
 }
 
 // Bootstrap seeds the whitelist from Sent and the model from the given
@@ -115,6 +118,7 @@ type BootstrapSummary struct {
 func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (BootstrapSummary, error) {
 	var (
 		summary BootstrapSummary
+		tally   auth.Tally
 		err     error
 	)
 
@@ -123,7 +127,7 @@ func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (Bootstra
 	}
 
 	for _, source := range opts.Spam {
-		trained, err := e.trainSource(ctx, source, classify.Spam, func() ([]uint32, error) {
+		trained, err := e.trainSource(ctx, source, classify.Spam, &tally, func() ([]uint32, error) {
 			return e.mail.UIDsAfter(source.Folder, 0)
 		})
 
@@ -135,7 +139,7 @@ func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (Bootstra
 	}
 
 	for _, source := range opts.Good {
-		trained, err := e.trainSource(ctx, source, classify.Good, func() ([]uint32, error) {
+		trained, err := e.trainSource(ctx, source, classify.Good, &tally, func() ([]uint32, error) {
 			return e.mail.SeenBefore(source.Folder, time.Now().Add(-opts.GoodMinAge))
 		})
 
@@ -146,22 +150,31 @@ func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (Bootstra
 		}
 	}
 
+	if summary.AuthServerID, err = e.learnAuthServerID(ctx, &tally); err != nil {
+		return summary, err
+	}
+
 	if opts.KeepCursors {
 		return summary, nil
 	}
 
+	return summary, e.startWatching(ctx)
+}
+
+// startWatching starts every watched folder from its current mail.
+func (e *Engine) startWatching(ctx context.Context) error {
 	for _, folder := range e.cfg.Folders.Watch {
 		state, err := e.mail.State(folder)
 		if err != nil {
-			return summary, fmt.Errorf("bootstrap %s: %w", folder, err)
+			return fmt.Errorf("bootstrap %s: %w", folder, err)
 		}
 
 		if err := e.startAtCurrent(ctx, folder, state); err != nil {
-			return summary, err
+			return err
 		}
 	}
 
-	return summary, nil
+	return nil
 }
 
 // trainSource trains the latest of the messages candidates returns.
@@ -169,6 +182,7 @@ func (e *Engine) trainSource(
 	ctx context.Context,
 	source Source,
 	label classify.Label,
+	tally *auth.Tally,
 	candidates func() ([]uint32, error),
 ) (int, error) {
 	uids, err := candidates()
@@ -180,7 +194,7 @@ func (e *Engine) trainSource(
 	e.log.InfoContext(ctx, "training",
 		"folder", source.Folder, "label", label, "messages", len(picked))
 
-	return e.trainCorpus(ctx, source.Folder, picked, label)
+	return e.trainCorpus(ctx, source.Folder, picked, label, tally)
 }
 
 func (e *Engine) whitelistSent(ctx context.Context, limit int) (int, error) {
@@ -224,6 +238,7 @@ func (e *Engine) trainCorpus(
 	folder string,
 	uids []uint32,
 	label classify.Label,
+	tally *auth.Tally,
 ) (int, error) {
 	trained := 0
 
@@ -234,6 +249,8 @@ func (e *Engine) trainCorpus(
 		}
 
 		for _, message := range messages {
+			tally.Add(message.Raw)
+
 			changed, err := e.store.Train(
 				ctx,
 				trainingKey(message),

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const icloudDomain = "icloud.com"
+
 func now() time.Time { return time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC) }
 
 // decisions builds n entries, newest first, ageing from the given age.
@@ -209,6 +211,61 @@ func TestJournalChecks(t *testing.T) {
 			}
 
 			require.Failf(t, "missing check", "%q not in report", tt.check)
+		})
+	}
+}
+
+func TestAuthPinCheck(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		pin      engine.AuthPin
+		want     health.Status
+		contains string
+	}{
+		{
+			"learnt",
+			engine.AuthPin{ID: icloudDomain, Source: engine.AuthLearnt},
+			health.StatusOK,
+			icloudDomain,
+		},
+		{
+			"configured",
+			engine.AuthPin{ID: icloudDomain, Source: engine.AuthConfigured},
+			health.StatusOK,
+			"configured",
+		},
+		{"switched off", engine.AuthPin{Source: engine.AuthOff}, health.StatusOK, "off"},
+		{"not learnt", engine.AuthPin{Source: engine.AuthUnset}, health.StatusSkip, "bootstrap"},
+		{
+			"learnt for another host",
+			engine.AuthPin{
+				Source:    engine.AuthStale,
+				LearntFor: "imap.mail.me.com",
+				Host:      "imap.gmail.com",
+			},
+			health.StatusWarn,
+			"imap.mail.me.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			report := health.Run(health.Input{Auth: tt.pin, Now: now()})
+
+			for _, check := range report.Checks {
+				if check.Name == health.NameAuthID {
+					require.Equal(t, tt.want, check.Status, check.Detail)
+					require.Contains(t, check.Detail, tt.contains)
+
+					return
+				}
+			}
+
+			require.Fail(t, "missing check")
 		})
 	}
 }

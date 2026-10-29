@@ -51,8 +51,12 @@ type Account struct {
 	// password. For example: ["security", "find-generic-password", "-s",
 	// "tamis", "-w"].
 	PasswordCommand []string `toml:"password_command"`
-	// AuthServerID is the authserv-id of the provider's Authentication-Results
-	// header, for example "mx.google.com". When set, other headers are ignored.
+	// AuthServerID is the provider's authserv-id for its Authentication-Results
+	// headers, for example "mx.google.com". A provider that writes one header
+	// per check under subdomains (iCloud: dmarc.icloud.com, dkim-verifier.icloud.com)
+	// is named by its domain, "icloud.com". When set, other headers are ignored.
+	// Left empty, tamis uses the domain bootstrap learnt from the mailbox, if
+	// any; "none" turns pinning off.
 	AuthServerID string `toml:"auth_server_id"`
 }
 

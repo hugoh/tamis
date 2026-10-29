@@ -71,7 +71,7 @@ func (e *Engine) isProviderFiled(ctx context.Context, message mail.Message) (boo
 // judgeRescue requires authentication for whitelisted senders whatever
 // whitelist_requires_auth says: impersonated contacts are what Junk catches.
 func (e *Engine) judgeRescue(ctx context.Context, message mail.Message) (judgement, bool, error) {
-	if message.From != "" && auth.Verified(message.Raw, e.cfg.Account.AuthServerID) {
+	if message.From != "" && auth.Verified(message.Raw, e.authServerID(ctx)) {
 		whitelisted, err := e.store.HasAddress(ctx, message.From)
 		if err != nil {
 			return judgement{}, false, fmt.Errorf("rescue: %w", err)

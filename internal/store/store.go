@@ -24,6 +24,7 @@ func migrations() []string {
 		schemaV1,
 		`ALTER TABLE decisions ADD COLUMN undone INTEGER NOT NULL DEFAULT 0;`,
 		`CREATE INDEX decisions_by_message_id ON decisions (message_id);`,
+		`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
 	}
 }
 
@@ -270,6 +271,34 @@ func (s *Store) HasAddress(ctx context.Context, address string) (bool, error) {
 	}
 
 	return found > 0, nil
+}
+
+// Setting returns a value tamis learnt about the account, if it has one.
+func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
+	var value string
+
+	err := s.db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+
+	if err != nil {
+		return "", false, fmt.Errorf("read setting %s: %w", key, err)
+	}
+
+	return value, true, nil
+}
+
+// SetSetting saves a value tamis learnt about the account.
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO settings (key, value) VALUES (?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
+	if err != nil {
+		return fmt.Errorf("save setting %s: %w", key, err)
+	}
+
+	return nil
 }
 
 // Cursor is how far a folder has been processed: the highest UID seen,

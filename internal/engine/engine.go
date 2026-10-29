@@ -86,6 +86,9 @@ type Engine struct {
 	store *store.Store
 	cfg   *config.Config
 	log   *slog.Logger
+
+	authID      string
+	authIDKnown bool
 }
 
 // New returns an engine for the account behind mailbox.
@@ -321,7 +324,7 @@ func (e *Engine) judge(
 		}
 
 		if whitelisted &&
-			(!e.cfg.Policy.WhitelistRequiresAuth || auth.Verified(message.Raw, e.cfg.Account.AuthServerID)) {
+			(!e.cfg.Policy.WhitelistRequiresAuth || auth.Verified(message.Raw, e.authServerID(ctx))) {
 			return judgement{verdict: VerdictGood, reason: ReasonWhitelisted}, nil
 		}
 	}

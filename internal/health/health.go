@@ -38,6 +38,7 @@ const (
 	NameLast        = "last decision"
 	NameJournal     = "journal"
 	NameRecent      = "recent verdicts"
+	NameAuthID      = "provider auth id"
 )
 
 const (
@@ -69,6 +70,7 @@ type Input struct {
 	Recent []store.Decision
 	// Retention is how long the journal is kept; zero means forever.
 	Retention time.Duration
+	Auth      engine.AuthPin
 	Now       time.Time
 }
 
@@ -91,6 +93,7 @@ func Run(input Input) *Report {
 		lastDecision(input.Recent, input.Now),
 		journal(input.Stats, input.Retention),
 		recentVerdicts(input.Recent),
+		authID(input.Auth),
 	}}
 }
 
@@ -187,6 +190,27 @@ func lastDecision(recent []store.Decision, now time.Time) Check {
 	}
 
 	return Check{name, StatusOK, fmt.Sprintf("%s ago", age)}
+}
+
+func authID(pin engine.AuthPin) Check {
+	switch pin.Source {
+	case engine.AuthStale:
+		return Check{NameAuthID, StatusWarn, fmt.Sprintf(
+			"learnt for %s but the account now uses %s, so it is not used; run 'tamis bootstrap'",
+			pin.LearntFor, pin.Host,
+		)}
+	case engine.AuthUnset:
+		return Check{
+			NameAuthID, StatusSkip,
+			"not learnt; only the topmost header counts (run 'tamis bootstrap' to learn it)",
+		}
+	case engine.AuthOff:
+		return Check{NameAuthID, StatusOK, "off: only the topmost header counts"}
+	case engine.AuthConfigured, engine.AuthLearnt:
+		return Check{NameAuthID, StatusOK, fmt.Sprintf("%s (%s)", pin.ID, pin.Source)}
+	}
+
+	return Check{NameAuthID, StatusSkip, "unknown"}
 }
 
 func journal(stats store.Stats, retention time.Duration) Check {

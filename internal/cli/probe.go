@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hugoh/tamis/internal/probe"
@@ -14,6 +17,21 @@ const (
 	defaultPort     = 993
 	defaultIdleWait = 30 * time.Second
 )
+
+var errPlaintextRemote = errors.New(
+	"--plaintext sends the password unencrypted, so it only connects to loopback hosts",
+)
+
+// isLoopback reports whether host is localhost or a loopback address.
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+
+	ip, err := netip.ParseAddr(host)
+
+	return err == nil && ip.IsLoopback()
+}
 
 func probeCommand(env Env) *cobra.Command {
 	var (
@@ -32,6 +50,10 @@ func probeCommand(env Env) *cobra.Command {
 			"prompt, or the first line of stdin when there is no terminal.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cfg.Plaintext && !isLoopback(host) {
+				return fmt.Errorf("probe: %w", errPlaintextRemote)
+			}
+
 			finder := &passwordFinder{env: env, stdin: cmd.InOrStdin()}
 
 			password, err := finder.find(cmd.Context(), credentials{host: host, user: cfg.Username})

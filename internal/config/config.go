@@ -328,15 +328,30 @@ func (a Account) Addr() string {
 	return net.JoinHostPort(a.Host, strconv.Itoa(a.Port))
 }
 
+// passwordCommandTimeout bounds password_command, so a hung command can't
+// block the run loop.
+const passwordCommandTimeout = 30 * time.Second
+
 // Password runs PasswordCommand. It returns ErrNoPasswordCommand when none
 // is configured, so callers can try other sources.
 func (a Account) Password(ctx context.Context) (string, error) {
+	return a.passwordWithin(ctx, passwordCommandTimeout)
+}
+
+func (a Account) passwordWithin(ctx context.Context, timeout time.Duration) (string, error) {
 	if len(a.PasswordCommand) == 0 {
 		return "", ErrNoPasswordCommand
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	//nolint:gosec // the command comes from the user's own config file
-	out, err := exec.CommandContext(ctx, a.PasswordCommand[0], a.PasswordCommand[1:]...).Output()
+	command := exec.CommandContext(ctx, a.PasswordCommand[0], a.PasswordCommand[1:]...)
+	// A child that outlives the command would keep the output pipe open.
+	command.WaitDelay = time.Second
+
+	out, err := command.Output()
 	if err != nil {
 		return "", fmt.Errorf("account.password_command: %w", err)
 	}

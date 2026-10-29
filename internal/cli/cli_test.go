@@ -332,3 +332,38 @@ func TestVerboseLogsDebug(t *testing.T) {
 	require.NotContains(t, verbose.stderr, imaptest.Password)
 	require.NotContains(t, verbose.stderr, imaptest.Username)
 }
+
+func TestProbePlaintextOnlyToLoopback(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		host     string
+		rejected bool
+	}{
+		{"imap.mail.me.com", true},
+		{"10.0.0.5", true},
+		{"127.0.0.1", false},
+		{"::1", false},
+		{"localhost", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			t.Parallel()
+
+			got := execute(t.Context(), t, invocation{
+				args: []string{
+					probeCmd, "--plaintext", hostFlag, tt.host, "--port", "1", userFlag, "me",
+				},
+				stdin: "secret\n",
+			})
+
+			if tt.rejected {
+				require.Equal(t, 1, got.code)
+				require.Contains(t, got.stderr, "loopback")
+			} else {
+				require.NotContains(t, got.stderr, "loopback")
+			}
+		})
+	}
+}

@@ -288,3 +288,15 @@ func TestLoadRefusesConfigOthersCanWrite(t *testing.T) {
 	_, err := config.Load(noEnv, path)
 	require.NoError(t, err)
 }
+
+func TestPasswordCommandTimesOut(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now()
+	_, err := config.Account{
+		PasswordCommand: []string{"sh", "-c", "sleep 10 & wait"},
+	}.PasswordWithin(t.Context(), 200*time.Millisecond)
+
+	require.ErrorContains(t, err, "password_command")
+	require.Less(t, time.Since(start), 5*time.Second)
+}

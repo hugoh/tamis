@@ -301,7 +301,11 @@ func (e *Engine) handleSent(ctx context.Context, _ string, message mail.Message)
 		return nil
 	}
 
-	return e.learnReplied(ctx, replied[0])
+	if err := e.learnReplied(ctx, replied[0]); err != nil {
+		e.log.WarnContext(ctx, "not learning from reply", "uid", message.UID, "error", err)
+	}
+
+	return nil
 }
 
 // learnReplied learns as good the message you replied to, when tamis had

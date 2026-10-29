@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	netmail "net/mail"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hugoh/tamis/internal/config"
@@ -116,4 +117,46 @@ func TestSentReplyTeachesGood(t *testing.T) {
 			require.Equal(t, test.whitelisted, ok)
 		})
 	}
+}
+
+func TestSentScanSkipsAMessageItCannotLearnFrom(t *testing.T) {
+	t.Parallel()
+
+	var failing atomic.Bool
+
+	e := setupWith(t, config.ModeShadow, func(op, mailbox string) bool {
+		return failing.Load() && op == opSelect && mailbox == junk
+	})
+	e.cfg.Policy.LearnFromJunk = false
+	e.cfg.Policy.LearnFromKeywords = false
+	e.cfg.Policy.Rescue = false
+
+	e.trainModel(t)
+	require.NoError(t, e.client.Ensure(sent))
+	require.NoError(t, e.client.Ensure("Archive"))
+	e.run(t)
+
+	original := e.message("u@unknown.example", "Quokka", "Xylophone zebra quokka.")
+	parsed, err := netmail.ReadMessage(bytes.NewReader(original))
+	require.NoError(t, err)
+
+	e.append(t, inbox, original)
+	e.run(t)
+
+	uids, err := e.client.UIDsAfter(inbox, 0)
+	require.NoError(t, err)
+	require.NoError(t, e.client.Move(inbox, uids, "Archive"))
+
+	e.append(t, sent, fmt.Appendf(nil,
+		"From: %s\r\nTo: nobody@example.net\r\nIn-Reply-To: %s\r\nSubject: Re\r\n\r\nthanks\r\n",
+		myAddress, parsed.Header.Get("Message-ID")))
+	e.append(t, sent, fmt.Appendf(nil,
+		"From: %s\r\nTo: later@example.net\r\nSubject: hi\r\n\r\nhello\r\n", myAddress))
+
+	failing.Store(true)
+	e.run(t)
+
+	ok, err := e.db.HasAddress(t.Context(), "later@example.net")
+	require.NoError(t, err)
+	require.True(t, ok)
 }

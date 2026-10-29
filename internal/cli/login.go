@@ -21,13 +21,13 @@ func (a *app) loginCommand() *cobra.Command {
 			"the Secret Service (GNOME Keyring, KWallet) or the Windows Credential Manager.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load(a.env.Getenv, a.configPath)
-			if err != nil {
-				return err //nolint:wrapcheck // config errors already name the file
+			cfg, err := a.keychainConfig()
+			if errors.Is(err, errNoKeychain) {
+				return fmt.Errorf("%w; %s", err, keychainAlternatives)
 			}
 
-			if a.env.Keyring == nil {
-				return fmt.Errorf("%w; %s", errNoKeychain, keychainAlternatives)
+			if err != nil {
+				return err
 			}
 
 			password, err := typePassword(a.env, cmd.InOrStdin(), cfg.Account.User)
@@ -56,6 +56,20 @@ func (a *app) loginCommand() *cobra.Command {
 	}
 }
 
+// keychainConfig loads the configuration, provided there is a keychain to use.
+func (a *app) keychainConfig() (*config.Config, error) {
+	cfg, err := config.Load(a.env.Getenv, a.configPath)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // config errors already name the file
+	}
+
+	if a.env.Keyring == nil {
+		return nil, errNoKeychain
+	}
+
+	return cfg, nil
+}
+
 func (a *app) checkPassword(cmd *cobra.Command, cfg *config.Config, password string) error {
 	client, err := mail.Dial(cmd.Context(), mail.DialConfig{
 		Addr:      cfg.Account.Addr(),
@@ -76,13 +90,9 @@ func (a *app) logoutCommand() *cobra.Command {
 		Short: "Remove the account password from the system keychain",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load(a.env.Getenv, a.configPath)
+			cfg, err := a.keychainConfig()
 			if err != nil {
-				return err //nolint:wrapcheck // config errors already name the file
-			}
-
-			if a.env.Keyring == nil {
-				return errNoKeychain
+				return err
 			}
 
 			err = a.env.Keyring.Delete(secret.Service(cfg.Account.Host), cfg.Account.User)

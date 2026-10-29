@@ -4,15 +4,14 @@
 package health
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"slices"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/hugoh/tamis/internal/engine"
+	"github.com/hugoh/tamis/internal/report"
 	"github.com/hugoh/tamis/internal/store"
 )
 
@@ -49,7 +48,6 @@ const (
 	maxUncertain   = 0.3
 	maxCorrections = 0.1
 	staleAfter     = 24 * time.Hour
-	columnPadding  = 2
 )
 
 // Check is the result of one health check.
@@ -252,32 +250,21 @@ func recentVerdicts(recent, judged []store.Decision) Check {
 
 // WriteText renders the report for a terminal, with problems in capitals.
 func (r *Report) WriteText(w io.Writer) error {
-	table := tabwriter.NewWriter(w, 0, 0, columnPadding, ' ', 0)
+	return report.WriteTable( //nolint:wrapcheck // the error already says "write report"
+		w, func(table io.Writer) {
+			for _, check := range r.Checks {
+				status := string(check.Status)
+				if check.Status == StatusWarn || check.Status == StatusFail {
+					status = strings.ToUpper(status)
+				}
 
-	for _, check := range r.Checks {
-		status := string(check.Status)
-		if check.Status == StatusWarn || check.Status == StatusFail {
-			status = strings.ToUpper(status)
-		}
-
-		_, _ = fmt.Fprintf(table, "%s\t%s\t%s\n", status, check.Name, check.Detail)
-	}
-
-	if err := table.Flush(); err != nil {
-		return fmt.Errorf("write report: %w", err)
-	}
-
-	return nil
+				_, _ = fmt.Fprintf(table, "%s\t%s\t%s\n", status, check.Name, check.Detail)
+			}
+		},
+	)
 }
 
 // WriteJSON renders the report as indented JSON.
 func (r *Report) WriteJSON(w io.Writer) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-
-	if err := enc.Encode(r); err != nil {
-		return fmt.Errorf("write report: %w", err)
-	}
-
-	return nil
+	return report.WriteJSON(w, r) //nolint:wrapcheck // the error already says "write report"
 }

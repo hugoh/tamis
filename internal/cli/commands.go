@@ -57,6 +57,41 @@ func (a *app) logger(cmd *cobra.Command) *slog.Logger {
 	return slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level}))
 }
 
+// withStore opens the configuration and state database for the duration of body.
+func (a *app) withStore(
+	cmd *cobra.Command,
+	body func(context.Context, *config.Config, *store.Store) error,
+) error {
+	ctx := cmd.Context()
+
+	cfg, database, err := a.open(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = database.Close() }()
+
+	return body(ctx, cfg, database)
+}
+
+// withStats is withStore for commands that report on what the database holds.
+func (a *app) withStats(
+	cmd *cobra.Command,
+	body func(context.Context, *config.Config, *store.Store, store.Stats) error,
+) error {
+	return a.withStore(
+		cmd,
+		func(ctx context.Context, cfg *config.Config, database *store.Store) error {
+			stats, err := database.Stats(ctx)
+			if err != nil {
+				return err //nolint:wrapcheck // store errors carry their context
+			}
+
+			return body(ctx, cfg, database, stats)
+		},
+	)
+}
+
 // open loads the configuration and opens the state database.
 func (a *app) open(ctx context.Context) (*config.Config, *store.Store, error) {
 	cfg, err := config.Load(a.env.Getenv, a.configPath)
@@ -220,38 +255,34 @@ func (a *app) bootstrapCommand() *cobra.Command {
 			"old read inbox mail (as good), then start watching from current mail.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
+			return a.withStore(
+				cmd,
+				func(ctx context.Context, cfg *config.Config, database *store.Store) error {
+					if err := chooseSources(cmd, cfg, &opts, spam, good); err != nil {
+						return err
+					}
 
-			cfg, database, err := a.open(ctx)
-			if err != nil {
-				return err
-			}
+					var summary engine.BootstrapSummary
 
-			defer func() { _ = database.Close() }()
+					logger := a.logger(cmd)
 
-			if err := chooseSources(cmd, cfg, &opts, spam, good); err != nil {
-				return err
-			}
+					err := a.withEngine(ctx, cfg, database, logger, bootstrapTimeout,
+						func(ctx context.Context, eng *engine.Engine) error {
+							var err error
 
-			var summary engine.BootstrapSummary
+							summary, err = eng.Bootstrap(ctx, opts)
 
-			logger := a.logger(cmd)
+							return err //nolint:wrapcheck // engine errors carry their context
+						})
+					if err != nil {
+						return err
+					}
 
-			err = a.withEngine(ctx, cfg, database, logger, bootstrapTimeout,
-				func(ctx context.Context, eng *engine.Engine) error {
-					var err error
+					printBootstrap(cmd.OutOrStdout(), cfg, opts, summary)
 
-					summary, err = eng.Bootstrap(ctx, opts)
-
-					return err //nolint:wrapcheck // engine errors carry their context
-				})
-			if err != nil {
-				return err
-			}
-
-			printBootstrap(cmd.OutOrStdout(), cfg, opts, summary)
-
-			return nil
+					return nil
+				},
+			)
 		},
 	}
 
@@ -271,46 +302,42 @@ func (a *app) runCommand() *cobra.Command {
 			"recorded; see them with 'tamis log'.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
+			return a.withStore(
+				cmd,
+				func(ctx context.Context, cfg *config.Config, database *store.Store) error {
+					logger := a.logger(cmd)
+					useIdle := true
 
-			cfg, database, err := a.open(ctx)
-			if err != nil {
-				return err
-			}
+					var pruner journalPruner
 
-			defer func() { _ = database.Close() }()
+					for {
+						if err := pruner.prune(
+							ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
+						); err != nil {
+							logger.ErrorContext(ctx, "journal pruning failed", "err", err)
+						}
 
-			logger := a.logger(cmd)
-			useIdle := true
+						err := a.pass(ctx, cfg, database, logger)
+						if once || errors.Is(err, mail.ErrLogin) {
+							return err
+						}
 
-			var pruner journalPruner
+						if ctx.Err() != nil {
+							return nil //nolint:nilerr // interrupted: a clean stop
+						}
 
-			for {
-				if err := pruner.prune(
-					ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
-				); err != nil {
-					logger.ErrorContext(ctx, "journal pruning failed", "err", err)
-				}
+						if err != nil {
+							logger.ErrorContext(ctx, "pass failed", "err", err)
+						}
 
-				err := a.pass(ctx, cfg, database, logger)
-				if once || errors.Is(err, mail.ErrLogin) {
-					return err
-				}
-
-				if ctx.Err() != nil {
-					return nil
-				}
-
-				if err != nil {
-					logger.ErrorContext(ctx, "pass failed", "err", err)
-				}
-
-				if useIdle && err == nil {
-					useIdle = a.waitForNextPass(ctx, cfg, database, logger)
-				} else {
-					pause(ctx, cfg.Policy.PollInterval.Duration)
-				}
-			}
+						if useIdle && err == nil {
+							useIdle = a.waitForNextPass(ctx, cfg, database, logger)
+						} else {
+							pause(ctx, cfg.Policy.PollInterval.Duration)
+						}
+					}
+				},
+			)
 		},
 	}
 
@@ -462,30 +489,15 @@ func (a *app) undoCommand() *cobra.Command {
 			"uncertain flag is cleared.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
 			ids, err := parseIDs(args)
 			if err != nil {
 				return err
 			}
 
-			cfg, database, err := a.open(ctx)
-			if err != nil {
-				return err
-			}
-
-			defer func() { _ = database.Close() }()
-
-			return a.withEngine(
-				ctx,
-				cfg,
-				database,
-				a.logger(cmd),
-				passTimeout,
-				func(ctx context.Context, eng *engine.Engine) error {
-					return undoAll(ctx, cmd, eng, ids)
-				},
-			)
+			return a.onDecisions(cmd, ids,
+				func(ctx context.Context, eng *engine.Engine, id int64) (string, error) {
+					return eng.Undo(ctx, id)
+				})
 		},
 	}
 }
@@ -502,8 +514,6 @@ func (a *app) learnCommand() *cobra.Command {
 			"that were applied.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
 			ids, err := parseIDs(args)
 			if err != nil {
 				return err
@@ -518,23 +528,10 @@ func (a *app) learnCommand() *cobra.Command {
 				label = new(classify.Spam)
 			}
 
-			cfg, database, err := a.open(ctx)
-			if err != nil {
-				return err
-			}
-
-			defer func() { _ = database.Close() }()
-
-			return a.withEngine(
-				ctx,
-				cfg,
-				database,
-				a.logger(cmd),
-				passTimeout,
-				func(ctx context.Context, eng *engine.Engine) error {
-					return learnAll(ctx, cmd, eng, ids, label)
-				},
-			)
+			return a.onDecisions(cmd, ids,
+				func(ctx context.Context, eng *engine.Engine, id int64) (string, error) {
+					return eng.Learn(ctx, id, label)
+				})
 		},
 	}
 	cmd.Flags().BoolVar(&good, "good", false, "learn as good")
@@ -544,34 +541,40 @@ func (a *app) learnCommand() *cobra.Command {
 	return cmd
 }
 
-// learnAll learns from each decision in turn, reporting each outcome, and
-// fails if any of them did.
-func learnAll(
-	ctx context.Context,
+// onDecisions applies act to each decision in turn, reporting each outcome,
+// and fails if any of them did.
+func (a *app) onDecisions(
 	cmd *cobra.Command,
-	eng *engine.Engine,
 	ids []int64,
-	label *classify.Label,
+	act func(context.Context, *engine.Engine, int64) (string, error),
 ) error {
-	failed := false
+	return a.withStore(
+		cmd,
+		func(ctx context.Context, cfg *config.Config, database *store.Store) error {
+			return a.withEngine(ctx, cfg, database, a.logger(cmd), passTimeout,
+				func(ctx context.Context, eng *engine.Engine) error {
+					failed := false
 
-	for _, decisionID := range ids {
-		summary, err := eng.Learn(ctx, decisionID, label)
-		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%d: %v\n", decisionID, err)
-			failed = true
+					for _, decisionID := range ids {
+						summary, err := act(ctx, eng, decisionID)
+						if err != nil {
+							_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%d: %v\n", decisionID, err)
+							failed = true
 
-			continue
-		}
+							continue
+						}
 
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d: %s\n", decisionID, summary)
-	}
+						_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d: %s\n", decisionID, summary)
+					}
 
-	if failed {
-		return errReported
-	}
+					if failed {
+						return errReported
+					}
 
-	return nil
+					return nil
+				})
+		},
+	)
 }
 
 func parseIDs(args []string) ([]int64, error) {
@@ -589,71 +592,47 @@ func parseIDs(args []string) ([]int64, error) {
 	return ids, nil
 }
 
-// undoAll undoes each decision in turn, reporting each outcome, and fails if
-// any of them did.
-func undoAll(ctx context.Context, cmd *cobra.Command, eng *engine.Engine, ids []int64) error {
-	failed := false
-
-	for _, decisionID := range ids {
-		summary, err := eng.Undo(ctx, decisionID)
-		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%d: %v\n", decisionID, err)
-			failed = true
-
-			continue
-		}
-
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d: %s\n", decisionID, summary)
-	}
-
-	if failed {
-		return errReported
-	}
-
-	return nil
-}
-
 func (a *app) statusCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show the configuration and what has been learnt",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
+			return a.withStats(
+				cmd,
+				func(ctx context.Context, cfg *config.Config, database *store.Store, stats store.Stats) error {
+					table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tablePadding, ' ', 0)
+					_, _ = fmt.Fprintf(table, "Mode:\t%s\n", cfg.Policy.Mode)
+					_, _ = fmt.Fprintf(
+						table,
+						"Account:\t%s on %s\n",
+						cfg.Account.User,
+						cfg.Account.Addr(),
+					)
+					_, _ = fmt.Fprintf(table, "Watching:\t%v\n", cfg.Folders.Watch)
+					_, _ = fmt.Fprintf(
+						table,
+						"Training folders:\t%s, %s\n",
+						cfg.Folders.TrainSpam,
+						cfg.Folders.TrainGood,
+					)
+					_, _ = fmt.Fprintf(table, "Learnt:\t%d spam, %d good messages (%d tokens)\n",
+						stats.Spam, stats.Good, stats.Tokens)
+					_, _ = fmt.Fprintf(table, "Whitelist:\t%d addresses\n", stats.Addresses)
+					_, _ = fmt.Fprintf(
+						table,
+						"Auth server id:\t%s\n",
+						authServerIDLine(ctx, cfg, database),
+					)
+					_, _ = fmt.Fprintf(table, "State:\t%s\n", cfg.State)
 
-			cfg, database, err := a.open(ctx)
-			if err != nil {
-				return err
-			}
+					if err := table.Flush(); err != nil {
+						return errors.Join(errReported, err)
+					}
 
-			defer func() { _ = database.Close() }()
-
-			stats, err := database.Stats(ctx)
-			if err != nil {
-				return err //nolint:wrapcheck // store errors carry their context
-			}
-
-			table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tablePadding, ' ', 0)
-			_, _ = fmt.Fprintf(table, "Mode:\t%s\n", cfg.Policy.Mode)
-			_, _ = fmt.Fprintf(table, "Account:\t%s on %s\n", cfg.Account.User, cfg.Account.Addr())
-			_, _ = fmt.Fprintf(table, "Watching:\t%v\n", cfg.Folders.Watch)
-			_, _ = fmt.Fprintf(
-				table,
-				"Training folders:\t%s, %s\n",
-				cfg.Folders.TrainSpam,
-				cfg.Folders.TrainGood,
+					return nil
+				},
 			)
-			_, _ = fmt.Fprintf(table, "Learnt:\t%d spam, %d good messages (%d tokens)\n",
-				stats.Spam, stats.Good, stats.Tokens)
-			_, _ = fmt.Fprintf(table, "Whitelist:\t%d addresses\n", stats.Addresses)
-			_, _ = fmt.Fprintf(table, "Auth server id:\t%s\n", authServerIDLine(ctx, cfg, database))
-			_, _ = fmt.Fprintf(table, "State:\t%s\n", cfg.State)
-
-			if err := table.Flush(); err != nil {
-				return errors.Join(errReported, err)
-			}
-
-			return nil
 		},
 	}
 }
@@ -669,53 +648,44 @@ func (a *app) doctorCommand() *cobra.Command {
 			"Exits non-zero when a check fails.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := cmd.Context()
+			return a.withStats(
+				cmd,
+				func(ctx context.Context, cfg *config.Config, database *store.Store, stats store.Stats) error {
+					pin, err := engine.ResolveAuthPin(ctx, database, cfg)
+					if err != nil {
+						return err //nolint:wrapcheck // store errors carry their context
+					}
 
-			cfg, database, err := a.open(ctx)
-			if err != nil {
-				return err
-			}
+					recent, err := database.Decisions(ctx, health.Window)
+					if err != nil {
+						return err //nolint:wrapcheck // store errors carry their context
+					}
 
-			defer func() { _ = database.Close() }()
+					report := health.Run(health.Input{
+						Stats:     stats,
+						Recent:    recent,
+						Retention: cfg.Policy.JournalRetention.Duration,
+						Auth:      pin,
+						Now:       time.Now(),
+					})
 
-			stats, err := database.Stats(ctx)
-			if err != nil {
-				return err //nolint:wrapcheck // store errors carry their context
-			}
+					if asJSON {
+						err = report.WriteJSON(cmd.OutOrStdout())
+					} else {
+						err = report.WriteText(cmd.OutOrStdout())
+					}
 
-			pin, err := engine.ResolveAuthPin(ctx, database, cfg)
-			if err != nil {
-				return err //nolint:wrapcheck // store errors carry their context
-			}
+					if err != nil {
+						return errors.Join(errReported, err)
+					}
 
-			recent, err := database.Decisions(ctx, health.Window)
-			if err != nil {
-				return err //nolint:wrapcheck // store errors carry their context
-			}
+					if report.Failed() {
+						return errReported
+					}
 
-			report := health.Run(health.Input{
-				Stats:     stats,
-				Recent:    recent,
-				Retention: cfg.Policy.JournalRetention.Duration,
-				Auth:      pin,
-				Now:       time.Now(),
-			})
-
-			if asJSON {
-				err = report.WriteJSON(cmd.OutOrStdout())
-			} else {
-				err = report.WriteText(cmd.OutOrStdout())
-			}
-
-			if err != nil {
-				return errors.Join(errReported, err)
-			}
-
-			if report.Failed() {
-				return errReported
-			}
-
-			return nil
+					return nil
+				},
+			)
 		},
 	}
 

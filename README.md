@@ -88,6 +88,9 @@ tamis undo 42     # reverse decision 42 from the log
 tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
 ```
 
+`tamis log` colours its output on a terminal. `--color never` (or setting
+`NO_COLOR`) turns that off; `--color always` forces it, for a pager.
+
 To correct it from any mail client, on any device:
 
 - Drop a missed spam into **TrainSpam**: it is learnt and moved to Junk.

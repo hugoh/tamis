@@ -44,6 +44,7 @@ type app struct {
 	finder     passwordFinder
 	ran        bool
 	verbose    bool
+	color      string
 }
 
 // logger logs to stderr, including debug lines under --verbose.
@@ -370,7 +371,7 @@ func (a *app) logCommand() *cobra.Command {
 				return err //nolint:wrapcheck // store errors carry their context
 			}
 
-			return writeDecisions(cmd, decisions)
+			return a.writeDecisions(cmd, decisions)
 		},
 	}
 
@@ -379,48 +380,77 @@ func (a *app) logCommand() *cobra.Command {
 	return cmd
 }
 
-func writeDecisions(cmd *cobra.Command, decisions []store.Decision) error {
+// verdictStyles colours a verdict, so the ones that need a look stand out.
+var verdictStyles = map[string]style{ //nolint:gochecknoglobals // constant lookup
+	engine.VerdictSpam:      styleRed,
+	engine.VerdictUncertain: styleYellow,
+	engine.VerdictGood:      styleGreen,
+}
+
+func (a *app) writeDecisions(cmd *cobra.Command, decisions []store.Decision) error {
+	out := cmd.OutOrStdout()
+
 	if len(decisions) == 0 {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No decisions yet.")
+		_, _ = fmt.Fprintln(out, "No decisions yet.")
 
 		return nil
 	}
 
-	table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, tablePadding, ' ', 0)
-	_, _ = fmt.Fprintln(table, "ID\tTIME\tVERDICT\tREASON\tSCORE\tACTION\tFROM\tSUBJECT")
+	colors, err := a.paletteFor(out)
+	if err != nil {
+		return err
+	}
+
+	text := func(value string, s style) cell { return cell{{value, s}} }
+
+	rows := [][]cell{{
+		text("ID", styleBold), text("TIME", styleBold), text("VERDICT", styleBold),
+		text("REASON", styleBold), text("SCORE", styleBold), text("ACTION", styleBold),
+		text("FROM", styleBold), text("SUBJECT", styleBold),
+	}}
 
 	for _, decision := range decisions {
 		when := decision.At.Local() //nolint:gosmopolitan // a local CLI shows local time
+		verdict := verdictStyles[decision.Verdict]
 
-		action := decision.Action
-		if !decision.Applied && action != "none" {
-			action = "would " + action
-		}
+		rows = append(rows, []cell{
+			text(strconv.FormatInt(decision.ID, 10), ""),
+			text(when.Format(time.DateTime), styleDim),
+			text(decision.Verdict, verdict),
+			text(decision.Reason, styleDim),
+			text(fmt.Sprintf("%.2f", decision.Score), verdict),
+			actionCell(decision),
+			text(decision.From, ""),
+			text(decision.Subject, ""),
+		})
+	}
 
-		switch {
-		case decision.Undone:
-			action += " (undone)"
-		case decision.CorrectedBy > 0:
-			action += fmt.Sprintf(" (corrected by %d)", decision.CorrectedBy)
-		}
+	return writeTable(out, colors, rows)
+}
 
-		_, _ = fmt.Fprintf(table, "%d\t%s\t%s\t%s\t%.2f\t%s\t%s\t%s\n",
-			decision.ID,
-			when.Format(time.DateTime),
-			decision.Verdict,
-			decision.Reason,
-			decision.Score,
+// actionCell shows what was done; what live mode would do, and nothing, are
+// dimmed, and a later undo or correction stands out.
+func actionCell(decision store.Decision) cell {
+	action := cell{{decision.Action, ""}}
+
+	switch {
+	case decision.Action == "none":
+		action = cell{{decision.Action, styleDim}}
+	case !decision.Applied:
+		action = cell{{"would " + decision.Action, styleDim}}
+	}
+
+	switch {
+	case decision.Undone:
+		action = append(action, span{" (undone)", styleMagenta})
+	case decision.CorrectedBy > 0:
+		action = append(
 			action,
-			decision.From,
-			decision.Subject,
+			span{fmt.Sprintf(" (corrected by %d)", decision.CorrectedBy), styleMagenta},
 		)
 	}
 
-	if err := table.Flush(); err != nil {
-		return fmt.Errorf("write log: %w", err)
-	}
-
-	return nil
+	return action
 }
 
 func (a *app) undoCommand() *cobra.Command {

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -532,4 +533,36 @@ func TestStatusShowsAuthServerID(t *testing.T) {
 	require.Zero(t, got.code, got.stderr)
 	require.Contains(t, got.stdout, "Auth server id:")
 	require.Contains(t, got.stdout, "not set")
+}
+
+func TestLogColor(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	a.seedCorpus(t)
+	require.Zero(t, a.run(t, "bootstrap").code)
+
+	a.add(t, "INBOX", nil, time.Now(), "WINNER claim prize",
+		"Congratulations winner, claim your lottery prize.")
+	require.Zero(t, a.run(t, runCmd, onceFlag).code)
+
+	piped := a.run(t, "log")
+	require.Zero(t, piped.code, piped.stderr)
+	require.NotContains(t, piped.stdout, "\x1b", "no colour when not on a terminal")
+
+	forced := a.run(t, "--color", "always", "log")
+	require.Zero(t, forced.code, forced.stderr)
+	require.Contains(t, forced.stdout, "\x1b[31mspam")
+	require.Equal(
+		t,
+		piped.stdout,
+		regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(forced.stdout, ""),
+	)
+
+	never := a.run(t, "--color", "never", "log")
+	require.NotContains(t, never.stdout, "\x1b")
+
+	bad := a.run(t, "--color", "bogus", "log")
+	require.Equal(t, 1, bad.code)
+	require.Contains(t, bad.stderr, "--color")
 }

@@ -75,6 +75,8 @@ func newRoot(env Env, version string) (*cobra.Command, *app) {
 	}
 	root.SetVersionTemplate("tamis {{.Version}}\n")
 	root.PersistentFlags().BoolVarP(&app.verbose, "verbose", "v", false, "log each IMAP exchange")
+	root.PersistentFlags().StringVar(&app.color, "color", colorAuto,
+		"colour output: auto (a terminal, unless NO_COLOR is set), always or never")
 	root.PersistentFlags().
 		StringVarP(&app.configPath, "config", "c", config.DefaultPath(env.Getenv),
 			"configuration file")

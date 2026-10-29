@@ -107,8 +107,8 @@ type Summary struct {
 	Rescued   int
 }
 
-// RunOnce trains from the training folders, then judges new mail in each
-// watched folder.
+// RunOnce trains from the training folders, judges new mail in each watched
+// folder and whitelists the recipients of new mail in Sent.
 func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	var summary Summary
 
@@ -126,6 +126,10 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		if err := e.scan(ctx, folder, judge); err != nil {
 			return summary, err
 		}
+	}
+
+	if err := e.scan(ctx, e.cfg.Folders.Sent, e.handleSent); err != nil {
+		e.log.WarnContext(ctx, "not learning recipients from Sent", "error", err)
 	}
 
 	if err := e.scanJunk(ctx, &summary); err != nil {

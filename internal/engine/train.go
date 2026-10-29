@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	netmail "net/mail"
 	"slices"
 	"strings"
 	"time"
@@ -243,9 +246,15 @@ func (e *Engine) whitelistSent(ctx context.Context, limit int) (int, error) {
 		return 0, fmt.Errorf("bootstrap from %s: %w", e.cfg.Folders.Sent, err)
 	}
 
+	return e.whitelistRecipients(ctx, recipients)
+}
+
+// whitelistRecipients whitelists the addresses other than the account's own
+// and returns how many.
+func (e *Engine) whitelistRecipients(ctx context.Context, addresses []string) (int, error) {
 	added := 0
 
-	for _, address := range recipients {
+	for _, address := range addresses {
 		if strings.EqualFold(address, e.cfg.Account.User) {
 			continue
 		}
@@ -258,6 +267,76 @@ func (e *Engine) whitelistSent(ctx context.Context, limit int) (int, error) {
 	}
 
 	return added, nil
+}
+
+// handleSent whitelists the To and Cc recipients of a message you sent, and
+// learns the message it replies to.
+func (e *Engine) handleSent(ctx context.Context, _ string, message mail.Message) error {
+	parsed, err := netmail.ReadMessage(bytes.NewReader(message.Raw))
+	if err != nil {
+		e.log.DebugContext(ctx, "unreadable sent message", "uid", message.UID, "error", err)
+
+		return nil
+	}
+
+	var addresses []string
+
+	for _, header := range []string{"To", "Cc"} {
+		list, err := parsed.Header.AddressList(header)
+		if err != nil {
+			continue
+		}
+
+		for _, addr := range list {
+			addresses = append(addresses, strings.ToLower(addr.Address))
+		}
+	}
+
+	if _, err := e.whitelistRecipients(ctx, addresses); err != nil {
+		return err
+	}
+
+	replied := strings.Fields(parsed.Header.Get("In-Reply-To"))
+	if len(replied) == 0 {
+		return nil
+	}
+
+	return e.learnReplied(ctx, replied[0])
+}
+
+// learnReplied learns as good the message you replied to, when tamis had
+// called it spam or was unsure: answering it says it isn't spam. The message
+// may be in the folder it was judged in or, if filed as spam, in Junk.
+func (e *Engine) learnReplied(ctx context.Context, messageID string) error {
+	decision, found, err := e.store.LatestDecision(ctx, messageID)
+	if err != nil {
+		return fmt.Errorf("look up decision: %w", err)
+	}
+
+	if !found || !slices.Contains(e.cfg.Folders.Watch, decision.Mailbox) ||
+		(decision.Verdict != VerdictSpam && decision.Verdict != VerdictUncertain) {
+		return nil
+	}
+
+	for _, folder := range []string{decision.Mailbox, e.cfg.Folders.Junk} {
+		messages, err := e.locate(folder, messageID)
+		if errors.Is(err, ErrMessageGone) {
+			continue
+		}
+
+		if err != nil {
+			return err
+		}
+
+		tokens, err := e.tokens(ctx, messages[0].Raw)
+		if err != nil {
+			return err
+		}
+
+		return e.learnGood(ctx, folder, messages[0], tokens, ReasonCorrection)
+	}
+
+	return nil
 }
 
 func (e *Engine) trainCorpus(

@@ -40,7 +40,7 @@ does. Between passes it IDLEs on a second connection to the first watched
 folder. Before idling it compares the folder's UIDNEXT with the cursor the pass
 saved, so mail that arrived in between starts the next pass at once. It falls
 back to plain sleeping when the server doesn't advertise IDLE, the connection
-fails, or the last pass failed. Everything else (training folders, Junk, marks)
+fails, or the last pass failed. Everything else (training folders, Sent, Junk, marks)
 is still only looked at on a pass.
 
 ```mermaid
@@ -50,7 +50,8 @@ flowchart TD
     trainGood --> watch{Next watched folder?}
     watch -- yes --> scan[Scan folder]
     scan --> watch
-    watch -- no --> learn{learn_from_junk, rescue<br/>or learn_provider_junk?}
+    watch -- no --> sent[Scan Sent<br/>whitelist To and Cc recipients,<br/>learn replied-to mail as good]
+    sent --> learn{learn_from_junk, rescue<br/>or learn_provider_junk?}
     learn -- yes --> junk[Scan Junk<br/>learn missed spam, rescue,<br/>learn provider spam]
     learn -- no --> marks{learn_from_keywords?}
     junk --> marks
@@ -63,13 +64,23 @@ Training folders go first. A message the user has just trained is recorded
 as trained, so when it lands back in the inbox in the same pass, the scan
 skips it instead of judging it again.
 
+Sent has a cursor like a watched folder, but its messages are not judged:
+every To and Cc address of a new one is whitelisted, minus your own address.
+If a new message replies (`In-Reply-To`) to one tamis judged spam or uncertain,
+that message is learnt as good and its sender whitelisted, like a Not Junk
+mark: answering it says it isn't spam. The original is looked for where it was
+judged and in Junk; if it is gone, nothing is learnt.
+Mail already in Sent when tamis first sees the folder is left to
+`tamis bootstrap --sent`. A Sent folder that can't be scanned (say the name in
+`folders.sent` doesn't exist) is logged as a warning and doesn't fail the pass.
+
 Training folders are processed in both modes. Dropping a message into one is
 an explicit request, not a judgement tamis makes on its own. The same goes for
 the Junk scan, which learns from your moves and from the provider's filing.
 
 ## Scanning a folder
 
-Each watched folder has a cursor in the store: the highest UID processed,
+Each scanned folder has a cursor in the store: the highest UID processed,
 valid for one UIDVALIDITY. The cursor is saved after every message, so an
 interrupted pass resumes where it stopped.
 

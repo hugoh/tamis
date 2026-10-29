@@ -66,7 +66,10 @@ func (e *Engine) train(ctx context.Context, folder trainFolder, summary *Summary
 }
 
 func (e *Engine) trainOne(ctx context.Context, folder trainFolder, message mail.Message) error {
-	tokens := classify.Tokenize(message.Raw)
+	tokens, err := e.tokens(ctx, message.Raw)
+	if err != nil {
+		return err
+	}
 
 	if folder.label == classify.Good {
 		return e.learnGood(ctx, folder.name, message, tokens, ReasonTrainFolder)
@@ -126,24 +129,27 @@ func (e *Engine) Bootstrap(ctx context.Context, opts BootstrapOptions) (Bootstra
 		return summary, err
 	}
 
-	for _, source := range opts.Spam {
-		trained, err := e.trainSource(ctx, source, classify.Spam, &tally, func() ([]uint32, error) {
-			return e.mail.UIDsAfter(source.Folder, 0)
-		})
-
-		summary.Spam += trained
-
-		if err != nil {
-			return summary, err
-		}
-	}
-
+	// Good mail first: the recipient status of each message depends on which
+	// addresses good mail has gone to, and spam should be seen as live mail
+	// would be.
 	for _, source := range opts.Good {
 		trained, err := e.trainSource(ctx, source, classify.Good, &tally, func() ([]uint32, error) {
 			return e.mail.SeenBefore(source.Folder, time.Now().Add(-opts.GoodMinAge))
 		})
 
 		summary.Good += trained
+
+		if err != nil {
+			return summary, err
+		}
+	}
+
+	for _, source := range opts.Spam {
+		trained, err := e.trainSource(ctx, source, classify.Spam, &tally, func() ([]uint32, error) {
+			return e.mail.UIDsAfter(source.Folder, 0)
+		})
+
+		summary.Spam += trained
 
 		if err != nil {
 			return summary, err
@@ -251,12 +257,12 @@ func (e *Engine) trainCorpus(
 		for _, message := range messages {
 			tally.Add(message.Raw)
 
-			changed, err := e.store.Train(
-				ctx,
-				trainingKey(message),
-				classify.Tokenize(message.Raw),
-				label,
-			)
+			tokens, err := e.tokens(ctx, message.Raw)
+			if err != nil {
+				return trained, fmt.Errorf("bootstrap from %s: %w", folder, err)
+			}
+
+			changed, err := e.store.Train(ctx, trainingKey(message), tokens, label)
 			if err != nil {
 				return trained, fmt.Errorf("bootstrap from %s: %w", folder, err)
 			}

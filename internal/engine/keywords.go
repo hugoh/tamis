@@ -128,7 +128,10 @@ func (e *Engine) learnMark(
 	message mail.Message,
 	label classify.Label,
 ) error {
-	tokens := classify.Tokenize(message.Raw)
+	tokens, err := e.tokens(ctx, message.Raw)
+	if err != nil {
+		return err
+	}
 
 	if label == classify.Good {
 		return e.learnGood(ctx, folder, message, tokens, ReasonCorrection)

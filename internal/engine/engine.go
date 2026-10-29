@@ -249,7 +249,10 @@ func (e *Engine) handle(
 		return nil
 	}
 
-	tokens := classify.Tokenize(message.Raw)
+	tokens, model, err := e.features(ctx, message.Raw)
+	if err != nil {
+		return err
+	}
 
 	if slices.Contains(message.Flags, strings.ToLower(FiledKeyword)) {
 		filed, err := e.movedByTamis(ctx, message, VerdictSpam)
@@ -265,7 +268,7 @@ func (e *Engine) handle(
 		}
 	}
 
-	verdict, err := e.judge(ctx, message, tokens)
+	verdict, err := e.judge(ctx, message, tokens, model)
 	if err != nil {
 		return err
 	}
@@ -316,6 +319,7 @@ func (e *Engine) judge(
 	ctx context.Context,
 	message mail.Message,
 	tokens []string,
+	model classify.Model,
 ) (judgement, error) {
 	if message.From != "" {
 		whitelisted, err := e.store.HasAddress(ctx, message.From)
@@ -327,11 +331,6 @@ func (e *Engine) judge(
 			(!e.cfg.Policy.WhitelistRequiresAuth || auth.Verified(message.Raw, e.authServerID(ctx))) {
 			return judgement{verdict: VerdictGood, reason: ReasonWhitelisted}, nil
 		}
-	}
-
-	model, err := e.store.Model(ctx, tokens)
-	if err != nil {
-		return judgement{}, fmt.Errorf("judge: %w", err)
 	}
 
 	score := classify.Score(model, tokens).Score

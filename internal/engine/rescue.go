@@ -86,9 +86,7 @@ func (e *Engine) judgeRescue(ctx context.Context, message mail.Message) (judgeme
 		return judgement{}, false, nil
 	}
 
-	tokens := classify.Tokenize(message.Raw)
-
-	model, err := e.store.Model(ctx, tokens)
+	tokens, model, err := e.features(ctx, message.Raw)
 	if err != nil {
 		return judgement{}, false, fmt.Errorf("rescue: %w", err)
 	}

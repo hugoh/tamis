@@ -142,7 +142,7 @@ func TestRunComparesVariants(t *testing.T) {
 	err := run([]string{"run", "--warmup", "10", "--runs", "3", root}, &out, &errOut)
 	require.NoError(t, err, errOut.String())
 	require.Contains(t, out.String(), "baseline")
-	require.Contains(t, out.String(), "rcpt")
+	require.Contains(t, out.String(), "recipient tokens")
 	require.Contains(t, out.String(), "better in")
 	require.Contains(t, out.String(), "40 good and 20 spam")
 }

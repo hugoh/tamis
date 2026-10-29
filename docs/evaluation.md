@@ -11,7 +11,8 @@ is scored by a model that has learnt only from the messages before it, then
 learnt from. That is how tamis meets mail, and it needs no train/test split.
 
 - The model, tokenizer and scoring are the production ones (`internal/classify`),
-  so an experiment can't drift from what tamis does.
+  so an experiment can't drift from what tamis does. The first variant,
+  `baseline`, is exactly that, including the recipient status token.
 - The first `--warmup` messages (default 200) are learnt but not scored.
 - Run 0 keeps the order given. Runs 1 to `--runs`-1 shuffle the messages, the
   same way for every variant, so the runs are paired. The report shows each
@@ -52,11 +53,13 @@ than they would on real mail.
 
 ## Trying a feature
 
-A feature is a `Featurizer`: `Tokens(raw)` returns the tokens to score, and
+A feature is a `Featurizer`: `Tokens(raw, model)` returns the tokens to score
+(it may consult the model, as the recipient status does), and
 `Learn(raw, spam)` is called after the message was scored, so it can remember
 what it has seen. Add a `Variant` to `eval.Standard` and run. When the feature
 is adopted into the tokenizer, it becomes the baseline and is removed from
-`Standard`.
+`Standard`; an ablation (`- recipient tokens`) can stay, to show what a
+feature contributes.
 
 ## Results so far
 
@@ -69,6 +72,8 @@ tokenizer as it was then:
   good mail has recently been sent to) and a `to:<address>` token per
   recipient improved the ranking in every run, by about 15% together. 36% of
   the spam went to an address not seen in recent good mail, against 0.7% of
-  the good mail.
+  the good mail. These are now in the tokenizer (see Recipients in
+  [`engine.md`](engine.md)), and the `- recipient tokens` variant shows what
+  they contribute.
 
 One mailbox is one data point: run your own.

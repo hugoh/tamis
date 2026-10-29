@@ -152,11 +152,23 @@ counts, and `tamis status`, `tamis doctor` and the `run` log say to run
 address alone.
 
 **Scoring.** `classify` tokenizes the subject, the `From` address and domain,
-the words in text and HTML parts, and the hosts of links. Each token's spam
+the `To` and `Cc` addresses and their domains (at most ten addresses), the
+words in text and HTML parts, and the hosts of links. Each token's spam
 probability is smoothed towards 0.5 when it has been seen rarely. The 150 most
 decisive tokens are combined with Fisher's chi-square method into a score from
 0 (good) to 1 (spam). A message with no decisive tokens scores 0.5, which
 falls in the uncertain band.
+
+**Recipients.** Mail to an address you don't normally get mail on is a strong
+sign of spam (BCC blasts, relays, a stranger's address). Besides the `to:`
+tokens, each message gets one `rcpt:` token: `rcpt:mine` if some recipient is
+your account address or has been a recipient of at least three good messages,
+`rcpt:other` if there are recipients but none of those, `rcpt:none` if there are
+none. Only good mail teaches which addresses are expected, so a spammer's
+target address stays unexpected. The token depends on what the model has
+learnt, so it is worked out each time a message is scored or trained, and
+stored with the training. Messages learnt before this existed carry no
+recipient tokens; the model picks them up from new mail.
 
 ## Actions
 
@@ -359,10 +371,13 @@ its current mail.
 ```mermaid
 flowchart TD
     b([Bootstrap]) --> sent[Sent: To and Cc of the latest N messages<br/>→ whitelist, minus your own address]
-    sent --> spam[Each spam folder, default Junk:<br/>latest N messages → train spam]
-    spam --> good[Each good folder, default the inbox:<br/>latest N read messages older than min age → train good]
-    good --> cursors[Watched folders: cursor = UIDNEXT - 1]
+    sent --> good[Each good folder, default the inbox:<br/>latest N read messages older than min age → train good]
+    good --> spam[Each spam folder, default Junk:<br/>latest N messages → train spam]
+    spam --> cursors[Watched folders: cursor = UIDNEXT - 1]
 ```
+
+Good mail is learnt before spam, because the recipient status of a message
+depends on which addresses good mail has gone to.
 
 Bootstrap also learns the provider's authserv-id domain from the messages it
 reads (see Sender verification), including when named folders limit it.

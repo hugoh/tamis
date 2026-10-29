@@ -71,7 +71,7 @@ func TestAUC(t *testing.T) {
 func TestRunSeparatesTheClasses(t *testing.T) {
 	t.Parallel()
 
-	result, err := eval.Run(corpus(150), eval.Baseline(), eval.Options{Warmup: 20})
+	result, err := eval.Run(corpus(150), eval.Baseline(nil), eval.Options{Warmup: 20})
 	require.NoError(t, err)
 
 	require.Equal(t, 130, result.Ham+result.Spam, "the warm-up isn't scored")
@@ -85,7 +85,7 @@ type spy struct {
 	events []string
 }
 
-func (s *spy) Tokens(raw []byte) []string {
+func (s *spy) Tokens(raw []byte, _ classify.Model) []string {
 	s.events = append(s.events, "tokens:"+string(raw))
 
 	return []string{"t" + string(raw)}
@@ -120,10 +120,10 @@ func TestRunNeedsBothClasses(t *testing.T) {
 
 	only := []eval.Message{{Raw: []byte("a")}, {Raw: []byte("b")}}
 
-	_, err := eval.Run(only, eval.Baseline(), eval.Options{})
+	_, err := eval.Run(only, eval.Baseline(nil), eval.Options{})
 	require.ErrorIs(t, err, eval.ErrOneClass)
 
-	_, err = eval.Run(corpus(30), eval.Baseline(), eval.Options{Warmup: 30})
+	_, err = eval.Run(corpus(30), eval.Baseline(nil), eval.Options{Warmup: 30})
 	require.ErrorIs(t, err, eval.ErrOneClass, "nothing left to score after the warm-up")
 }
 

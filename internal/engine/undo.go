@@ -144,12 +144,12 @@ type moveReversal struct {
 
 // relearn trains message as label and updates the whitelist to match.
 func (e *Engine) relearn(ctx context.Context, message mail.Message, label classify.Label) error {
-	if _, err := e.store.Train(
-		ctx,
-		trainingKey(message),
-		classify.Tokenize(message.Raw),
-		label,
-	); err != nil {
+	tokens, err := e.tokens(ctx, message.Raw)
+	if err != nil {
+		return fmt.Errorf("learn %s: %w", label, err)
+	}
+
+	if _, err := e.store.Train(ctx, trainingKey(message), tokens, label); err != nil {
 		return fmt.Errorf("learn %s: %w", label, err)
 	}
 
@@ -157,7 +157,6 @@ func (e *Engine) relearn(ctx context.Context, message mail.Message, label classi
 		return nil
 	}
 
-	var err error
 	if label == classify.Good {
 		err = e.store.AddAddress(ctx, message.From, ReasonUndo)
 	} else {

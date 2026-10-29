@@ -1,13 +1,12 @@
 package eval
 
-// Standard is the set of variants worth comparing today: the baseline and the
-// recipient features. own are the addresses mail is always expected on. When a
-// candidate is adopted into the tokenizer, drop it here: it is then baseline.
+// Standard is the set of variants worth comparing today: the baseline, and
+// ablations that show what its parts contribute. own are the addresses mail
+// is always expected on. A candidate feature goes here until it is adopted
+// into the tokenizer, when it becomes the baseline.
 func Standard(own []string) []Variant {
 	return []Variant{
-		Baseline(),
-		Recipients(RecipientOptions{Status: true, Own: own}),
-		Recipients(RecipientOptions{PerAddress: true, Own: own}),
-		Recipients(RecipientOptions{Status: true, PerAddress: true, Own: own}),
+		Baseline(own),
+		WithoutRecipients(),
 	}
 }

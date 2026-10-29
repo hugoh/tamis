@@ -32,7 +32,8 @@ var (
 )
 
 // Tokenize extracts the distinct features of a raw RFC 5322 message: words
-// from the subject and text parts, sender address and domain, and link hosts.
+// from the subject and text parts, sender address and domain, recipient
+// addresses and domains, and link hosts.
 // It never fails; unparsable input yields whatever could be recovered.
 func Tokenize(raw []byte) []string {
 	tokens := newTokenSet()
@@ -63,6 +64,8 @@ func addHeaderTokens(tokens *tokenSet, header mail.Header) {
 		tokens.addText("subject:", subject)
 	}
 
+	addRecipientTokens(tokens, header)
+
 	from, err := header.AddressList("From")
 	if err != nil {
 		return
@@ -74,6 +77,34 @@ func addHeaderTokens(tokens *tokenSet, header mail.Header) {
 
 		if _, domain, ok := strings.Cut(address, "@"); ok {
 			tokens.add("from-domain:" + domain)
+		}
+	}
+}
+
+// addRecipientTokens records who the message went to: each distinct To and Cc
+// address and its domain, up to maxRecipients addresses.
+func addRecipientTokens(tokens *tokenSet, header mail.Header) {
+	seen := map[string]bool{}
+
+	for _, field := range []string{"To", "Cc"} {
+		addresses, _ := header.AddressList(field)
+
+		for _, one := range addresses {
+			address := strings.ToLower(one.Address)
+			if address == "" || seen[address] {
+				continue
+			}
+
+			seen[address] = true
+			if len(seen) > maxRecipients {
+				return
+			}
+
+			tokens.add(recipientPrefix + address)
+
+			if _, domain, ok := strings.Cut(address, "@"); ok {
+				tokens.add("to-domain:" + domain)
+			}
 		}
 	}
 }

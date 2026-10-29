@@ -26,13 +26,12 @@ func (e *Engine) learnFromJunk(
 
 	summary.Corrected++
 
-	return true, e.learnSpam(
-		ctx,
-		e.cfg.Folders.Junk,
-		message,
-		classify.Tokenize(message.Raw),
-		ReasonCorrection,
-	)
+	tokens, err := e.tokens(ctx, message.Raw)
+	if err != nil {
+		return false, err
+	}
+
+	return true, e.learnSpam(ctx, e.cfg.Folders.Junk, message, tokens, ReasonCorrection)
 }
 
 // handleJunk learns from what the user moved to Junk, then considers
@@ -71,9 +70,7 @@ func (e *Engine) learnProviderJunk(
 		return err
 	}
 
-	tokens := classify.Tokenize(message.Raw)
-
-	model, err := e.store.Model(ctx, tokens)
+	tokens, model, err := e.features(ctx, message.Raw)
 	if err != nil {
 		return fmt.Errorf("learn provider junk: %w", err)
 	}

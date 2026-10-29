@@ -3,14 +3,15 @@
 // learnt from the messages before it, then learnt from. That is how tamis
 // meets mail, and it makes feature experiments comparable.
 //
-// A feature under test is a Featurizer. The production tokenizer is
-// Baseline, so an experiment can't drift from what tamis does.
+// A feature under test is a Featurizer. Baseline is what tamis does today,
+// using the same functions, so an experiment can't drift from it.
 package eval
 
 import (
 	"cmp"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/hugoh/tamis/internal/classify"
 )
@@ -37,11 +38,11 @@ type Message struct {
 	Spam bool
 }
 
-// Featurizer turns messages into the tokens a model scores. It may remember
-// what it has seen. Tokens must not change its state: Learn does, and runs
-// after the message was scored.
+// Featurizer turns messages into the tokens a model scores. It may consult
+// the model, and remember what it has seen. Tokens must not change its state:
+// Learn does, and runs after the message was scored.
 type Featurizer interface {
-	Tokens(raw []byte) []string
+	Tokens(raw []byte, model classify.Model) []string
 	Learn(raw []byte, spam bool)
 }
 
@@ -74,14 +75,42 @@ type Result struct {
 	Ham, Spam int
 }
 
-type tamisTokens struct{}
+type production struct {
+	own []string
+}
 
-func (tamisTokens) Tokens(raw []byte) []string { return classify.Tokenize(raw) }
-func (tamisTokens) Learn([]byte, bool)         {}
+func (p production) Tokens(raw []byte, model classify.Model) []string {
+	return classify.WithRecipientStatus(classify.Tokenize(raw), model, p.own)
+}
 
-// Baseline is the tokenizer tamis uses today.
-func Baseline() Variant {
-	return Variant{Name: "baseline (tamis today)", New: func() Featurizer { return tamisTokens{} }}
+func (production) Learn([]byte, bool) {}
+
+// Baseline is what tamis does today. own are the addresses mail is always
+// expected on, such as the account's.
+func Baseline(own []string) Variant {
+	return Variant{
+		Name: "baseline (tamis today)",
+		New:  func() Featurizer { return production{own: own} },
+	}
+}
+
+type withoutRecipients struct{}
+
+func (withoutRecipients) Tokens(raw []byte, _ classify.Model) []string {
+	return slices.DeleteFunc(classify.Tokenize(raw), func(token string) bool {
+		return strings.HasPrefix(token, "to:") || strings.HasPrefix(token, "to-domain:")
+	})
+}
+
+func (withoutRecipients) Learn([]byte, bool) {}
+
+// WithoutRecipients is the baseline minus everything about who the message
+// went to: it shows what the recipient features contribute.
+func WithoutRecipients() Variant {
+	return Variant{
+		Name: "- recipient tokens",
+		New:  func() Featurizer { return withoutRecipients{} },
+	}
 }
 
 // Run scores messages in order with a model that learns as it goes.
@@ -92,7 +121,7 @@ func Run(messages []Message, variant Variant, opts Options) (Result, error) {
 	var ham, spam []float64
 
 	for i, message := range messages {
-		tokens := featurizer.Tokens(message.Raw)
+		tokens := featurizer.Tokens(message.Raw, model)
 
 		if i >= opts.Warmup {
 			score := classify.Score(model, tokens).Score

@@ -12,8 +12,8 @@ func TestCompareIsDeterministicAndPaired(t *testing.T) {
 	t.Parallel()
 
 	variants := []eval.Variant{
-		eval.Baseline(),
-		eval.Recipients(eval.RecipientOptions{Status: true}),
+		eval.Baseline(nil),
+		eval.WithoutRecipients(),
 	}
 	messages := corpus(120)
 	options := eval.Options{Warmup: 20}
@@ -33,8 +33,8 @@ func TestWriteReport(t *testing.T) {
 	t.Parallel()
 
 	variants := []eval.Variant{
-		eval.Baseline(),
-		eval.Recipients(eval.RecipientOptions{Status: true}),
+		eval.Baseline(nil),
+		eval.WithoutRecipients(),
 	}
 
 	results, err := eval.Compare(corpus(120), variants, 3, eval.Options{Warmup: 20})
@@ -44,6 +44,6 @@ func TestWriteReport(t *testing.T) {
 
 	require.NoError(t, eval.WriteReport(&out, variants, results))
 	require.Contains(t, out.String(), "baseline")
-	require.Contains(t, out.String(), "rcpt")
+	require.Contains(t, out.String(), "recipient tokens")
 	require.Contains(t, out.String(), "better in", "paired comparison against the first variant")
 }

@@ -1056,6 +1056,23 @@ func TestUndoUncertainGone(t *testing.T) {
 }
 
 // moveToJunk plays the user dragging a message from the inbox to Junk.
+func TestCursorSkipsMailGoneBeforeTheScan(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.run(t)
+	e.append(t, inbox, e.hammy("gone@good.example"))
+	e.moveToJunk(t, "gone@good.example")
+	e.run(t)
+
+	state, err := e.client.State(inbox)
+	require.NoError(t, err)
+
+	cursor, _, err := e.db.Cursor(t.Context(), inbox)
+	require.NoError(t, err)
+	require.Equal(t, state.UIDNext-1, cursor.LastUID, "IDLE would see the gone UID as new mail")
+}
+
 func (e *env) moveToJunk(t *testing.T, from string) {
 	t.Helper()
 

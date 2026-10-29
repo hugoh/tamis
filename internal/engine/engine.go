@@ -191,6 +191,18 @@ func (e *Engine) scan(ctx context.Context, folder string, handle handler) error 
 		}
 	}
 
+	// UIDs below UIDNEXT that the search didn't return are gone for good;
+	// leaving the cursor behind them makes IDLE report them as new forever.
+	lastUsed := max(state.UIDNext, 1) - 1
+	if cursor.LastUID >= lastUsed {
+		return nil
+	}
+
+	cursor.LastUID = lastUsed
+	if err := e.store.SetCursor(ctx, folder, cursor); err != nil {
+		return fmt.Errorf("scan %s: %w", folder, err)
+	}
+
 	return nil
 }
 

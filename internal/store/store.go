@@ -379,6 +379,22 @@ func (s *Store) Decisions(ctx context.Context, limit int) ([]Decision, error) {
 	return decisions, nil
 }
 
+// PruneDecisions deletes journal entries older than before and returns how
+// many it removed.
+func (s *Store) PruneDecisions(ctx context.Context, before time.Time) (int64, error) {
+	result, err := s.db.ExecContext(ctx, "DELETE FROM decisions WHERE at < ?", before.Unix())
+	if err != nil {
+		return 0, fmt.Errorf("prune decisions: %w", err)
+	}
+
+	pruned, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("prune decisions: %w", err)
+	}
+
+	return pruned, nil
+}
+
 // Decision returns one journal entry.
 func (s *Store) Decision(ctx context.Context, id int64) (Decision, error) {
 	decision, err := scanDecision(s.db.QueryRowContext(ctx,
@@ -466,21 +482,34 @@ type Stats struct {
 	Good      int
 	Tokens    int
 	Addresses int
+	// Decisions is the journal's size; OldestDecision is zero when it is empty.
+	Decisions      int
+	OldestDecision time.Time
 }
 
-// Stats returns counts of trained messages, distinct tokens and whitelisted
-// addresses.
+// Stats returns counts of trained messages, distinct tokens, whitelisted
+// addresses and journal entries.
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
-	var stats Stats
+	var (
+		stats  Stats
+		oldest sql.NullInt64
+	)
 
 	err := s.db.QueryRowContext(ctx, `SELECT
 		(SELECT COALESCE(SUM(label = ?), 0) FROM trained),
 		(SELECT COALESCE(SUM(label = ?), 0) FROM trained),
 		(SELECT COUNT(*) FROM tokens),
-		(SELECT COUNT(*) FROM addresses)`, classify.Spam, classify.Good).
-		Scan(&stats.Spam, &stats.Good, &stats.Tokens, &stats.Addresses)
+		(SELECT COUNT(*) FROM addresses),
+		(SELECT COUNT(*) FROM decisions),
+		(SELECT MIN(at) FROM decisions)`, classify.Spam, classify.Good).
+		Scan(&stats.Spam, &stats.Good, &stats.Tokens, &stats.Addresses,
+			&stats.Decisions, &oldest)
 	if err != nil {
 		return Stats{}, fmt.Errorf("read stats: %w", err)
+	}
+
+	if oldest.Valid {
+		stats.OldestDecision = time.Unix(oldest.Int64, 0).UTC()
 	}
 
 	return stats, nil

@@ -105,6 +105,9 @@ type Policy struct {
 	// is whitelisted and DKIM or DMARC passed (regardless of
 	// WhitelistRequiresAuth: impersonated contacts are what Junk catches).
 	Rescue bool `toml:"rescue"`
+	// JournalRetention is how long decisions are kept; older ones are
+	// deleted at the start of each pass. Zero keeps them forever.
+	JournalRetention Duration `toml:"journal_retention"`
 	// RescueThreshold also rescues mail scoring at or below it. Zero turns
 	// score-based rescue off.
 	RescueThreshold float64 `toml:"rescue_threshold"`
@@ -149,6 +152,7 @@ func defaults() Config {
 			LearnProviderJunk:     true,
 			LearnFromKeywords:     true,
 			Rescue:                true,
+			JournalRetention:      Duration{365 * 24 * time.Hour},
 		},
 	}
 }
@@ -302,6 +306,10 @@ func (p Policy) problems() []string {
 
 	if !(0 < p.GoodThreshold && p.GoodThreshold < p.SpamThreshold && p.SpamThreshold < 1) {
 		problems = append(problems, "need 0 < policy.good_threshold < policy.spam_threshold < 1")
+	}
+
+	if p.JournalRetention.Duration < 0 {
+		problems = append(problems, "policy.journal_retention must not be negative")
 	}
 
 	if p.RescueThreshold < 0 || p.RescueThreshold >= p.GoodThreshold {

@@ -153,20 +153,20 @@ func TestCursor(t *testing.T) {
 
 	db := open(t)
 
-	_, ok, err := db.Cursor(t.Context(), "INBOX")
+	_, ok, err := db.Cursor(t.Context(), inbox)
 	require.NoError(t, err)
 	require.False(t, ok)
 
 	require.NoError(
 		t,
-		db.SetCursor(t.Context(), "INBOX", store.Cursor{UIDValidity: 7, LastUID: 42}),
+		db.SetCursor(t.Context(), inbox, store.Cursor{UIDValidity: 7, LastUID: 42}),
 	)
 	require.NoError(
 		t,
-		db.SetCursor(t.Context(), "INBOX", store.Cursor{UIDValidity: 7, LastUID: 43}),
+		db.SetCursor(t.Context(), inbox, store.Cursor{UIDValidity: 7, LastUID: 43}),
 	)
 
-	cursor, ok, err := db.Cursor(t.Context(), "INBOX")
+	cursor, ok, err := db.Cursor(t.Context(), inbox)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, store.Cursor{UIDValidity: 7, LastUID: 43}, cursor)
@@ -179,18 +179,18 @@ func TestDecisions(t *testing.T) {
 
 	at := time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
 
-	for i, verdict := range []string{"good", verdictSpam} {
+	for i, verdict := range []string{verdictGood, verdictSpam} {
 		_, err := db.RecordDecision(t.Context(), store.Decision{
 			At:        at.Add(time.Duration(i) * time.Minute),
-			Mailbox:   "INBOX",
+			Mailbox:   inbox,
 			UID:       uint32(i + 1),
 			MessageID: "<m" + verdict + ">",
 			From:      "x@example.com",
 			Subject:   verdict + " subject",
 			Score:     0.5,
 			Verdict:   verdict,
-			Reason:    "bayes",
-			Action:    "none",
+			Reason:    reasonBayes,
+			Action:    actionNone,
 			Applied:   false,
 		})
 		require.NoError(t, err)
@@ -201,7 +201,7 @@ func TestDecisions(t *testing.T) {
 	require.Len(t, decisions, 2)
 	require.Equal(t, verdictSpam, decisions[0].Verdict, "newest first")
 	require.Equal(t, at.Add(time.Minute), decisions[0].At)
-	require.Equal(t, "bayes", decisions[0].Reason)
+	require.Equal(t, reasonBayes, decisions[0].Reason)
 	require.Positive(t, decisions[0].ID)
 }
 
@@ -218,6 +218,21 @@ func TestStats(t *testing.T) {
 	stats, err := db.Stats(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, store.Stats{Spam: 1, Good: 1, Tokens: 2}, stats)
+
+	oldest := time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
+
+	for _, at := range []time.Time{oldest.Add(time.Hour), oldest} {
+		_, err := db.RecordDecision(t.Context(), store.Decision{
+			At: at, Mailbox: inbox, MessageID: "<m>", Verdict: verdictGood,
+			Reason: reasonBayes, Action: actionNone,
+		})
+		require.NoError(t, err)
+	}
+
+	stats, err = db.Stats(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 2, stats.Decisions)
+	require.Equal(t, oldest, stats.OldestDecision)
 }
 
 func TestClosedStoreFails(t *testing.T) {
@@ -254,13 +269,13 @@ func TestClosedStoreFails(t *testing.T) {
 		"cursor": func(t *testing.T) {
 			t.Helper()
 
-			_, _, err := db.Cursor(t.Context(), "INBOX")
+			_, _, err := db.Cursor(t.Context(), inbox)
 			require.Error(t, err)
 		},
 		"set cursor": func(t *testing.T) {
 			t.Helper()
 
-			require.Error(t, db.SetCursor(t.Context(), "INBOX", store.Cursor{}))
+			require.Error(t, db.SetCursor(t.Context(), inbox, store.Cursor{}))
 		},
 		"record decision": func(t *testing.T) {
 			t.Helper()
@@ -366,7 +381,13 @@ func TestConcurrentOpenOfNewDatabase(t *testing.T) {
 	}
 }
 
-const verdictSpam = "spam"
+const (
+	verdictSpam = "spam"
+	verdictGood = "good"
+	inbox       = "INBOX"
+	reasonBayes = "bayes"
+	actionNone  = "none"
+)
 
 // v1Schema is the decisions table as released in schema version 1.
 const v1Schema = `
@@ -412,7 +433,7 @@ func TestDecisionLookup(t *testing.T) {
 	id, err := db.RecordDecision(t.Context(), store.Decision{
 		At: time.Unix(0, 0).
 			UTC(),
-		Mailbox:   "INBOX",
+		Mailbox:   inbox,
 		UID:       3,
 		MessageID: "<a@b>",
 		Verdict:   verdictSpam,
@@ -456,7 +477,7 @@ func TestLatestDecision(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok)
 
-	for _, verdict := range []string{verdictSpam, "good"} {
+	for _, verdict := range []string{verdictSpam, verdictGood} {
 		_, err := db.RecordDecision(
 			t.Context(),
 			store.Decision{MessageID: "<m@x>", Verdict: verdict},
@@ -473,7 +494,7 @@ func TestLatestDecision(t *testing.T) {
 	decision, ok, err := db.LatestDecision(t.Context(), "<m@x>")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "good", decision.Verdict)
+	require.Equal(t, verdictGood, decision.Verdict)
 
 	_, ok, err = db.LatestDecision(t.Context(), "")
 	require.NoError(t, err)
@@ -527,4 +548,28 @@ func TestDatabaseIsPrivate(t *testing.T) {
 			require.NoError(t, db.Close())
 		})
 	}
+}
+
+func TestPruneDecisions(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+
+	for _, age := range []time.Duration{400 * 24 * time.Hour, 366 * 24 * time.Hour, time.Hour} {
+		_, err := db.RecordDecision(t.Context(), store.Decision{
+			At: now.Add(-age), Mailbox: inbox, MessageID: "<m>", Verdict: verdictGood,
+			Reason: reasonBayes, Action: actionNone,
+		})
+		require.NoError(t, err)
+	}
+
+	pruned, err := db.PruneDecisions(t.Context(), now.Add(-365*24*time.Hour))
+	require.NoError(t, err)
+	require.EqualValues(t, 2, pruned)
+
+	left, err := db.Decisions(t.Context(), 10)
+	require.NoError(t, err)
+	require.Len(t, left, 1)
+	require.Equal(t, now.Add(-time.Hour), left[0].At)
 }

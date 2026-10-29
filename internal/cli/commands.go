@@ -282,7 +282,15 @@ func (a *app) runCommand() *cobra.Command {
 			logger := a.logger(cmd)
 			useIdle := true
 
+			var pruner journalPruner
+
 			for {
+				if err := pruner.prune(
+					ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
+				); err != nil {
+					logger.ErrorContext(ctx, "journal pruning failed", "err", err)
+				}
+
 				err := a.pass(ctx, cfg, database, logger)
 				if once || errors.Is(err, mail.ErrLogin) {
 					return err
@@ -629,7 +637,7 @@ func (a *app) doctorCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 
-			_, database, err := a.open(ctx)
+			cfg, database, err := a.open(ctx)
 			if err != nil {
 				return err
 			}
@@ -646,7 +654,12 @@ func (a *app) doctorCommand() *cobra.Command {
 				return err //nolint:wrapcheck // store errors carry their context
 			}
 
-			report := health.Run(health.Input{Stats: stats, Recent: recent, Now: time.Now()})
+			report := health.Run(health.Input{
+				Stats:     stats,
+				Recent:    recent,
+				Retention: cfg.Policy.JournalRetention.Duration,
+				Now:       time.Now(),
+			})
 
 			if asJSON {
 				err = report.WriteJSON(cmd.OutOrStdout())

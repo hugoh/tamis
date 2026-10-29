@@ -48,6 +48,7 @@ user = "me@icloud.com"
 	require.True(t, cfg.Policy.LearnProviderJunk)
 	require.True(t, cfg.Policy.LearnFromKeywords)
 	require.True(t, cfg.Policy.Rescue)
+	require.Equal(t, 365*24*time.Hour, cfg.Policy.JournalRetention.Duration)
 	require.Zero(t, cfg.Policy.RescueThreshold)
 	require.Equal(t, "INBOX", cfg.Folders.RescueTo())
 	require.NotEmpty(t, cfg.State)
@@ -83,6 +84,7 @@ learn_from_junk = false
 learn_from_keywords = false
 rescue = false
 rescue_threshold = 0.05
+journal_retention = "720h"
 `))
 	require.NoError(t, err)
 
@@ -97,6 +99,7 @@ rescue_threshold = 0.05
 	require.False(t, cfg.Policy.LearnFromKeywords)
 	require.False(t, cfg.Policy.Rescue)
 	require.InDelta(t, 0.05, cfg.Policy.RescueThreshold, 1e-9)
+	require.Equal(t, 720*time.Hour, cfg.Policy.JournalRetention.Duration)
 	require.Equal(t, "Rescued", cfg.Folders.RescueTo())
 	require.Equal(t, filepath.Join(home, "tamis-test.db"), cfg.State)
 }
@@ -128,6 +131,11 @@ func TestLoadInvalid(t *testing.T) {
 			"negative rescue threshold",
 			"[account]\nhost = \"h\"\nuser = \"u\"\n[policy]\nrescue_threshold = -0.1",
 			"rescue_threshold",
+		},
+		{
+			"negative journal retention",
+			"[account]\nhost = \"h\"\nuser = \"u\"\n[policy]\njournal_retention = \"-1h\"",
+			"journal_retention",
 		},
 		{
 			"no watched folders",

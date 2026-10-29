@@ -158,6 +158,12 @@ Every decision is journalled with its verdict, reason (`bayes`,
 whether that action was applied. In shadow mode, the journal shows what live
 mode would have done; `tamis log` prints it.
 
+`tamis run` prunes the journal when it starts and then once a day: decisions
+older than `policy.journal_retention` (default `8760h`, a year; `0s` keeps
+everything) are deleted. A failed prune is logged and doesn't stop the loop. Training and the whitelist are not touched. A decision that has been
+pruned can no longer be undone or learnt from by ID, and tamis no longer
+remembers having judged that message.
+
 ## Undo
 
 `tamis undo ID...` reverses decisions that were applied in live mode, using

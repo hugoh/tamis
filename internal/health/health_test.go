@@ -130,6 +130,89 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestJournalChecks(t *testing.T) {
+	t.Parallel()
+
+	recent := append(
+		decisions(3, time.Minute, engine.VerdictGood, engine.ReasonBayes),
+		decisions(2, time.Minute, engine.VerdictSpam, engine.ReasonBayes)...,
+	)
+	recent = append(
+		recent,
+		decisions(1, time.Minute, engine.VerdictGood, engine.ReasonCorrection)...,
+	)
+
+	tests := []struct {
+		name      string
+		stats     store.Stats
+		retention time.Duration
+		recent    []store.Decision
+		check     string
+		want      health.Status
+		contains  []string
+	}{
+		{
+			name: "journal span and retention",
+			stats: store.Stats{
+				Decisions:      6,
+				OldestDecision: time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC),
+			},
+			retention: 365 * 24 * time.Hour,
+			check:     health.NameJournal,
+			want:      health.StatusOK,
+			contains:  []string{"6 decisions", "since 2026-10-28", "kept 365 days"},
+		},
+		{
+			name:     "journal kept forever",
+			stats:    store.Stats{Decisions: 1, OldestDecision: now()},
+			check:    health.NameJournal,
+			want:     health.StatusOK,
+			contains: []string{"kept forever"},
+		},
+		{
+			name:  "empty journal",
+			check: health.NameJournal,
+			want:  health.StatusSkip, contains: []string{"empty"},
+		},
+		{
+			name:     "recent verdicts",
+			recent:   recent,
+			check:    health.NameRecent,
+			want:     health.StatusOK,
+			contains: []string{"last 6", "3 good", "2 spam", "0 uncertain", "1 correction"},
+		},
+		{
+			name:  "no recent verdicts",
+			check: health.NameRecent,
+			want:  health.StatusSkip,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			report := health.Run(health.Input{
+				Stats: tt.stats, Recent: tt.recent, Retention: tt.retention, Now: now(),
+			})
+
+			for _, check := range report.Checks {
+				if check.Name == tt.check {
+					require.Equal(t, tt.want, check.Status, check.Detail)
+
+					for _, want := range tt.contains {
+						require.Contains(t, check.Detail, want)
+					}
+
+					return
+				}
+			}
+
+			require.Failf(t, "missing check", "%q not in report", tt.check)
+		})
+	}
+}
+
 func TestFailedOnlyForFailures(t *testing.T) {
 	t.Parallel()
 

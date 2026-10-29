@@ -36,6 +36,8 @@ const (
 	NameUncertain   = "uncertain rate"
 	NameCorrections = "correction rate"
 	NameLast        = "last decision"
+	NameJournal     = "journal"
+	NameRecent      = "recent verdicts"
 )
 
 const (
@@ -65,7 +67,9 @@ type Report struct {
 type Input struct {
 	Stats  store.Stats
 	Recent []store.Decision
-	Now    time.Time
+	// Retention is how long the journal is kept; zero means forever.
+	Retention time.Duration
+	Now       time.Time
 }
 
 // Failed reports whether any check failed.
@@ -85,6 +89,8 @@ func Run(input Input) *Report {
 		uncertainRate(judged),
 		correctionRate(input.Recent, len(judged)),
 		lastDecision(input.Recent, input.Now),
+		journal(input.Stats, input.Retention),
+		recentVerdicts(input.Recent),
 	}}
 }
 
@@ -181,6 +187,45 @@ func lastDecision(recent []store.Decision, now time.Time) Check {
 	}
 
 	return Check{name, StatusOK, fmt.Sprintf("%s ago", age)}
+}
+
+func journal(stats store.Stats, retention time.Duration) Check {
+	if stats.Decisions == 0 {
+		return Check{NameJournal, StatusSkip, "empty"}
+	}
+
+	kept := "kept forever"
+	if retention > 0 {
+		kept = fmt.Sprintf("kept %d days", retention/(24*time.Hour)) //nolint:mnd // hours per day
+	}
+
+	return Check{NameJournal, StatusOK, fmt.Sprintf("%d decisions since %s, %s",
+		stats.Decisions, stats.OldestDecision.Format(time.DateOnly), kept)}
+}
+
+func recentVerdicts(recent []store.Decision) Check {
+	if len(recent) == 0 {
+		return Check{NameRecent, StatusSkip, "no decisions yet"}
+	}
+
+	verdicts := map[string]int{}
+	corrections := 0
+
+	for _, decision := range judgements(recent) {
+		verdicts[decision.Verdict]++
+	}
+
+	for _, decision := range recent {
+		if decision.Reason == engine.ReasonCorrection || decision.Reason == engine.ReasonUndo {
+			corrections++
+		}
+	}
+
+	return Check{NameRecent, StatusOK, fmt.Sprintf(
+		"last %d: %d good, %d spam, %d uncertain; %d correction",
+		len(recent), verdicts[engine.VerdictGood], verdicts[engine.VerdictSpam],
+		verdicts[engine.VerdictUncertain], corrections,
+	)}
 }
 
 // WriteText renders the report for a terminal, with problems in capitals.

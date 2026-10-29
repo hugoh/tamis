@@ -72,6 +72,7 @@ learn_from_junk = true     # mail tamis let through that you move to Junk is lea
 learn_provider_junk = true # mail the provider files to Junk that tamis isn't sure is spam is learnt
 learn_from_keywords = true # Junk / Not Junk buttons that disagree with tamis are learnt
 rescue = true              # move mail from verified whitelisted senders out of Junk
+journal_retention = "8760h" # how long decisions are kept (a year); "0s" keeps them forever
 rescue_threshold = 0       # also rescue mail scoring at or below this, e.g. 0.05; 0 is off
 ```
 

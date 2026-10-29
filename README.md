@@ -180,8 +180,8 @@ capabilities. It asks for the password (for iCloud, an app-specific one), or
 reads it from `$TAMIS_PASSWORD` or stdin.
 
 ```sh
-go run . probe --host imap.mail.me.com --user you@icloud.com          # read-only
-go run . probe --host imap.mail.me.com --user you@icloud.com --write  # also APPEND, IDLE, MOVE
+tamis probe --host imap.mail.me.com --user you@icloud.com          # read-only
+tamis probe --host imap.mail.me.com --user you@icloud.com --write  # also APPEND, IDLE, MOVE
 ```
 
 Read-only mode logs in, lists capabilities and folders, and examines the

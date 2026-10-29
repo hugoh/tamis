@@ -357,6 +357,9 @@ type Decision struct {
 	Applied   bool
 	// Undone is set once the action has been reversed with Undo.
 	Undone bool
+	// CorrectedBy is the ID of the first later correction or undo of the same
+	// message, or 0. It is derived when the decision is read, not stored.
+	CorrectedBy int64
 }
 
 // RecordDecision appends to the journal and returns the entry's ID.
@@ -480,8 +483,15 @@ func (s *Store) MarkUndone(ctx context.Context, decisionID int64) error {
 	return fmt.Errorf("decision %d: %w", decisionID, ErrAlreadyUndone)
 }
 
+// decisionColumns also finds the first correction of the same message after
+// the decision. 'correction' and 'undo' are engine.ReasonCorrection and
+// engine.ReasonUndo; the store can't import them. A decision with no
+// Message-ID is never linked.
 const decisionColumns = `SELECT id, at, mailbox, uid, message_id, sender, subject,
-	score, verdict, reason, action, applied, undone`
+	score, verdict, reason, action, applied, undone,
+	(SELECT COALESCE(MIN(c.id), 0) FROM decisions c
+	 WHERE decisions.message_id != '' AND c.message_id = decisions.message_id
+	   AND c.id > decisions.id AND c.reason IN ('correction', 'undo'))`
 
 func scanDecision(row interface{ Scan(dest ...any) error }) (Decision, error) {
 	var (
@@ -491,7 +501,8 @@ func scanDecision(row interface{ Scan(dest ...any) error }) (Decision, error) {
 
 	err := row.Scan(&decision.ID, &unixAt, &decision.Mailbox, &decision.UID,
 		&decision.MessageID, &decision.From, &decision.Subject, &decision.Score,
-		&decision.Verdict, &decision.Reason, &decision.Action, &decision.Applied, &decision.Undone)
+		&decision.Verdict, &decision.Reason, &decision.Action, &decision.Applied, &decision.Undone,
+		&decision.CorrectedBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Decision{}, err //nolint:wrapcheck // callers test for it
 	}

@@ -479,6 +479,13 @@ func TestLearn(t *testing.T) {
 	require.Zero(t, got.code, got.stderr)
 	require.Contains(t, got.stdout, "1: learnt as good")
 
+	got = a.run(t, "log")
+	require.Contains(t, got.stdout, "(corrected by 2)")
+
+	got = a.run(t, "learn", "1")
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stderr, "already corrected by decision 2")
+
 	got = a.run(t, "learn", "--spam", "1")
 	require.Zero(t, got.code, got.stderr)
 	require.Contains(t, got.stdout, "1: learnt as spam")

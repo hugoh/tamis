@@ -103,6 +103,21 @@ func TestLearnRefusals(t *testing.T) {
 			want: engine.ErrNotLearnable,
 		},
 		{
+			name: "already corrected",
+			prepare: func(t *testing.T, e *env) int64 {
+				t.Helper()
+				e.append(t, inbox, e.spammy("s@spam.example"))
+				e.run(t)
+
+				id := e.latestDecisionID(t)
+				_, err := e.engine.Learn(t.Context(), id, nil)
+				require.NoError(t, err)
+
+				return id
+			},
+			want: engine.ErrAlreadyCorrected,
+		},
+		{
 			name: "message gone",
 			prepare: func(t *testing.T, e *env) int64 {
 				t.Helper()
@@ -130,4 +145,23 @@ func TestLearnRefusals(t *testing.T) {
 			require.ErrorIs(t, err, tt.want)
 		})
 	}
+}
+
+func TestLearnWithALabelOverridesAnEarlierCorrection(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.spammy("s@spam.example"))
+	e.run(t)
+
+	id := e.latestDecisionID(t)
+	_, err := e.engine.Learn(t.Context(), id, nil)
+	require.NoError(t, err)
+
+	spam := classify.Spam
+	summary, err := e.engine.Learn(t.Context(), id, &spam)
+	require.NoError(t, err)
+	require.Contains(t, summary, "learnt as spam")
 }

@@ -597,3 +597,60 @@ func TestSettings(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, "google.com", value)
 }
+
+func TestDecisionCorrectedBy(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	at := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+
+	record := func(messageID, reason string) int64 {
+		at = at.Add(time.Minute)
+
+		id, err := db.RecordDecision(t.Context(), store.Decision{
+			At: at, Mailbox: inbox, MessageID: messageID, Verdict: verdictGood,
+			Reason: reason, Action: actionNone,
+		})
+		require.NoError(t, err)
+
+		return id
+	}
+
+	earlyFix := record("<m1>", "correction")
+	judged := record("<m1>", reasonBayes)
+	unrelated := record("<m2>", reasonBayes)
+	providerJunk := record("<m3>", reasonBayes)
+	record("<m3>", "provider junk")
+	noID := record("", reasonBayes)
+	record("", "correction")
+	fix := record("<m1>", "correction")
+	secondFix := record("<m1>", "undo")
+
+	corrected := func(id int64) int64 {
+		decision, err := db.Decision(t.Context(), id)
+		require.NoError(t, err)
+
+		return decision.CorrectedBy
+	}
+
+	require.Equal(t, fix, corrected(judged), "the first later correction, not the earlier one")
+	require.Equal(t, fix, corrected(earlyFix), "a correction is corrected in turn")
+	require.Zero(t, corrected(unrelated))
+	require.Zero(t, corrected(providerJunk), "training from provider Junk is not a correction")
+	require.Zero(t, corrected(noID), "decisions without a Message-ID are never linked")
+	require.Equal(t, secondFix, corrected(fix), "an undo after a correction")
+
+	listed, err := db.Decisions(t.Context(), 100)
+	require.NoError(t, err)
+
+	for _, decision := range listed {
+		if decision.ID == judged {
+			require.Equal(t, fix, decision.CorrectedBy)
+		}
+	}
+
+	latest, found, err := db.LatestDecision(t.Context(), "<m1>")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, secondFix, latest.ID)
+}

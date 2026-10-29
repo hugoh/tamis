@@ -29,6 +29,15 @@ func decisions(n int, age time.Duration, verdict, reason string) []store.Decisio
 	return out
 }
 
+// corrected marks the first n decisions as later corrected.
+func corrected(list []store.Decision, n int) []store.Decision {
+	for i := range n {
+		list[i].CorrectedBy = int64(1000 + i)
+	}
+
+	return list
+}
+
 func TestRun(t *testing.T) {
 	t.Parallel()
 
@@ -79,19 +88,24 @@ func TestRun(t *testing.T) {
 			health.NameCorrections, health.StatusOK,
 		},
 		{
-			"many corrections",
+			"many judged decisions were corrected",
 			balanced,
-			append(
-				decisions(10, time.Minute, engine.VerdictGood, engine.ReasonCorrection),
-				decisions(30, time.Minute, engine.VerdictGood, engine.ReasonBayes)...,
-			),
-			health.NameCorrections, health.StatusWarn,
+			corrected(decisions(30, time.Minute, engine.VerdictGood, engine.ReasonBayes), 10),
+			health.NameCorrections,
+			health.StatusWarn,
 		},
 		{
-			"provider junk training is not a correction",
+			"a few were corrected",
+			balanced,
+			corrected(decisions(30, time.Minute, engine.VerdictGood, engine.ReasonBayes), 2),
+			health.NameCorrections,
+			health.StatusOK,
+		},
+		{
+			"correction rows alone are not corrected decisions",
 			balanced,
 			append(
-				decisions(10, time.Minute, engine.VerdictSpam, engine.ReasonProviderJunk),
+				decisions(10, time.Minute, engine.VerdictSpam, engine.ReasonCorrection),
 				decisions(30, time.Minute, engine.VerdictGood, engine.ReasonBayes)...,
 			),
 			health.NameCorrections, health.StatusOK,
@@ -135,9 +149,12 @@ func TestRun(t *testing.T) {
 func TestJournalChecks(t *testing.T) {
 	t.Parallel()
 
-	recent := append(
-		decisions(3, time.Minute, engine.VerdictGood, engine.ReasonBayes),
-		decisions(2, time.Minute, engine.VerdictSpam, engine.ReasonBayes)...,
+	recent := corrected(
+		append(
+			decisions(3, time.Minute, engine.VerdictGood, engine.ReasonBayes),
+			decisions(2, time.Minute, engine.VerdictSpam, engine.ReasonBayes)...,
+		),
+		1,
 	)
 	recent = append(
 		recent,
@@ -181,7 +198,7 @@ func TestJournalChecks(t *testing.T) {
 			recent:   recent,
 			check:    health.NameRecent,
 			want:     health.StatusOK,
-			contains: []string{"last 6", "3 good", "2 spam", "0 uncertain", "1 correction"},
+			contains: []string{"last 6", "3 good", "2 spam", "0 uncertain", "1 corrected"},
 		},
 		{
 			name:  "no recent verdicts",

@@ -397,8 +397,11 @@ func writeDecisions(cmd *cobra.Command, decisions []store.Decision) error {
 			action = "would " + action
 		}
 
-		if decision.Undone {
+		switch {
+		case decision.Undone:
 			action += " (undone)"
+		case decision.CorrectedBy > 0:
+			action += fmt.Sprintf(" (corrected by %d)", decision.CorrectedBy)
 		}
 
 		_, _ = fmt.Fprintf(table, "%d\t%s\t%s\t%s\t%.2f\t%s\t%s\t%s\n",

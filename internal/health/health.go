@@ -89,10 +89,10 @@ func Run(input Input) *Report {
 	return &Report{Checks: []Check{
 		balance(input.Stats),
 		uncertainRate(judged),
-		correctionRate(input.Recent, len(judged)),
+		correctionRate(judged),
 		lastDecision(input.Recent, input.Now),
 		journal(input.Stats, input.Retention),
-		recentVerdicts(input.Recent),
+		recentVerdicts(input.Recent, judged),
 		authID(input.Auth),
 	}}
 }
@@ -138,22 +138,27 @@ func uncertainRate(judged []store.Decision) Check {
 	return rate(name, uncertain, len(judged), maxUncertain, "uncertain")
 }
 
-func correctionRate(recent []store.Decision, judged int) Check {
+func correctionRate(judged []store.Decision) Check {
 	const name = NameCorrections
 
-	if judged < minSample {
-		return tooFew(name, judged)
+	if len(judged) < minSample {
+		return tooFew(name, len(judged))
 	}
 
-	corrections := 0
+	return rate(name, correctedCount(judged), len(judged), maxCorrections, "corrected")
+}
 
-	for _, d := range recent {
-		if d.Reason == engine.ReasonCorrection || d.Reason == engine.ReasonUndo {
-			corrections++
+// correctedCount is how many of the decisions were later corrected.
+func correctedCount(decisions []store.Decision) int {
+	corrected := 0
+
+	for _, decision := range decisions {
+		if decision.CorrectedBy > 0 {
+			corrected++
 		}
 	}
 
-	return rate(name, corrections, judged, maxCorrections, "corrected")
+	return corrected
 }
 
 func tooFew(name string, judged int) Check {
@@ -227,28 +232,21 @@ func journal(stats store.Stats, retention time.Duration) Check {
 		stats.Decisions, stats.OldestDecision.Format(time.DateOnly), kept)}
 }
 
-func recentVerdicts(recent []store.Decision) Check {
+func recentVerdicts(recent, judged []store.Decision) Check {
 	if len(recent) == 0 {
 		return Check{NameRecent, StatusSkip, "no decisions yet"}
 	}
 
 	verdicts := map[string]int{}
-	corrections := 0
 
-	for _, decision := range judgements(recent) {
+	for _, decision := range judged {
 		verdicts[decision.Verdict]++
 	}
 
-	for _, decision := range recent {
-		if decision.Reason == engine.ReasonCorrection || decision.Reason == engine.ReasonUndo {
-			corrections++
-		}
-	}
-
 	return Check{NameRecent, StatusOK, fmt.Sprintf(
-		"last %d: %d good, %d spam, %d uncertain; %d correction",
+		"last %d: %d good, %d spam, %d uncertain; %d corrected",
 		len(recent), verdicts[engine.VerdictGood], verdicts[engine.VerdictSpam],
-		verdicts[engine.VerdictUncertain], corrections,
+		verdicts[engine.VerdictUncertain], correctedCount(judged),
 	)}
 }
 

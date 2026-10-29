@@ -17,6 +17,9 @@ var (
 	// ErrNotLearnable means the decision isn't one of tamis's own judgements.
 	ErrNotLearnable = errors.New("only tamis's own judgements can be learnt from; " +
 		"to retrain, drop the message in a training folder")
+	// ErrAlreadyCorrected means the decision has a later correction; ask for a
+	// label to change it again.
+	ErrAlreadyCorrected = errors.New("already corrected")
 	// ErrNeedsLabel means an uncertain verdict has no opposite.
 	ErrNeedsLabel = errors.New("an uncertain verdict needs an explicit label: good or spam")
 )
@@ -73,6 +76,9 @@ func learntLabel(decision store.Decision, label *classify.Label) (classify.Label
 		return 0, ErrNotLearnable
 	case decision.Applied:
 		return 0, ErrAlreadyApplied
+	case label == nil && decision.CorrectedBy > 0:
+		return 0, fmt.Errorf("%w by decision %d; pass --good or --spam to change it",
+			ErrAlreadyCorrected, decision.CorrectedBy)
 	case label != nil:
 		return *label, nil
 	case decision.Verdict == VerdictSpam:

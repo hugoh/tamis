@@ -172,6 +172,13 @@ Every decision is journalled with its verdict, reason (`bayes`,
 whether that action was applied. In shadow mode, the journal shows what live
 mode would have done; `tamis log` prints it.
 
+`tamis log` marks a decision `(corrected by N)` when a later `correction` or
+`undo` entry exists for the same Message-ID. The link is derived from the
+journal when it is read, not stored on the decision, so the two can't disagree.
+`tamis learn` without a label refuses such a decision; `--good` or `--spam`
+changes it again. `tamis doctor`'s correction rate counts judged decisions that
+were corrected.
+
 `tamis run` prunes the journal when it starts and then once a day: decisions
 older than `policy.journal_retention` (default `8760h`, a year; `0s` keeps
 everything) are deleted. A failed prune is logged and doesn't stop the loop. Training and the whitelist are not touched. A decision that has been

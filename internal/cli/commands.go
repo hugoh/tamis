@@ -19,6 +19,7 @@ import (
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
 	"github.com/hugoh/tamis/internal/health"
+	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/mail"
 	"github.com/hugoh/tamis/internal/store"
 	"github.com/spf13/cobra"
@@ -147,7 +148,10 @@ func (a *app) waitForNextPass(
 	cfg *config.Config,
 	database *store.Store,
 	logger *slog.Logger,
+	status *live.Status,
 ) bool {
+	status.Wait(live.Idle)
+
 	err := a.idle(ctx, cfg, database, logger)
 
 	switch {
@@ -157,11 +161,14 @@ func (a *app) waitForNextPass(
 		return true
 	case errors.Is(err, mail.ErrNoIdle):
 		logger.InfoContext(ctx, "server has no IDLE; polling")
+		status.Wait(live.Polling)
 		pause(ctx, cfg.Policy.PollInterval.Duration)
 
 		return false
 	default:
 		logger.WarnContext(ctx, "idle failed; sleeping instead", "err", err)
+		status.Failed(time.Now(), err)
+		status.Wait(live.Polling)
 		pause(ctx, cfg.Policy.PollInterval.Duration)
 
 		return true
@@ -311,37 +318,7 @@ func (a *app) runCommand() *cobra.Command {
 			return a.withStore(
 				cmd,
 				func(ctx context.Context, cfg *config.Config, database *store.Store) error {
-					logger := a.logger(cmd)
-					useIdle := true
-
-					var pruner journalPruner
-
-					for {
-						if err := pruner.prune(
-							ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
-						); err != nil {
-							logger.ErrorContext(ctx, "journal pruning failed", "err", err)
-						}
-
-						err := a.pass(ctx, cfg, database, logger)
-						if once || errors.Is(err, mail.ErrLogin) {
-							return err
-						}
-
-						if ctx.Err() != nil {
-							return nil //nolint:nilerr // interrupted: a clean stop
-						}
-
-						if err != nil {
-							logger.ErrorContext(ctx, "pass failed", "err", err)
-						}
-
-						if useIdle && err == nil {
-							useIdle = a.waitForNextPass(ctx, cfg, database, logger)
-						} else {
-							pause(ctx, cfg.Policy.PollInterval.Duration)
-						}
-					}
+					return a.watch(ctx, cmd, cfg, database, once)
 				},
 			)
 		},
@@ -352,11 +329,67 @@ func (a *app) runCommand() *cobra.Command {
 	return cmd
 }
 
+// watch serves the web interface, if enabled, and runs passes until
+// interrupted, or just one when once is set.
+func (a *app) watch(
+	ctx context.Context,
+	cmd *cobra.Command,
+	cfg *config.Config,
+	database *store.Store,
+	once bool,
+) error {
+	logs := live.NewRing(logRingSize)
+	logger := slog.New(logs.Handler(a.logger(cmd).Handler()))
+	status := live.NewStatus(time.Now())
+	useIdle := true
+
+	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs)
+	if err != nil {
+		return err
+	}
+
+	defer stopWeb()
+
+	var pruner journalPruner
+
+	for {
+		if err := pruner.prune(
+			ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
+		); err != nil {
+			logger.ErrorContext(ctx, "journal pruning failed", "err", err)
+		}
+
+		status.Wait(live.Running)
+
+		err := a.pass(ctx, cfg, database, logger, status)
+		if once || errors.Is(err, mail.ErrLogin) {
+			return err
+		}
+
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		if err != nil {
+			logger.ErrorContext(ctx, "pass failed", "err", err)
+			status.Failed(time.Now(), err)
+		}
+
+		if useIdle && err == nil {
+			useIdle = a.waitForNextPass(ctx, cfg, database, logger, status)
+		} else {
+			status.Wait(live.Polling)
+			pause(ctx, cfg.Policy.PollInterval.Duration)
+		}
+	}
+}
+
 func (a *app) pass(
 	ctx context.Context,
 	cfg *config.Config,
 	database *store.Store,
 	logger *slog.Logger,
+	status *live.Status,
 ) error {
 	return a.withEngine(
 		ctx,
@@ -370,6 +403,7 @@ func (a *app) pass(
 				return err //nolint:wrapcheck // engine errors carry their context
 			}
 
+			status.PassDone(time.Now(), summaryText(summary))
 			logger.InfoContext(ctx, "pass complete", "mode", cfg.Policy.Mode,
 				"scanned", summary.Scanned, "spam", summary.Spam, "uncertain", summary.Uncertain,
 				"good", summary.Good, "corrected", summary.Corrected, "trained", summary.Trained,
@@ -377,6 +411,19 @@ func (a *app) pass(
 
 			return nil
 		},
+	)
+}
+
+func summaryText(summary engine.Summary) string {
+	return fmt.Sprintf(
+		"scanned %d, spam %d, uncertain %d, good %d, corrected %d, trained %d, rescued %d",
+		summary.Scanned,
+		summary.Spam,
+		summary.Uncertain,
+		summary.Good,
+		summary.Corrected,
+		summary.Trained,
+		summary.Rescued,
 	)
 }
 
@@ -654,26 +701,13 @@ func (a *app) doctorCommand() *cobra.Command {
 			"Exits non-zero when a check fails.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.withStats(
+			return a.withStore(
 				cmd,
-				func(ctx context.Context, cfg *config.Config, database *store.Store, stats store.Stats) error {
-					pin, err := engine.ResolveAuthPin(ctx, database, cfg)
+				func(ctx context.Context, cfg *config.Config, database *store.Store) error {
+					report, err := health.Collect(ctx, database, cfg)
 					if err != nil {
 						return err //nolint:wrapcheck // store errors carry their context
 					}
-
-					recent, err := database.Decisions(ctx, health.Window)
-					if err != nil {
-						return err //nolint:wrapcheck // store errors carry their context
-					}
-
-					report := health.Run(health.Input{
-						Stats:     stats,
-						Recent:    recent,
-						Retention: cfg.Policy.JournalRetention.Duration,
-						Auth:      pin,
-						Now:       time.Now(),
-					})
 
 					if asJSON {
 						err = report.WriteJSON(cmd.OutOrStdout())

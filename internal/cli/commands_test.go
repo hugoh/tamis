@@ -444,7 +444,7 @@ func TestUndoArguments(t *testing.T) {
 		code int
 		want string
 	}{
-		"no id":  {[]string{"undo"}, 2, "requires at least 1 arg"},
+		"no id":  {[]string{"undo"}, 2, needsArg},
 		"not id": {[]string{"undo", "abc"}, 1, `invalid decision ID "abc"`},
 	}
 

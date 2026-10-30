@@ -1,0 +1,3 @@
+[files]
+# Third-party minified code, copied by `mise run vendor-web`.
+extend-exclude = ["internal/web/static/vendor/"]

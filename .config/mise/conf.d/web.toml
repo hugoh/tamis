@@ -1,0 +1,5 @@
+# Front-end files tamis embeds (internal/web/static/vendor). Renovate bumps the
+# versions; run `mise run vendor-web` to copy the files, which are committed.
+[tools]
+"npm:@picocss/pico" = "2.1.1"
+"npm:htmx.org" = "2.0.11"

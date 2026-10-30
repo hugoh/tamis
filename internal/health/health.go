@@ -38,6 +38,8 @@ const (
 	NameJournal     = "journal"
 	NameRecent      = "recent verdicts"
 	NameAuthID      = "provider auth id"
+	NameWeb         = "web interface"
+	NamePasskeys    = "web passkeys"
 )
 
 const (
@@ -69,7 +71,19 @@ type Input struct {
 	// Retention is how long the journal is kept; zero means forever.
 	Retention time.Duration
 	Auth      engine.AuthPin
+	Web       Web
 	Now       time.Time
+}
+
+// Web is what the checks know about the web interface.
+type Web struct {
+	Enabled bool
+	Listen  string
+	Origin  string
+	// Reachable is whether something accepted a connection on Listen: that
+	// is `tamis run`, if it is going.
+	Reachable bool
+	Passkeys  int
 }
 
 // Failed reports whether any check failed.
@@ -84,7 +98,7 @@ func (r *Report) Failed() bool {
 func Run(input Input) *Report {
 	judged := judgements(input.Recent)
 
-	return &Report{Checks: []Check{
+	checks := []Check{
 		balance(input.Stats),
 		uncertainRate(judged),
 		correctionRate(judged),
@@ -92,7 +106,39 @@ func Run(input Input) *Report {
 		journal(input.Stats, input.Retention),
 		recentVerdicts(input.Recent, judged),
 		authID(input.Auth),
-	}}
+		webInterface(input.Web),
+	}
+
+	if input.Web.Enabled {
+		checks = append(checks, passkeys(input.Web.Passkeys))
+	}
+
+	return &Report{Checks: checks}
+}
+
+func webInterface(web Web) Check {
+	switch {
+	case !web.Enabled:
+		return Check{NameWeb, StatusSkip, "not enabled"}
+	case !web.Reachable:
+		return Check{NameWeb, StatusWarn, fmt.Sprintf(
+			"nothing is listening on %s; is 'tamis run' going?", web.Listen,
+		)}
+	default:
+		return Check{
+			NameWeb,
+			StatusOK,
+			fmt.Sprintf("listening on %s, at %s", web.Listen, web.Origin),
+		}
+	}
+}
+
+func passkeys(count int) Check {
+	if count == 0 {
+		return Check{NamePasskeys, StatusWarn, "none enrolled; run 'tamis web enroll'"}
+	}
+
+	return Check{NamePasskeys, StatusOK, fmt.Sprintf("%d enrolled", count)}
 }
 
 func balance(stats store.Stats) Check {

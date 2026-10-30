@@ -2,9 +2,12 @@ package health_test
 
 import (
 	"bytes"
+	"net"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
 	"github.com/hugoh/tamis/internal/health"
 	"github.com/hugoh/tamis/internal/store"
@@ -312,4 +315,163 @@ func TestRender(t *testing.T) {
 
 	require.NoError(t, report.WriteJSON(&asJSON))
 	require.Contains(t, asJSON.String(), `"status": "fail"`, asJSON.String())
+}
+
+func TestCollectReadsTheStore(t *testing.T) {
+	t.Parallel()
+
+	database, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "tamis.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
+
+	_, err = database.RecordDecision(t.Context(), store.Decision{
+		At: time.Now(), Verdict: engine.VerdictGood, Reason: "bayes", Action: "none",
+	})
+	require.NoError(t, err)
+
+	report, err := health.Collect(t.Context(), database, &config.Config{})
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(report.Checks))
+	for _, check := range report.Checks {
+		names = append(names, check.Name)
+	}
+
+	require.Contains(t, names, health.NameBalance)
+	require.Contains(t, names, health.NameLast)
+}
+
+func TestCollectFailsOnAClosedStore(t *testing.T) {
+	t.Parallel()
+
+	database, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "tamis.db"))
+	require.NoError(t, err)
+	require.NoError(t, database.Close())
+
+	_, err = health.Collect(t.Context(), database, &config.Config{})
+	require.Error(t, err)
+}
+
+func webCheck(t *testing.T, name string, web health.Web) health.Check {
+	t.Helper()
+
+	for _, check := range health.Run(health.Input{Now: now(), Web: web}).Checks {
+		if check.Name == name {
+			return check
+		}
+	}
+
+	t.Fatalf("no check named %q", name)
+
+	return health.Check{}
+}
+
+func TestWebChecks(t *testing.T) {
+	t.Parallel()
+
+	const listen = "127.0.0.1:8484"
+
+	tests := []struct {
+		name       string
+		web        health.Web
+		check      string
+		wantStatus health.Status
+		wantDetail string
+	}{
+		{"disabled", health.Web{}, health.NameWeb, health.StatusSkip, "not enabled"},
+		{
+			"listening",
+			health.Web{
+				Enabled:   true,
+				Listen:    listen,
+				Origin:    "https://tamis.example.net",
+				Reachable: true,
+			},
+			health.NameWeb,
+			health.StatusOK,
+			"listening on " + listen + ", at https://tamis.example.net",
+		},
+		{
+			"not listening",
+			health.Web{Enabled: true, Listen: listen},
+			health.NameWeb, health.StatusWarn, "nothing is listening on " + listen,
+		},
+		{
+			"no passkeys",
+			health.Web{Enabled: true, Listen: listen},
+			health.NamePasskeys, health.StatusWarn, "tamis web enroll",
+		},
+		{
+			"passkeys",
+			health.Web{Enabled: true, Listen: listen, Passkeys: 2},
+			health.NamePasskeys, health.StatusOK, "2 enrolled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			check := webCheck(t, tt.check, tt.web)
+			require.Equal(t, tt.wantStatus, check.Status)
+			require.Contains(t, check.Detail, tt.wantDetail)
+		})
+	}
+}
+
+func TestPasskeysCheckOnlyWhenWebIsEnabled(t *testing.T) {
+	t.Parallel()
+
+	for _, check := range health.Run(health.Input{Now: now()}).Checks {
+		require.NotEqual(t, health.NamePasskeys, check.Name)
+	}
+}
+
+func TestCollectChecksTheWebInterface(t *testing.T) {
+	t.Parallel()
+
+	var lc net.ListenConfig
+
+	listener, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	database, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "tamis.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
+	require.NoError(t, database.AddPasskey(t.Context(), "c1", "laptop", []byte("{}")))
+
+	cfg := &config.Config{Web: config.Web{
+		Enabled: true, Listen: listener.Addr().String(), Origin: "http://localhost:8484",
+	}}
+
+	report, err := health.Collect(t.Context(), database, cfg)
+	require.NoError(t, err)
+	require.Contains(t, report.Checks, health.Check{
+		Name: health.NameWeb, Status: health.StatusOK,
+		Detail: "listening on " + listener.Addr().String() + ", at http://localhost:8484",
+	})
+	require.Contains(t, report.Checks, health.Check{
+		Name: health.NamePasskeys, Status: health.StatusOK, Detail: "1 enrolled",
+	})
+
+	require.NoError(t, listener.Close())
+
+	report, err = health.Collect(t.Context(), database, cfg)
+	require.NoError(t, err)
+
+	var web health.Check
+
+	for _, check := range report.Checks {
+		if check.Name == health.NameWeb {
+			web = check
+		}
+	}
+
+	require.Equal(
+		t,
+		health.StatusWarn,
+		web.Status,
+		"an unreachable web interface is a warning, not a failure",
+	)
 }

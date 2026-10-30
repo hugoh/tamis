@@ -86,6 +86,8 @@ tamis status      # mode, folders, how much it has learnt
 tamis doctor      # is the filter in good shape? (--json; exits 1 on failure)
 tamis undo 42     # reverse decision 42 from the log
 tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
+tamis whitelist list   # also: add ADDRESS..., rm ADDRESS...
+tamis web enroll       # one-time link to enrol a passkey for the web interface
 ```
 
 `tamis log` colours its output on a terminal. `--color never` (or setting
@@ -140,12 +142,68 @@ When `tamis log` looks right for a week or two, set `mode = "live"`. If tamis
 then files something it shouldn't have, `tamis undo ID` moves it back, learns
 it as good and whitelists the sender.
 
+## Web interface
+
+`tamis run` can also serve a small web interface: the decision log with undo
+and learn buttons, health, the whitelist (view and edit) and the daemon's
+recent log lines. It signs in with passkeys only; there are no passwords.
+Everything it does has a command-line counterpart:
+
+| In the browser | On the command line |
+|---|---|
+| Decisions, with Undo / Spam / Good | `tamis log`, `tamis undo`, `tamis learn` |
+| Health | `tamis doctor`, `tamis status` |
+| Whitelist | `tamis whitelist list`, `add`, `rm` |
+| Passkeys | `tamis web enroll`, `web passkeys`, `web revoke` |
+| Logs, live daemon state | the daemon's stderr (the browser view is web-only) |
+
+Turn it on in the configuration:
+
+```toml
+[web]
+enabled = true
+listen = "127.0.0.1:8484"             # the default
+origin = "https://tamis.example.net"  # the URL you will type in the browser
+```
+
+Then restart `tamis run` and enrol your first passkey:
+
+```sh
+tamis web enroll   # prints a link that works once, for 15 minutes
+```
+
+Open the link in the browser you will use. Run `tamis web enroll` again to add
+another device.
+
+Browsers only allow passkeys on `https://` pages and on `localhost`, and the
+server itself speaks plain HTTP. So either:
+
+- **Behind a TLS reverse proxy** (Caddy, nginx, `tailscale serve`...): proxy
+  your `origin` to `listen`, which can stay on loopback. The proxy must pass the
+  browser's `Origin` header through. If `listen` is not a loopback address,
+  tamis refuses to start unless `origin` is `https://`.
+- **Over an SSH tunnel**, with nothing else set up: use
+  `origin = "http://localhost:8484"`, run `ssh -L 8484:127.0.0.1:8484 yourserver`
+  on the machine with the browser, and browse `http://localhost:8484`.
+
+The origin's host name is what a passkey is tied to: after changing it, enrol
+again.
+
+`tamis doctor` reports whether the interface is listening and how many passkeys
+are enrolled. Passkeys live in the state database. Sessions and the log lines
+shown in the browser live in memory, so a restart signs you out and clears them.
+
+The interface sends a strict Content-Security-Policy, refuses state-changing
+requests whose `Origin` is not yours, and serves its own copies of
+[htmx](https://htmx.org) and [Pico CSS](https://picocss.com): nothing is loaded
+from another site.
+
 ## Where tamis keeps things
 
 | What | Where |
 |---|---|
 | Configuration | `$XDG_CONFIG_HOME/tamis/config.toml`, by default `~/.config/tamis/config.toml`; or `--config` |
-| State: what it learnt, folder positions, the decision journal | `$XDG_STATE_HOME/tamis/tamis.db`, by default `~/.local/state/tamis/tamis.db`; or `state` in the config |
+| State: what it learnt, folder positions, the decision journal, web passkeys | `$XDG_STATE_HOME/tamis/tamis.db`, by default `~/.local/state/tamis/tamis.db`; or `state` in the config |
 | Password | The system keychain, never in the configuration or state (see Passwords) |
 
 The state database holds sender addresses and subjects, so tamis creates it
@@ -219,6 +277,11 @@ mise install
 hk install
 mise run ci
 ```
+
+The web interface embeds htmx and Pico CSS from `internal/web/static/vendor`.
+Their versions are pinned in `.config/mise/conf.d/web.toml`, where Renovate
+updates them. After a bump, run `mise run vendor-web` to refresh the committed
+files; `mise run vendor-web --check` fails if they are stale.
 
 ## License
 

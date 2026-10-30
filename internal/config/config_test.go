@@ -161,6 +161,103 @@ func TestLoadInvalid(t *testing.T) {
 	}
 }
 
+func TestWebDefaultsOff(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(noEnv, write(t, "[account]\nhost = \"h\"\nuser = \"u\""))
+	require.NoError(t, err)
+
+	require.False(t, cfg.Web.Enabled)
+	require.Equal(t, "127.0.0.1:8484", cfg.Web.Listen)
+}
+
+func TestWebValid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, web, wantHost string
+	}{
+		{
+			"loopback over http",
+			"enabled = true\norigin = \"http://localhost:8484\"",
+			"localhost",
+		},
+		{
+			"remote behind https proxy",
+			"enabled = true\nlisten = \"0.0.0.0:8484\"\norigin = \"https://tamis.example.net\"",
+			"tamis.example.net",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := config.Load(
+				noEnv,
+				write(t, "[account]\nhost = \"h\"\nuser = \"u\"\n[web]\n"+tt.web),
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantHost, cfg.Web.RPID())
+		})
+	}
+}
+
+const webOrigin = "web.origin"
+
+func TestWebInvalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, web, wantErr string
+	}{
+		{"origin missing", "enabled = true", webOrigin},
+		{"origin not a url", "enabled = true\norigin = \"tamis\"", webOrigin},
+		{
+			"origin wrong scheme",
+			"enabled = true\norigin = \"ftp://tamis.example.net\"",
+			"web.origin",
+		},
+		{
+			"origin has a path",
+			"enabled = true\norigin = \"https://tamis.example.net/app\"",
+			"web.origin",
+		},
+		{
+			"listen malformed",
+			"enabled = true\nlisten = \"8484\"\norigin = \"http://localhost\"",
+			"web.listen",
+		},
+		{
+			"remote listen with http origin",
+			"enabled = true\nlisten = \"0.0.0.0:8484\"\norigin = \"http://tamis.example.net\"",
+			"https",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Load(
+				noEnv,
+				write(t, "[account]\nhost = \"h\"\nuser = \"u\"\n[web]\n"+tt.web),
+			)
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestWebIgnoredWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	_, err := config.Load(
+		noEnv,
+		write(t, "[account]\nhost = \"h\"\nuser = \"u\"\n[web]\norigin = \"nonsense\""),
+	)
+	require.NoError(t, err)
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	t.Parallel()
 

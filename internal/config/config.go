@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +42,78 @@ type Config struct {
 	Account Account `toml:"account"`
 	Folders Folders `toml:"folders"`
 	Policy  Policy  `toml:"policy"`
+	Web     Web     `toml:"web"`
+}
+
+// Web is the optional web interface, served by `tamis run`.
+type Web struct {
+	Enabled bool `toml:"enabled"`
+	// Listen is the address to bind. Anything but loopback needs an https
+	// Origin: the server speaks plain HTTP and expects a TLS-terminating proxy.
+	Listen string `toml:"listen"`
+	// Origin is the URL browsers reach the interface at, for example
+	// "https://tamis.example.net". Its host is the passkeys' relying party ID,
+	// so changing it invalidates enrolled passkeys.
+	Origin string `toml:"origin"`
+}
+
+// RPID is the WebAuthn relying party ID: the host of Origin.
+func (w Web) RPID() string {
+	u, err := url.Parse(w.Origin)
+	if err != nil {
+		return ""
+	}
+
+	return u.Hostname()
+}
+
+func (w Web) problems() []string {
+	if !w.Enabled {
+		return nil
+	}
+
+	var problems []string
+
+	origin, originOK := w.origin()
+	if !originOK {
+		problems = append(
+			problems,
+			"web.origin must be an http(s) URL without a path, e.g. https://tamis.example.net",
+		)
+	}
+
+	host, _, err := net.SplitHostPort(w.Listen)
+	if err != nil {
+		return append(problems, "web.listen must be host:port, e.g. 127.0.0.1:8484")
+	}
+
+	if originOK && origin.Scheme != "https" && !isLoopback(host) {
+		problems = append(
+			problems,
+			"web.listen is not loopback, so web.origin must be https (put a TLS proxy in front)",
+		)
+	}
+
+	return problems
+}
+
+func (w Web) origin() (*url.URL, bool) {
+	origin, err := url.Parse(w.Origin)
+	if err != nil || origin.Host == "" || (origin.Path != "" && origin.Path != "/") {
+		return nil, false
+	}
+
+	return origin, origin.Scheme == "http" || origin.Scheme == "https"
+}
+
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+
+	ip, err := netip.ParseAddr(host)
+
+	return err == nil && ip.IsLoopback()
 }
 
 // Account is how to reach the mailbox.
@@ -158,6 +232,7 @@ func defaults() Config {
 			Rescue:                true,
 			JournalRetention:      Duration{365 * 24 * time.Hour},
 		},
+		Web: Web{Listen: "127.0.0.1:8484"},
 	}
 }
 
@@ -290,6 +365,7 @@ func (c *Config) validate() error {
 	}
 
 	problems = append(problems, c.Policy.problems()...)
+	problems = append(problems, c.Web.problems()...)
 
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", errInvalid, strings.Join(problems, "; "))

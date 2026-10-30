@@ -1,0 +1,7 @@
+{{define "content"}}
+<h1>Enroll a passkey</h1>
+<label>Name <input id="name" value="passkey" maxlength="64"></label>
+<button id="enroll">Create passkey</button>
+<p id="status" role="status"></p>
+{{end}}
+{{define "scripts"}}<script src="/static/webauthn.js"></script>{{end}}

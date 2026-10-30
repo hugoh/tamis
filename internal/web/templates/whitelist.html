@@ -1,0 +1,25 @@
+{{define "addresses"}}<div id="whitelist">
+<form hx-post="/whitelist" hx-target="#whitelist" hx-swap="outerHTML">
+<fieldset role="group">
+<input type="text" name="address" placeholder="someone@example.org" required aria-label="Address to whitelist">
+<button>Add</button>
+</fieldset>
+</form>
+{{if .Error}}<p class="status-fail" role="alert">{{.Error}}</p>{{end}}
+{{if .Addresses}}<table class="striped">
+<thead><tr><th>Address</th><th>Source</th><th>Added</th><th></th></tr></thead>
+<tbody>
+{{range .Addresses}}<tr>
+<td>{{.Address}}</td>
+<td>{{.Source}}</td>
+<td>{{.Added}}</td>
+<td><form hx-post="/whitelist/remove" hx-target="#whitelist" hx-swap="outerHTML"><input type="hidden" name="address" value="{{.Address}}"><button class="outline secondary">Remove</button></form></td>
+</tr>
+{{end}}</tbody>
+</table>{{else}}<p>No addresses whitelisted.</p>{{end}}
+</div>{{end}}
+
+{{define "content"}}
+<h1>Whitelist</h1>
+{{template "addresses" .Body}}
+{{end}}

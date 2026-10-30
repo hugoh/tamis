@@ -1,0 +1,24 @@
+{{define "content"}}
+<h1>Health</h1>
+{{with .Body.Daemon}}<h2>Daemon</h2>
+<table>
+<tbody>
+<tr><th scope="row">Started</th><td>{{.Started}}</td></tr>
+<tr><th scope="row">Doing</th><td>{{if .Doing}}{{.Doing}}{{else}}nothing yet{{end}}</td></tr>
+<tr><th scope="row">Passes</th><td>{{.Passes}}</td></tr>
+<tr><th scope="row">Last pass</th><td>{{.LastPass}}{{if .Summary}}: {{.Summary}}{{end}}</td></tr>
+{{if .LastError}}<tr><th scope="row">Last error</th><td class="status-fail">{{.LastError}}</td></tr>{{end}}
+</tbody>
+</table>
+<h2>Checks</h2>
+{{end}}<table>
+<thead><tr><th>Status</th><th>Check</th><th>Detail</th></tr></thead>
+<tbody>
+{{range .Body.Checks}}<tr>
+<td class="status-{{.Status}}">{{.Status}}</td>
+<td>{{.Name}}</td>
+<td>{{.Detail}}</td>
+</tr>
+{{end}}</tbody>
+</table>
+{{end}}

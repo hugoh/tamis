@@ -1,0 +1,39 @@
+.verdict-spam,
+.status-fail {
+  color: var(--pico-del-color);
+}
+
+.verdict-good,
+.status-ok {
+  color: var(--pico-ins-color);
+}
+
+.verdict-uncertain,
+.status-warn {
+  color: var(--pico-mark-background-color);
+}
+
+.status-skip {
+  color: var(--pico-muted-color);
+}
+
+nav form {
+  margin: 0;
+}
+
+td.actions button {
+  margin: 0 0.25rem 0 0;
+  padding: 0.25rem 0.6rem;
+}
+
+td form {
+  margin: 0;
+}
+
+tr.level-ERROR td:nth-child(2) {
+  color: var(--pico-del-color);
+}
+
+tr.level-WARN td:nth-child(2) {
+  color: var(--pico-mark-background-color);
+}

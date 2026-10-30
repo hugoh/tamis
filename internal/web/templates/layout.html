@@ -1,0 +1,30 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}'>
+<title>tamis · {{.Title}}</title>
+<link rel="stylesheet" href="/static/vendor/pico.min.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="container">
+<nav>
+<ul><li><strong>tamis</strong></li></ul>
+{{if .Nav}}<ul>
+<li><a href="/"{{if eq .Nav "decisions"}} aria-current="page"{{end}}>Decisions</a></li>
+<li><a href="/health"{{if eq .Nav "health"}} aria-current="page"{{end}}>Health</a></li>
+<li><a href="/whitelist"{{if eq .Nav "whitelist"}} aria-current="page"{{end}}>Whitelist</a></li>
+<li><a href="/logs"{{if eq .Nav "logs"}} aria-current="page"{{end}}>Logs</a></li>
+<li><form method="post" action="/auth/logout"><button class="secondary outline">Sign out</button></form></li>
+</ul>{{end}}
+</nav>
+</header>
+<main class="container">
+{{template "content" .}}
+</main>
+<script src="/static/vendor/htmx.min.js"></script>
+{{block "scripts" .}}{{end}}
+</body>
+</html>{{end}}

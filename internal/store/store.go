@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -29,6 +30,18 @@ func migrations() []string {
 			mailbox      TEXT PRIMARY KEY,
 			uid_validity INTEGER NOT NULL,
 			highest      INTEGER NOT NULL
+		);`,
+		`CREATE TABLE passkeys (
+			id            INTEGER PRIMARY KEY,
+			credential_id TEXT NOT NULL UNIQUE,
+			name          TEXT NOT NULL,
+			credential    BLOB NOT NULL,
+			created_at    INTEGER NOT NULL,
+			last_used     INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE TABLE enrollments (
+			token_hash TEXT PRIMARY KEY,
+			expires_at INTEGER NOT NULL
 		);`,
 	}
 }
@@ -74,6 +87,9 @@ CREATE TABLE decisions (
 var (
 	ErrNotFound      = errors.New("not found")
 	ErrAlreadyUndone = errors.New("already undone")
+	ErrExists        = errors.New("already exists")
+
+	ErrInvalidAddress = errors.New("invalid address")
 )
 
 // Store is an open state database.
@@ -318,6 +334,17 @@ func (s *Store) HasAddress(ctx context.Context, address string) (bool, error) {
 	}
 
 	return found > 0, nil
+}
+
+// ParseAddress extracts the lowercased address from an email address, with or
+// without a display name.
+func ParseAddress(input string) (string, error) {
+	parsed, err := mail.ParseAddress(strings.TrimSpace(input))
+	if err != nil {
+		return "", fmt.Errorf("%w %q", ErrInvalidAddress, input)
+	}
+
+	return strings.ToLower(parsed.Address), nil
 }
 
 // Setting returns a value tamis learnt about the account, if it has one.

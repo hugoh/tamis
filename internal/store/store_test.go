@@ -725,3 +725,210 @@ func TestUntrain(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, changed, "a message can be trained again, with new tokens")
 }
+
+func TestAddresses(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	got, err := db.Addresses(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	require.NoError(t, db.AddAddress(t.Context(), "B@Example.com", "sent"))
+	require.NoError(t, db.AddAddress(t.Context(), "a@example.com", "manual"))
+
+	got, err = db.Addresses(t.Context())
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, "a@example.com", got[0].Address)
+	require.Equal(t, "manual", got[0].Source)
+	require.Equal(t, "b@example.com", got[1].Address)
+	require.WithinDuration(t, time.Now(), got[1].AddedAt, time.Minute)
+}
+
+func TestPasskeys(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	require.NoError(t, db.AddPasskey(t.Context(), "cred-1", "laptop", []byte(`{"n":1}`)))
+	require.NoError(t, db.AddPasskey(t.Context(), "cred-2", "phone", []byte(`{"n":2}`)))
+	require.ErrorIs(t, db.AddPasskey(t.Context(), "cred-1", "dup", []byte("{}")), store.ErrExists)
+
+	keys, err := db.Passkeys(t.Context())
+	require.NoError(t, err)
+	require.Len(t, keys, 2)
+	require.Equal(t, "laptop", keys[0].Name)
+	require.JSONEq(t, `{"n":1}`, string(keys[0].Credential))
+	require.True(t, keys[0].LastUsed.IsZero())
+
+	require.NoError(t, db.UpdatePasskey(t.Context(), "cred-1", []byte(`{"n":9}`)))
+
+	keys, err = db.Passkeys(t.Context())
+	require.NoError(t, err)
+	require.JSONEq(t, `{"n":9}`, string(keys[0].Credential))
+	require.WithinDuration(t, time.Now(), keys[0].LastUsed, time.Minute)
+
+	require.ErrorIs(t, db.UpdatePasskey(t.Context(), "nope", []byte("{}")), store.ErrNotFound)
+
+	require.NoError(t, db.RemovePasskey(t.Context(), keys[0].ID))
+	require.ErrorIs(t, db.RemovePasskey(t.Context(), keys[0].ID), store.ErrNotFound)
+
+	keys, err = db.Passkeys(t.Context())
+	require.NoError(t, err)
+	require.Len(t, keys, 1)
+}
+
+func TestEnrollmentTokens(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+
+	tests := []struct {
+		name    string
+		expires time.Time
+		consume string
+		at      time.Time
+		want    bool
+	}{
+		{"valid", now.Add(time.Minute), "h", now, true},
+		{"expired", now.Add(time.Minute), "h", now.Add(2 * time.Minute), false},
+		{"unknown", now.Add(time.Minute), "other", now, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			db := open(t)
+			require.NoError(t, db.AddEnrollment(t.Context(), "h", tt.expires))
+
+			got, err := db.ConsumeEnrollment(t.Context(), tt.consume, tt.at)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEnrollmentTokenIsSingleUse(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	now := time.Now()
+	require.NoError(t, db.AddEnrollment(t.Context(), "h", now.Add(time.Minute)))
+
+	first, err := db.ConsumeEnrollment(t.Context(), "h", now)
+	require.NoError(t, err)
+	require.True(t, first)
+
+	second, err := db.ConsumeEnrollment(t.Context(), "h", now)
+	require.NoError(t, err)
+	require.False(t, second)
+}
+
+func TestAddEnrollmentDropsExpiredTokens(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	past := time.Now().Add(-time.Hour)
+	require.NoError(t, db.AddEnrollment(t.Context(), "old", past))
+	require.NoError(t, db.AddEnrollment(t.Context(), "new", time.Now().Add(time.Minute)))
+
+	got, err := db.ConsumeEnrollment(t.Context(), "old", past.Add(-time.Minute))
+	require.NoError(t, err)
+	require.False(t, got)
+}
+
+const testAddress = "a@example.com"
+
+func TestParseAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, want string
+		ok       bool
+	}{
+		{testAddress, testAddress, true},
+		{"  A@Example.COM ", testAddress, true},
+		{"Alice <a@example.com>", testAddress, true},
+		{"", "", false},
+		{"not-an-address", "", false},
+		{"a@b.com, c@d.com", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := store.ParseAddress(tt.in)
+			if !tt.ok {
+				require.ErrorIs(t, err, store.ErrInvalidAddress)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestWebMethodsFailOnAClosedStore(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	require.NoError(t, db.Close())
+
+	ctx := t.Context()
+	now := time.Now()
+
+	calls := map[string]func(*testing.T){
+		"Addresses": func(t *testing.T) {
+			t.Helper()
+
+			_, err := db.Addresses(ctx)
+			require.Error(t, err)
+		},
+		"AddPasskey": func(t *testing.T) {
+			t.Helper()
+
+			require.Error(t, db.AddPasskey(ctx, "c", "n", []byte("{}")))
+		},
+		"Passkeys": func(t *testing.T) {
+			t.Helper()
+
+			_, err := db.Passkeys(ctx)
+			require.Error(t, err)
+		},
+		"UpdatePasskey": func(t *testing.T) {
+			t.Helper()
+
+			require.Error(t, db.UpdatePasskey(ctx, "c", []byte("{}")))
+		},
+		"RemovePasskey": func(t *testing.T) {
+			t.Helper()
+
+			require.Error(t, db.RemovePasskey(ctx, 1))
+		},
+		"AddEnrollment": func(t *testing.T) {
+			t.Helper()
+
+			require.Error(t, db.AddEnrollment(ctx, "h", now))
+		},
+		"ConsumeEnrollment": func(t *testing.T) {
+			t.Helper()
+
+			_, err := db.ConsumeEnrollment(ctx, "h", now)
+			require.Error(t, err)
+		},
+	}
+
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			call(t)
+		})
+	}
+}

@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/mail"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -473,6 +475,10 @@ type Decision struct {
 	// CorrectedBy is the ID of the first later correction or undo of the same
 	// message, or 0. It is derived when the decision is read, not stored.
 	CorrectedBy int64
+	// Corrects lists the earlier decisions on the same message that this entry
+	// is the first correction or undo of, oldest first. It is derived when the
+	// decision is read, and is empty for entries that are not corrections.
+	Corrects []int64
 }
 
 // RecordDecision appends to the journal and returns the entry's ID.
@@ -585,18 +591,25 @@ const decisionColumns = `SELECT id, at, mailbox, uid, message_id, sender, subjec
 	score, verdict, reason, action, applied, undone,
 	(SELECT COALESCE(MIN(c.id), 0) FROM decisions c
 	 WHERE decisions.message_id != '' AND c.message_id = decisions.message_id
-	   AND c.id > decisions.id AND c.reason IN ('correction', 'undo'))`
+	   AND c.id > decisions.id AND c.reason IN ('correction', 'undo')),
+	(SELECT COALESCE(GROUP_CONCAT(d.id), '') FROM decisions d
+	 WHERE decisions.reason IN ('correction', 'undo') AND decisions.message_id != ''
+	   AND d.message_id = decisions.message_id AND d.id < decisions.id
+	   AND decisions.id = (SELECT MIN(c.id) FROM decisions c
+	                       WHERE c.message_id = d.message_id AND c.id > d.id
+	                         AND c.reason IN ('correction', 'undo')))`
 
 func scanDecision(row interface{ Scan(dest ...any) error }) (Decision, error) {
 	var (
 		decision Decision
 		unixAt   int64
+		corrects string
 	)
 
 	err := row.Scan(&decision.ID, &unixAt, &decision.Mailbox, &decision.UID,
 		&decision.MessageID, &decision.From, &decision.Subject, &decision.Score,
 		&decision.Verdict, &decision.Reason, &decision.Action, &decision.Applied, &decision.Undone,
-		&decision.CorrectedBy)
+		&decision.CorrectedBy, &corrects)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Decision{}, err //nolint:wrapcheck // callers test for it
 	}
@@ -606,8 +619,30 @@ func scanDecision(row interface{ Scan(dest ...any) error }) (Decision, error) {
 	}
 
 	decision.At = time.Unix(unixAt, 0).UTC()
+	decision.Corrects = parseIDs(corrects)
 
 	return decision, nil
+}
+
+// parseIDs reads the comma-separated IDs SQLite's GROUP_CONCAT produced, in
+// ascending order.
+func parseIDs(list string) []int64 {
+	if list == "" {
+		return nil
+	}
+
+	fields := strings.Split(list, ",")
+	ids := make([]int64, 0, len(fields))
+
+	for _, field := range fields {
+		if id, err := strconv.ParseInt(field, 10, 64); err == nil {
+			ids = append(ids, id)
+		}
+	}
+
+	slices.Sort(ids)
+
+	return ids
 }
 
 // Stats summarises what the store has learnt.

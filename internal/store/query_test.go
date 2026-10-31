@@ -584,3 +584,61 @@ func TestQueryDecisionsByID(t *testing.T) {
 	require.Zero(t, total, "the other filters still apply")
 	require.Empty(t, mismatch)
 }
+
+func TestDecisionsKnowWhatTheyCorrected(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	at := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+
+	record := func(messageID, reason string) int64 {
+		id, err := db.RecordDecision(t.Context(), store.Decision{
+			At:        at,
+			MessageID: messageID,
+			Subject:   reason,
+			Verdict:   verdictGood,
+			Reason:    reason,
+			Action:    actionNone,
+		})
+		require.NoError(t, err)
+
+		return id
+	}
+
+	// One message: judged twice, corrected, then the correction undone.
+	first := record("<m@example>", reasonBayes)
+	second := record("<m@example>", reasonBayes)
+	correction := record("<m@example>", "correction")
+	undo := record("<m@example>", "undo")
+	other := record("<other@example>", reasonBayes)
+	noID := record("", reasonBayes)
+	noIDCorrection := record("", "correction")
+
+	corrects := func(id int64) []int64 {
+		decision, err := db.Decision(t.Context(), id)
+		require.NoError(t, err)
+
+		return decision.Corrects
+	}
+
+	require.Equal(
+		t,
+		[]int64{first, second},
+		corrects(correction),
+		"both earlier judgements, in order",
+	)
+	require.Equal(
+		t,
+		[]int64{correction},
+		corrects(undo),
+		"a chain: the undo reverses the correction",
+	)
+	require.Empty(t, corrects(first), "a plain judgement corrects nothing")
+	require.Empty(t, corrects(other))
+	require.Empty(t, corrects(noID))
+	require.Empty(t, corrects(noIDCorrection), "without a Message-ID nothing links")
+
+	listed, _, err := db.QueryDecisions(t.Context(), store.DecisionQuery{ID: correction})
+	require.NoError(t, err)
+	require.Equal(t, []int64{first, second}, listed[0].Corrects, "the paged query knows it too")
+}

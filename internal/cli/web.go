@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +25,10 @@ const (
 	logRingSize = 1000
 )
 
+var errNoTLS = errors.New(
+	"web is not serving TLS: set self_signed = true, or tls_cert and tls_key, in [web]",
+)
+
 var errWebDisabled = errors.New(
 	"web is not enabled: set enabled = true and origin in the [web] section",
 )
@@ -35,7 +41,12 @@ func (a *app) webCommand() *cobra.Command {
 			"with passkeys. Enroll the first one with `tamis web enroll`.",
 	}
 
-	cmd.AddCommand(a.webEnrollCommand(), a.webPasskeysCommand(), a.webRevokeCommand())
+	cmd.AddCommand(
+		a.webEnrollCommand(),
+		a.webPasskeysCommand(),
+		a.webRevokeCommand(),
+		a.webCertCommand(),
+	)
 
 	return cmd
 }
@@ -217,11 +228,24 @@ func (a *app) startWeb(
 		return nil, fmt.Errorf("web interface: %w", err)
 	}
 
+	certFile, keyFile, err := tlsFiles(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	var lc net.ListenConfig
 
 	listener, err := lc.Listen(ctx, "tcp", cfg.Web.Listen)
 	if err != nil {
 		return nil, fmt.Errorf("web interface: %w", err)
+	}
+
+	listening := []any{"addr", listener.Addr().String(), "origin", cfg.Web.Origin}
+
+	if certFile != "" {
+		if listener, listening, err = withTLS(listener, listening, certFile, keyFile); err != nil {
+			return nil, err
+		}
 	}
 
 	serveCtx, cancel := context.WithCancel(ctx)
@@ -235,11 +259,117 @@ func (a *app) startWeb(
 		}
 	}()
 
-	logger.InfoContext(ctx, "web interface listening",
-		"addr", listener.Addr().String(), "origin", cfg.Web.Origin)
+	logger.InfoContext(ctx, "web interface listening", listening...)
 
 	return func() {
 		cancel()
 		<-done
 	}, nil
+}
+
+// tlsFiles is the certificate and key the web interface serves HTTPS with, or
+// empty strings when it serves plain HTTP. A self-signed pair is made on first
+// use.
+func tlsFiles(cfg *config.Config) (string, string, error) {
+	switch {
+	case cfg.Web.SelfSigned:
+		certFile, keyFile, err := web.SelfSigned(
+			filepath.Dir(cfg.State),
+			cfg.Web.RPID(),
+			time.Now(),
+		)
+		if err != nil {
+			return "", "", fmt.Errorf("web interface: %w", err)
+		}
+
+		return certFile, keyFile, nil
+	case cfg.Web.TLSCert != "":
+		return cfg.Web.TLSCert, cfg.Web.TLSKey, nil
+	}
+
+	return "", "", nil
+}
+
+func withTLS(
+	listener net.Listener,
+	listening []any,
+	certFile, keyFile string,
+) (net.Listener, []any, error) {
+	secured, err := web.TLSListener(listener, certFile, keyFile)
+	if err != nil {
+		_ = listener.Close()
+
+		return nil, nil, fmt.Errorf("web interface: %w", err)
+	}
+
+	fingerprint, err := web.Fingerprint(certFile)
+	if err != nil {
+		_ = listener.Close()
+
+		return nil, nil, fmt.Errorf("web interface: %w", err)
+	}
+
+	return secured, append(listening, "fingerprint", fingerprint), nil
+}
+
+func (a *app) webCertCommand() *cobra.Command {
+	var asPEM bool
+
+	cmd := &cobra.Command{
+		Use:   "cert",
+		Short: "Show the certificate to install on your devices",
+		Long: "Show the certificate the web interface serves HTTPS with, making a self-signed\n" +
+			"one first if web.self_signed is set. Browsers only accept passkeys from a\n" +
+			"certificate they trust, so install it on each device. --pem prints the\n" +
+			"certificate itself, never the key.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return a.withWeb(
+				cmd,
+				func(_ context.Context, cfg *config.Config, _ *store.Store) error {
+					certFile, _, err := tlsFiles(cfg)
+					if err != nil {
+						return err
+					}
+
+					if certFile == "" {
+						return errNoTLS
+					}
+
+					return writeCert(cmd, certFile, asPEM)
+				},
+			)
+		},
+	}
+
+	cmd.Flags().
+		BoolVar(&asPEM, "pem", false, "print the certificate as PEM, for copying to a device")
+
+	return cmd
+}
+
+func writeCert(cmd *cobra.Command, certFile string, asPEM bool) error {
+	out := cmd.OutOrStdout()
+
+	if asPEM {
+		data, err := os.ReadFile(certFile) //nolint:gosec // the user's certificate
+		if err != nil {
+			return fmt.Errorf("read certificate: %w", err)
+		}
+
+		_, _ = out.Write(data)
+
+		return nil
+	}
+
+	fingerprint, err := web.Fingerprint(certFile)
+	if err != nil {
+		return fmt.Errorf("fingerprint: %w", err)
+	}
+
+	_, _ = fmt.Fprintf(out, "Certificate: %s\nSHA-256 fingerprint: %s\n\n"+
+		"Copy it to each device (tamis web cert --pem) and trust it for web sites;\n"+
+		"until then its browser will refuse to create or use a passkey.\n", certFile, fingerprint)
+
+	return nil
 }

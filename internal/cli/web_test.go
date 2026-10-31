@@ -204,3 +204,93 @@ func TestDoctorReportsTheWebInterface(t *testing.T) {
 	require.Contains(t, got.stdout, `"name": "web passkeys"`)
 	require.Contains(t, got.stdout, "1 enrolled")
 }
+
+const selfSignedOrigin = "https://minipc.example.net:8484"
+
+func (a *account) enableSelfSigned(t *testing.T) {
+	t.Helper()
+
+	file, err := os.OpenFile(a.config, os.O_APPEND|os.O_WRONLY, 0)
+	require.NoError(t, err)
+
+	_, err = fmt.Fprintf(
+		file,
+		"\n[web]\nenabled = true\nlisten = \"127.0.0.1:0\"\norigin = %q\nself_signed = true\n",
+		selfSignedOrigin,
+	)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+}
+
+func (a *account) stateDir() string { return filepath.Join(filepath.Dir(a.config), "state") }
+
+func TestRunServesTLSWithASelfSignedCertificate(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	a.enableSelfSigned(t)
+
+	got := a.run(t, runCmd, onceFlag)
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stderr, "web interface listening")
+	require.Contains(t, got.stderr, "fingerprint=")
+	require.FileExists(t, filepath.Join(a.stateDir(), "web-cert.pem"))
+	require.FileExists(t, filepath.Join(a.stateDir(), "web-key.pem"))
+}
+
+func TestRunFailsOnUnreadableCertificateFiles(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	file, err := os.OpenFile(a.config, os.O_APPEND|os.O_WRONLY, 0)
+	require.NoError(t, err)
+
+	_, err = fmt.Fprintf(
+		file,
+		"\n[web]\nenabled = true\nlisten = \"127.0.0.1:0\"\norigin = %q\n"+
+			"tls_cert = \"/nonexistent/c.pem\"\ntls_key = \"/nonexistent/k.pem\"\n",
+		selfSignedOrigin,
+	)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+
+	got := a.run(t, runCmd, onceFlag)
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stderr, "load certificate")
+}
+
+func TestWebCert(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	a.enableSelfSigned(t)
+
+	got := a.run(t, webCmd, "cert")
+	require.Zero(t, got.code, got.stderr)
+
+	certFile := filepath.Join(a.stateDir(), "web-cert.pem")
+	require.Contains(t, got.stdout, certFile)
+	require.Regexp(t, `SHA-256 fingerprint: ([0-9A-F]{2}:){31}[0-9A-F]{2}`, got.stdout)
+	require.NotContains(t, got.stdout, "PRIVATE KEY")
+
+	pem := a.run(t, webCmd, "cert", "--pem")
+	require.Zero(t, pem.code, pem.stderr)
+	require.True(t, strings.HasPrefix(pem.stdout, "-----BEGIN CERTIFICATE-----"), pem.stdout)
+	require.NotContains(t, pem.stdout, "PRIVATE KEY")
+
+	onDisk, err := os.ReadFile(certFile) //nolint:gosec // a path the test made
+	require.NoError(t, err)
+	require.Equal(t, string(onDisk), pem.stdout)
+}
+
+func TestWebCertNeedsTLS(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	a.enableWeb(t)
+
+	got := a.run(t, webCmd, "cert")
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stderr, "not serving TLS")
+}

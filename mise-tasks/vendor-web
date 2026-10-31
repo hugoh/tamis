@@ -1,24 +1,21 @@
 #!/usr/bin/env bash
 #MISE description="Copy htmx and build the daisyUI/Tailwind stylesheet into internal/web/static/vendor (--check: only verify)"
-#USAGE flag "--check" help="fail if the committed files differ from what the pinned versions and templates produce"
+#USAGE flag "--check" help="fail if the files in place differ from what the pinned versions and templates produce"
 set -euo pipefail
 
 web=internal/web
+dest=$web/static/vendor
 htmx=$(mise where npm:htmx.org)/node_modules/htmx.org
 cli=$(mise where npm:@tailwindcss/cli)/node_modules
 tailwind=("$cli"/.mise/tailwindcss@*/node_modules/tailwindcss)
 daisyui=$(mise where npm:daisyui)/node_modules/daisyui
-out=$web/static/vendor
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+new=$work/new
+mkdir -p "$new"
 
-if [ "${usage_check:-false}" = true ]; then
-  out=$work/out
-fi
-mkdir -p "$out"
-
-cp "$htmx/dist/htmx.min.js" "$out/htmx.min.js"
-cp "$htmx/LICENSE" "$out/htmx.LICENSE"
+cp "$htmx/dist/htmx.min.js" "$new/htmx.min.js"
+cp "$htmx/LICENSE" "$new/htmx.LICENSE"
 
 # Tailwind finds its own files and plugins by walking up from the stylesheet,
 # which mise's per-tool install directories defeat: name them by path instead.
@@ -28,18 +25,25 @@ cat >"$work/input.css" <<CSS
 @plugin "$daisyui";
 @source "$PWD/$web/templates";
 CSS
-"$cli/.bin/tailwindcss" --input "$work/input.css" --output "$out/theme.css" --minify
+"$cli/.bin/tailwindcss" --input "$work/input.css" --output "$new/theme.css" --minify
 
 # The repo's end-of-file check wants every file to end in a newline.
-for file in "$out/htmx.min.js" "$out/theme.css"; do
+for file in "$new/htmx.min.js" "$new/theme.css"; do
   [ "$(tail -c1 "$file")" = "" ] || echo >>"$file"
 done
 
-if [ "${usage_check:-false}" = true ]; then
-  for file in htmx.min.js htmx.LICENSE theme.css; do
-    cmp -s "$out/$file" "$web/static/vendor/$file" || {
-      echo "vendored $file is stale: run mise run vendor-web" >&2
-      exit 1
-    }
-  done
-fi
+status=0
+for file in htmx.min.js htmx.LICENSE theme.css; do
+  if cmp -s "$new/$file" "$dest/$file"; then
+    continue
+  fi
+  if [ "${usage_check:-false}" = true ]; then
+    echo "vendored $file is stale: run mise run vendor-web" >&2
+    status=1
+  else
+    # Only touch what changed, so an unchanged file does not trigger a rebuild.
+    mkdir -p "$dest"
+    cp "$new/$file" "$dest/$file"
+  fi
+done
+exit "$status"

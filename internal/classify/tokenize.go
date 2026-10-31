@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/emersion/go-message"
 	// Registers non-UTF-8 charsets so real-world mail decodes.
@@ -197,23 +198,32 @@ func (s *tokenSet) add(token string) {
 }
 
 func (s *tokenSet) addText(prefix, text string) {
-	for _, link := range urlPattern.FindAllString(text, -1) {
-		s.addURL(link)
+	var rest strings.Builder
+
+	last := 0
+
+	for _, span := range urlPattern.FindAllStringIndex(text, -1) {
+		s.addURL(text[span[0]:span[1]])
+		rest.WriteString(text[last:span[0]])
+		rest.WriteByte(' ')
+
+		last = span[1]
 	}
 
-	text = urlPattern.ReplaceAllString(text, " ")
+	rest.WriteString(text[last:])
 
-	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+	words := strings.FieldsFunc(strings.ToLower(rest.String()), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	})
 
 	for _, word := range words {
-		length := len([]rune(word))
+		length := utf8.RuneCountInString(word)
 
 		switch {
 		case length < minWordLen:
 		case length > maxWordLen:
-			s.add(fmt.Sprintf("skip:%c %d", []rune(word)[0], length/skipBucket*skipBucket))
+			first, _ := utf8.DecodeRuneInString(word)
+			s.add(fmt.Sprintf("skip:%c %d", first, length/skipBucket*skipBucket))
 		default:
 			s.add(prefix + word)
 		}

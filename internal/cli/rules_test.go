@@ -88,3 +88,44 @@ func TestRulesTest(t *testing.T) {
 	got = a.run(t, rulesCmd, "test", filepath.Join(t.TempDir(), "missing.eml"))
 	require.Equal(t, 1, got.code)
 }
+
+func TestRulesCheckFolders(t *testing.T) {
+	t.Parallel()
+
+	a := withRules(t, rulesScript)
+
+	got := a.run(t, rulesCmd, "check", "--folders")
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stdout, `no such folder "Lists/Go"`)
+	require.Contains(t, got.stderr, "1 folder")
+
+	require.NoError(t, a.client.Ensure("Lists/Go"))
+
+	got = a.run(t, rulesCmd, "check", "--folders")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "all 1 folders exist")
+}
+
+func TestRulesCheckFoldersSuggestsTheNearestName(t *testing.T) {
+	t.Parallel()
+
+	a := withRules(t, "require [\"fileinto\"];\nfileinto \"jobsearh\";\nfileinto \"Elsewhere\";\n")
+	require.NoError(t, a.client.Ensure("jobsearch"))
+
+	got := a.run(t, rulesCmd, "check", "--folders")
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stdout, `no such folder "jobsearh" (did you mean "jobsearch"?)`)
+	require.Contains(t, got.stdout, `no such folder "Elsewhere"`)
+	require.NotContains(t, got.stdout, `"Elsewhere" (did you mean`)
+	require.Contains(t, got.stderr, "2 folder")
+}
+
+func TestRulesCheckFoldersOfAFile(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	got := a.run(t, rulesCmd, "check", "--folders", writeFile(t, "x.sieve", rulesScript))
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stdout, `no such folder "Lists/Go"`)
+}

@@ -29,11 +29,39 @@ func (e *Engine) ruleTarget(
 		return ""
 	}
 
-	if target == folder {
+	if target == folder || !e.targetUsable(ctx, folder, message, target) {
 		return ""
 	}
 
 	return target
+}
+
+// targetUsable is false for a folder that is missing and may not be created.
+// A failed lookup counts as unusable: it leaves the message where it is.
+func (e *Engine) targetUsable(
+	ctx context.Context,
+	folder string,
+	message mail.Message,
+	target string,
+) bool {
+	if e.cfg.Rules.CreateFolders {
+		return true
+	}
+
+	exists, err := e.mail.Exists(target)
+	if err != nil {
+		e.log.WarnContext(ctx, "rules: look up folder",
+			"folder", folder, "uid", message.UID, "target", target, "error", err)
+
+		return false
+	}
+
+	if !exists {
+		e.log.WarnContext(ctx, "rules: no such folder; leaving the message",
+			"folder", folder, "uid", message.UID, "target", target)
+	}
+
+	return exists
 }
 
 // fileByRule moves a good message to target; in shadow mode it only records

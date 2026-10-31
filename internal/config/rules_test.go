@@ -27,6 +27,15 @@ func TestRulesOffByDefault(t *testing.T) {
 	cfg, err := config.Load(noEnv, write(t, account))
 	require.NoError(t, err)
 	require.Empty(t, cfg.Rules.Script)
+	require.False(t, cfg.Rules.CreateFolders, "rules never invent folders unless told to")
+}
+
+func TestRulesCreateFolders(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(noEnv, write(t, account+"[rules]\ncreate_folders = true\n"))
+	require.NoError(t, err)
+	require.True(t, cfg.Rules.CreateFolders)
 }
 
 func TestRulesScriptIsChecked(t *testing.T) {

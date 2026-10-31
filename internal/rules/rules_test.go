@@ -116,3 +116,33 @@ func TestSenderOf(t *testing.T) {
 		})
 	}
 }
+
+func TestTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, script string
+		want         []string
+	}{
+		{"none", `keep;`, nil},
+		{
+			"nested, listed and repeated",
+			`require ["fileinto", "copy", "variables"];
+if header :contains "a" "b" { fileinto "B"; if true { fileinto :copy "C"; } }
+elsif true { fileinto "A"; } else { fileinto "B"; }
+set "dir" "Dyn";
+fileinto "${dir}/x";`,
+			[]string{"A", "B", "C"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			parsed, err := rules.Parse(strings.NewReader(tt.script))
+			require.NoError(t, err)
+			require.Equal(t, tt.want, parsed.Targets())
+		})
+	}
+}

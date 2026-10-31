@@ -81,6 +81,7 @@ rescue_threshold = 0       # also rescue mail scoring at or below this, e.g. 0.0
 
 [rules]
 script = ""                # Sieve file that files good mail into folders, e.g. "~/.config/tamis/rules.sieve"; empty is off
+create_folders = false     # true: create a folder a rule names when it is missing
 ```
 
 Then:
@@ -94,7 +95,7 @@ tamis doctor      # is the filter in good shape? (--json; exits 1 on failure)
 tamis undo 42     # reverse decision 42 from the log
 tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
 tamis whitelist list   # also: add ADDRESS..., rm ADDRESS... or rm --matching TEXT
-tamis rules show       # also: check [FILE] to validate a Sieve script, test MESSAGE.eml to see where it goes
+tamis rules show       # also: check [--folders] [FILE] to validate a Sieve script, test MESSAGE.eml to see where it goes
 tamis web enroll       # one-time link to enrol a passkey for the web interface
 ```
 
@@ -180,13 +181,16 @@ Check it before relying on it:
 
 ```sh
 tamis rules check            # does the script compile?
+tamis rules check --folders  # and do the folders it files into exist?
 tamis rules test some.eml    # which folder would this saved message go to?
 ```
 
 The first `fileinto` that matches wins; mail that matches nothing stays in the
 inbox. Rules only see mail tamis judges good, so they never file spam or mail
 it is unsure about, and they only apply to mail that arrives after tamis
-starts. The script is compiled when tamis starts, and a script with an error
+starts. A rule naming a folder that doesn't exist is skipped, with a warning,
+so a typo doesn't make a new folder: create your folders first, or set
+`create_folders = true` under `[rules]`. The script is compiled when tamis starts, and a script with an error
 stops it: restart `tamis run` after editing. In shadow mode a rule only
 records what it would do (`tamis log` shows it); in live mode it moves the
 message and creates the folder if needed. `tamis undo` doesn't cover rule-filed

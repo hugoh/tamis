@@ -27,20 +27,25 @@ func (e *env) withRules(t *testing.T, script string) {
 	e.engine.SetRules(parsed)
 }
 
-func (e *env) fromList(from string) []byte {
-	return e.message(from, "Project meeting", "Agenda for the project meeting with the team.",
-		"List-Id: <golang-nuts.googlegroups.com>")
+func (e *env) fromList() []byte {
+	return e.message(
+		"g@good.example",
+		"Project meeting",
+		"Agenda for the project meeting with the team.",
+		"List-Id: <golang-nuts.googlegroups.com>",
+	)
 }
 
 func TestRulesFileGoodMail(t *testing.T) {
 	t.Parallel()
 
 	e := setup(t, config.ModeLive)
+	e.cfg.Rules.CreateFolders = true
 	e.trainModel(t)
 	e.withRules(t, listsRule)
 	e.run(t)
 
-	e.append(t, inbox, e.fromList("g@good.example"))
+	e.append(t, inbox, e.fromList())
 	e.append(t, inbox, e.hammy("h@good.example"))
 
 	summary := e.run(t)
@@ -92,9 +97,10 @@ func TestRulesInShadowModeOnlyRecord(t *testing.T) {
 	e := setup(t, config.ModeShadow)
 	e.trainModel(t)
 	e.withRules(t, listsRule)
+	require.NoError(t, e.client.Ensure(listsFolder))
 	e.run(t)
 
-	e.append(t, inbox, e.fromList("g@good.example"))
+	e.append(t, inbox, e.fromList())
 	e.run(t)
 
 	require.Len(t, e.messages(t, inbox), 1)
@@ -113,11 +119,55 @@ func TestRulesLeaveSortedMailAlone(t *testing.T) {
 	e.withRules(t, listsRule)
 	e.run(t)
 
-	e.append(t, inbox, e.fromList("g@good.example"))
+	e.append(t, inbox, e.fromList())
 	e.markFrom(t, inbox, "g@good.example", engine.SortedKeyword)
 
 	summary := e.run(t)
 
 	require.Equal(t, engine.Summary{}, summary)
 	require.Len(t, e.messages(t, inbox), 1, "dragged back by the user, not refiled")
+}
+
+func TestRulesNeedAnExistingFolder(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []config.Mode{config.ModeLive, config.ModeShadow} {
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, mode)
+			e.trainModel(t)
+			e.withRules(t, listsRule)
+			e.run(t)
+
+			e.append(t, inbox, e.fromList())
+			e.run(t)
+
+			require.Len(t, e.messages(t, inbox), 1, "a typo'd rule leaves the mail alone")
+
+			exists, err := e.client.Exists(listsFolder)
+			require.NoError(t, err)
+			require.False(t, exists, "and doesn't invent the folder")
+
+			decisions := e.decisions(t)
+			require.Len(t, decisions, 1)
+			require.Equal(t, engine.ReasonBayes, decisions[0].Reason)
+		})
+	}
+}
+
+func TestRulesFileIntoAnExistingFolder(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.withRules(t, listsRule)
+	require.NoError(t, e.client.Ensure(listsFolder))
+	e.run(t)
+
+	e.append(t, inbox, e.fromList())
+	e.run(t)
+
+	require.Len(t, e.messages(t, listsFolder), 1)
+	require.Empty(t, e.messages(t, inbox))
 }

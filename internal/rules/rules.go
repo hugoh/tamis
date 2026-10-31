@@ -9,18 +9,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/mail"
 	"net/textproto"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/foxcpp/go-sieve"
 	"github.com/foxcpp/go-sieve/interp"
+	"github.com/foxcpp/go-sieve/lexer"
+	"github.com/foxcpp/go-sieve/parser"
 )
 
 // Rules is a loaded Sieve script.
 type Rules struct {
-	script *sieve.Script
+	script  *sieve.Script
+	targets []string
 }
 
 // Load reads and compiles the script at path.
@@ -35,12 +40,56 @@ func Load(path string) (*Rules, error) {
 
 // Parse compiles a script, so a mistake surfaces at startup and not mid-pass.
 func Parse(r io.Reader) (*Rules, error) {
-	script, err := sieve.Load(bufio.NewReader(r), sieve.DefaultOptions())
+	opts := sieve.DefaultOptions()
+
+	tokens, err := lexer.Lex(bufio.NewReader(r), &opts.Lexer)
 	if err != nil {
 		return nil, fmt.Errorf("parse rules: %w", err)
 	}
 
-	return &Rules{script: script}, nil
+	commands, err := parser.Parse(lexer.NewStream(tokens), &opts.Parser)
+	if err != nil {
+		return nil, fmt.Errorf("parse rules: %w", err)
+	}
+
+	script, err := interp.LoadScript(commands, &opts.Interp)
+	if err != nil {
+		return nil, fmt.Errorf("parse rules: %w", err)
+	}
+
+	return &Rules{script: script, targets: fileintoTargets(commands)}, nil
+}
+
+// Targets are the folders the script can file into, sorted and without
+// repeats. A name built from a variable can't be known before the script runs
+// and is left out.
+func (r *Rules) Targets() []string {
+	return r.targets
+}
+
+func fileintoTargets(commands []parser.Cmd) []string {
+	found := map[string]struct{}{}
+	collectTargets(commands, found)
+
+	if len(found) == 0 {
+		return nil
+	}
+
+	return slices.Sorted(maps.Keys(found))
+}
+
+func collectTargets(commands []parser.Cmd, found map[string]struct{}) {
+	for _, command := range commands {
+		if command.Id == "fileinto" {
+			for _, arg := range command.Args {
+				if name, ok := arg.(parser.StringArg); ok && !strings.Contains(name.Value, "${") {
+					found[name.Value] = struct{}{}
+				}
+			}
+		}
+
+		collectTargets(command.Block, found)
+	}
 }
 
 // Folder runs the script on a raw message and returns the folder its first

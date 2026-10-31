@@ -403,15 +403,36 @@ func (c *Client) Append(
 	return uint32(data.UID), nil
 }
 
-// Ensure creates mailbox unless it already exists.
-func (c *Client) Ensure(mailbox string) error {
-	existing, err := c.imap.List("", mailbox, nil).Collect()
+// Folders lists every mailbox name.
+func (c *Client) Folders() ([]string, error) {
+	listed, err := c.imap.List("", "*", nil).Collect()
 	if err != nil {
-		return fmt.Errorf("list %s: %w", mailbox, err)
+		return nil, fmt.Errorf("list folders: %w", err)
 	}
 
-	if len(existing) > 0 {
-		return nil
+	names := make([]string, len(listed))
+	for i, folder := range listed {
+		names[i] = folder.Mailbox
+	}
+
+	return names, nil
+}
+
+// Exists reports whether mailbox is there.
+func (c *Client) Exists(mailbox string) (bool, error) {
+	existing, err := c.imap.List("", mailbox, nil).Collect()
+	if err != nil {
+		return false, fmt.Errorf("list %s: %w", mailbox, err)
+	}
+
+	return len(existing) > 0, nil
+}
+
+// Ensure creates mailbox unless it already exists.
+func (c *Client) Ensure(mailbox string) error {
+	exists, err := c.Exists(mailbox)
+	if err != nil || exists {
+		return err
 	}
 
 	if err := c.imap.Create(mailbox, nil).Wait(); err != nil {

@@ -63,6 +63,12 @@ const fetchBatch = 50
 type Mailbox interface {
 	MailboxReader
 	MailboxWriter
+	MailboxFolders
+}
+
+// MailboxFolders tells which folders are there.
+type MailboxFolders interface {
+	Exists(mailbox string) (bool, error)
 }
 
 // MailboxReader finds and reads messages.

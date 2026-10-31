@@ -55,6 +55,10 @@ type Rules struct {
 	// folder good mail moves to; "~/" expands to the home directory. Empty
 	// files nothing.
 	Script string `toml:"script"`
+	// CreateFolders makes a folder a rule files into when it is missing. Off,
+	// a rule naming a folder that doesn't exist leaves the mail alone, so a
+	// typo doesn't quietly make a new folder.
+	CreateFolders bool `toml:"create_folders"`
 }
 
 // Web is the optional web interface, served by `tamis run`.

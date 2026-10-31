@@ -312,6 +312,24 @@ func TestEnsureIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestFoldersAndExists(t *testing.T) {
+	t.Parallel()
+
+	client := connect(t, imaptest.Start(t, imaptest.Rev2()))
+	require.NoError(t, client.Ensure("work/whugoh"))
+
+	folders, err := client.Folders()
+	require.NoError(t, err)
+	require.Contains(t, folders, "INBOX")
+	require.Contains(t, folders, "work/whugoh")
+
+	for name, want := range map[string]bool{"INBOX": true, "work/whugoh": true, "nope": false} {
+		got, err := client.Exists(name)
+		require.NoError(t, err)
+		require.Equal(t, want, got, name)
+	}
+}
+
 func TestDialTLS(t *testing.T) {
 	t.Parallel()
 

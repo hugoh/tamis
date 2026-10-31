@@ -22,6 +22,7 @@ an embeddable interpreter. It is a pre-1.0 module (a pseudo-version in
 ```toml
 [rules]
 script = "~/.config/tamis/rules.sieve"   # empty (the default) files nothing
+create_folders = false                   # true: make a folder a rule names when it is missing
 ```
 
 The script is compiled when the configuration loads, so `tamis run`, `tamis
@@ -70,8 +71,13 @@ in place, so one odd message can't stall the pass.
 
 | Mode | What happens | Journal |
 |---|---|---|
-| live | create the folder if missing, add `$TamisSorted`, move | verdict `good`, reason `rule`, action `move:<folder>`, applied |
+| live | add `$TamisSorted`, move (creating the folder first only if `create_folders` is on) | verdict `good`, reason `rule`, action `move:<folder>`, applied |
 | shadow | nothing | same entry, not applied |
+
+A rule whose folder doesn't exist is skipped in both modes, with a warning in
+the log: the message stays where it is and is journalled as an ordinary
+decision. This is the default so that a typo (`jobsearh`) never quietly makes
+a new folder; create the folders you name, or set `create_folders = true`.
 
 The verdict stays `good`, so spam-correction logic (which only trusts `move:`
 entries with a spam verdict) is unaffected. A failed move removes
@@ -93,11 +99,15 @@ decisions. Move the message back by hand.
 |---|---|
 | `tamis rules show` | print the configured script |
 | `tamis rules check [file]` | compile a script (default: the configured one); exits 1 with the parse error |
+| `tamis rules check --folders [file]` | also connect to the mailbox and exit 1 if the script files into a folder that doesn't exist, suggesting the nearest name for a typo |
 | `tamis rules test message.eml` | print the folder the configured script files a message into, or that it stays |
 | web **Rules** page | the script's path, valid or invalid, its source, and a form that tries a pasted message |
 
-`check` with a file argument needs no configuration, so a new script can be
-vetted before it is switched on. The web page re-reads the file on every
+`check` with a file argument and no `--folders` needs no configuration, so a
+new script can be vetted before it is switched on. `--folders` needs the
+account (and its password), since it lists the mailbox. It reads the targets
+from the script's text, so a folder name built from a variable
+(`fileinto "${dir}/x"`) can't be checked and is left out. The web page re-reads the file on every
 view, so it shows edits made after the daemon started. The running daemon,
 however, compiled the script at startup: restart `tamis run` to apply an edit.
 

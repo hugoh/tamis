@@ -218,34 +218,24 @@ func (a *app) startWeb(
 		return func() {}, nil
 	}
 
-	run := func(ctx context.Context, body func(context.Context, web.Actions) error) error {
-		return a.withEngine(ctx, cfg, database, logger, passTimeout,
-			func(ctx context.Context, eng *engine.Engine) error { return body(ctx, eng) })
-	}
-
-	srv, err := web.New(cfg, database, logger, web.Options{Run: run, Status: status, Logs: logs})
+	srv, err := web.New(
+		cfg,
+		database,
+		logger,
+		web.Options{
+			Run:     a.engineRunner(cfg, database, logger),
+			Status:  status,
+			Logs:    logs,
+			Version: a.version,
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("web interface: %w", err)
 	}
 
-	certFile, keyFile, err := tlsFiles(cfg)
+	listener, listening, err := listenWeb(ctx, cfg)
 	if err != nil {
 		return nil, err
-	}
-
-	var lc net.ListenConfig
-
-	listener, err := lc.Listen(ctx, "tcp", cfg.Web.Listen)
-	if err != nil {
-		return nil, fmt.Errorf("web interface: %w", err)
-	}
-
-	listening := []any{"addr", listener.Addr().String(), "origin", cfg.Web.Origin}
-
-	if certFile != "" {
-		if listener, listening, err = withTLS(listener, listening, certFile, keyFile); err != nil {
-			return nil, err
-		}
 	}
 
 	serveCtx, cancel := context.WithCancel(ctx)
@@ -265,6 +255,30 @@ func (a *app) startWeb(
 		cancel()
 		<-done
 	}, nil
+}
+
+// listenWeb binds the web interface's address, wrapped in TLS when configured,
+// and says what to log about it.
+func listenWeb(ctx context.Context, cfg *config.Config) (net.Listener, []any, error) {
+	certFile, keyFile, err := tlsFiles(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var lc net.ListenConfig
+
+	listener, err := lc.Listen(ctx, "tcp", cfg.Web.Listen)
+	if err != nil {
+		return nil, nil, fmt.Errorf("web interface: %w", err)
+	}
+
+	listening := []any{"addr", listener.Addr().String(), "origin", cfg.Web.Origin}
+
+	if certFile == "" {
+		return listener, listening, nil
+	}
+
+	return withTLS(listener, listening, certFile, keyFile)
 }
 
 // tlsFiles is the certificate and key the web interface serves HTTPS with, or
@@ -372,4 +386,18 @@ func writeCert(cmd *cobra.Command, certFile string, asPEM bool) error {
 		"until then its browser will refuse to create or use a passkey.\n", certFile, fingerprint)
 
 	return nil
+}
+
+// engineRunner gives the web interface a way to connect to the mailbox for
+// undo and learn, with the same connection and password handling as the
+// command-line commands.
+func (a *app) engineRunner(
+	cfg *config.Config,
+	database *store.Store,
+	logger *slog.Logger,
+) web.RunActions {
+	return func(ctx context.Context, body func(context.Context, web.Actions) error) error {
+		return a.withEngine(ctx, cfg, database, logger, passTimeout,
+			func(ctx context.Context, eng *engine.Engine) error { return body(ctx, eng) })
+	}
 }

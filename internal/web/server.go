@@ -3,8 +3,10 @@ package web
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"log/slog"
 	"net"
@@ -18,6 +20,8 @@ import (
 	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/store"
 )
+
+var errNoAssets = errors.New("this build has no web interface files")
 
 const (
 	sessionCookie  = "tamis_session"
@@ -40,6 +44,8 @@ type Server struct {
 	secure     bool
 	pages      map[string]*template.Template
 	cfg        *config.Config
+	files      fs.FS
+	version    string
 	run        RunActions
 	status     *live.Status
 	logs       *live.Ring
@@ -58,6 +64,8 @@ type Options struct {
 	Status *live.Status
 	// Logs holds its recent log lines.
 	Logs *live.Ring
+	// Version is shown at the foot of every page; empty shows nothing.
+	Version string
 }
 
 // New builds the web interface for an enabled configuration.
@@ -67,6 +75,46 @@ func New(
 	logger *slog.Logger,
 	opts Options,
 ) (*Server, error) {
+	return newServer(cfg, database, logger, opts, assets)
+}
+
+// HasAssets reports whether this binary has the web interface's front-end
+// files. They are not committed: the build supplies them (mise run
+// vendor-web), and a build without them still works, just without the web
+// interface.
+func HasAssets() bool {
+	return len(missingAssets(assets)) == 0
+}
+
+// requiredAssets are the generated files the pages load.
+func requiredAssets() []string {
+	return []string{"static/vendor/theme.css", "static/vendor/htmx.min.js"}
+}
+
+func missingAssets(fsys fs.FS) []string {
+	var missing []string
+
+	for _, name := range requiredAssets() {
+		if _, err := fs.Stat(fsys, name); err != nil {
+			missing = append(missing, name)
+		}
+	}
+
+	return missing
+}
+
+func newServer(
+	cfg *config.Config,
+	database *store.Store,
+	logger *slog.Logger,
+	opts Options,
+	fsys fs.FS,
+) (*Server, error) {
+	if missing := missingAssets(fsys); len(missing) > 0 {
+		return nil, fmt.Errorf("%w (%s): run mise run vendor-web, then rebuild",
+			errNoAssets, strings.Join(missing, ", "))
+	}
+
 	origin := strings.TrimSuffix(cfg.Web.Origin, "/")
 
 	relyingParty, err := webauthn.New(&webauthn.Config{
@@ -78,23 +126,25 @@ func New(
 		return nil, fmt.Errorf("set up passkeys: %w", err)
 	}
 
-	pages, err := parsePages()
+	pages, err := parsePages(fsys)
 	if err != nil {
 		return nil, err
 	}
 
 	srv := &Server{
-		db:     database,
-		log:    logger,
-		wa:     relyingParty,
-		origin: origin,
-		secure: strings.HasPrefix(origin, "https://"),
-		pages:  pages,
-		cfg:    cfg,
-		run:    opts.Run,
-		status: opts.Status,
-		logs:   opts.Logs,
-		mux:    http.NewServeMux(),
+		db:      database,
+		log:     logger,
+		wa:      relyingParty,
+		origin:  origin,
+		secure:  strings.HasPrefix(origin, "https://"),
+		pages:   pages,
+		cfg:     cfg,
+		files:   fsys,
+		version: opts.Version,
+		run:     opts.Run,
+		status:  opts.Status,
+		logs:    opts.Logs,
+		mux:     http.NewServeMux(),
 	}
 	srv.routes()
 
@@ -121,11 +171,11 @@ func (s *Server) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 
 // parsePages gives every page its own template set: the layout plus the
 // page's own "content" block.
-func parsePages() (map[string]*template.Template, error) {
+func parsePages(fsys fs.FS) (map[string]*template.Template, error) {
 	pages := map[string]*template.Template{}
 
 	for _, name := range []string{"login", "enroll", pageDecisions, pageHealth, pageWhitelist, pageLogs} {
-		page, err := template.ParseFS(assets, "templates/layout.html", "templates/"+name+".html")
+		page, err := template.ParseFS(fsys, "templates/layout.html", "templates/"+name+".html")
 		if err != nil {
 			return nil, fmt.Errorf("parse %s page: %w", name, err)
 		}
@@ -170,7 +220,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 }
 
 func (s *Server) routes() {
-	s.mux.Handle("GET /static/", http.FileServerFS(assets))
+	s.mux.Handle("GET /static/", http.FileServerFS(s.files))
 	s.mux.HandleFunc("GET /auth/login", s.bare("login", "sign in"))
 	s.mux.HandleFunc("GET /auth/enroll", s.bare("enroll", "enroll a passkey"))
 	s.mux.HandleFunc("POST /auth/register/begin", s.registerBegin)

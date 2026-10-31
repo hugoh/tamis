@@ -64,7 +64,7 @@ func Run(ctx context.Context, args []string, env Env, version string) int {
 }
 
 func newRoot(env Env, version string) (*cobra.Command, *app) {
-	app := &app{env: env, finder: passwordFinder{env: env}}
+	app := &app{env: env, finder: passwordFinder{env: env}, version: version}
 
 	root := &cobra.Command{
 		Use:           "tamis",

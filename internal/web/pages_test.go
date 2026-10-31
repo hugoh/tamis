@@ -20,6 +20,7 @@ import (
 )
 
 const (
+	healthPath    = "/health"
 	escapedScript = "&lt;script&gt;"
 	none          = "none"
 	whitelistPath = "/whitelist"
@@ -73,7 +74,7 @@ func TestPagesNeedLogin(t *testing.T) {
 
 	browser := newHarness(t)
 
-	for _, path := range []string{"/", "/health", whitelistPath} {
+	for _, path := range []string{"/", healthPath, whitelistPath} {
 		rec := browser.do(http.MethodGet, path, nil)
 		require.Equal(t, http.StatusSeeOther, rec.Code, path)
 	}
@@ -338,7 +339,7 @@ func TestDecisionsSearchLargeJournal(t *testing.T) {
 func TestHealthPage(t *testing.T) {
 	t.Parallel()
 
-	rec := signedIn(t).do(http.MethodGet, "/health", nil)
+	rec := signedIn(t).do(http.MethodGet, healthPath, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "class balance")
 	require.Contains(t, rec.Body.String(), "last decision")
@@ -377,7 +378,7 @@ func TestDatabaseFailureIsA500(t *testing.T) {
 
 	tests := map[string]struct{ method, path string }{
 		"decisions":        {http.MethodGet, "/"},
-		"health":           {http.MethodGet, "/health"},
+		"health":           {http.MethodGet, healthPath},
 		"whitelist":        {http.MethodGet, whitelistPath},
 		"whitelist add":    {http.MethodPost, whitelistPath},
 		"whitelist remove": {http.MethodPost, removePath},
@@ -454,7 +455,7 @@ func TestHealthShowsTheDaemon(t *testing.T) {
 
 	browser := signedIn(t)
 
-	body := browser.do(http.MethodGet, "/health", nil).Body.String()
+	body := browser.do(http.MethodGet, healthPath, nil).Body.String()
 	require.Contains(t, body, "Daemon")
 	require.Contains(t, body, "no pass yet")
 
@@ -463,7 +464,7 @@ func TestHealthShowsTheDaemon(t *testing.T) {
 	browser.status.Failed(time.Now(), errGone)
 	browser.status.Wait(live.Idle)
 
-	body = browser.do(http.MethodGet, "/health", nil).Body.String()
+	body = browser.do(http.MethodGet, healthPath, nil).Body.String()
 	require.Contains(t, body, "scanned 3, spam 1")
 	require.Contains(t, body, "idle")
 	require.Contains(t, body, "message not found where tamis left it")
@@ -482,7 +483,7 @@ func TestHealthWithoutADaemon(t *testing.T) {
 	other.cookies = map[string]*http.Cookie{}
 	other.enroll(other.token())
 
-	body := other.do(http.MethodGet, "/health", nil).Body.String()
+	body := other.do(http.MethodGet, healthPath, nil).Body.String()
 	require.NotContains(t, body, "Daemon")
 	require.Contains(t, body, "class balance")
 }

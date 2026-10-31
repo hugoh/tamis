@@ -41,6 +41,7 @@ const (
 // app holds what the account-based commands share.
 type app struct {
 	env        Env
+	version    string
 	configPath string
 	finder     passwordFinder
 	ran        bool

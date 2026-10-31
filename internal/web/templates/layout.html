@@ -23,6 +23,7 @@
 <main class="mx-auto max-w-screen-2xl p-4">
 {{template "content" .}}
 </main>
+{{if .Version}}<footer class="p-4 text-center text-xs opacity-60">tamis {{.Version}}</footer>{{end}}
 <script src="/static/vendor/htmx.min.js"></script>
 {{block "scripts" .}}{{end}}
 </body>

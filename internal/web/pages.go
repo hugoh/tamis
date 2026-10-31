@@ -22,9 +22,10 @@ const (
 
 // view is what every page template receives.
 type view struct {
-	Title string
-	Nav   string
-	Body  any
+	Title   string
+	Nav     string
+	Body    any
+	Version string
 }
 
 type decisionRow struct {
@@ -80,6 +81,8 @@ func verdicts() []string {
 
 func (s *Server) render(resp http.ResponseWriter, name string, data view) {
 	resp.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	data.Version = s.version
 
 	if err := s.pages[name].ExecuteTemplate(resp, "layout", data); err != nil {
 		s.log.Error("render page", "page", name, "err", err)

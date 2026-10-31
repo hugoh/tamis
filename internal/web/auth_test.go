@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"bytes"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 )
 
 const (
+	testVersion  = "1.2.3+noweb"
 	origin       = "http://localhost:8484"
 	registerPath = "/auth/register"
 	loginPath    = "/auth/login"
@@ -52,7 +54,7 @@ func newHarness(t *testing.T) *harness {
 		testConfig(),
 		db,
 		slog.New(slog.DiscardHandler),
-		web.Options{Run: actions.run, Status: status, Logs: logs},
+		web.Options{Run: actions.run, Status: status, Logs: logs, Version: testVersion},
 	)
 	require.NoError(t, err)
 
@@ -505,4 +507,34 @@ func TestRegistrationFailsCleanlyWhenTheDatabaseDies(t *testing.T) {
 		begin := browser.do(http.MethodPost, registerPath+"/begin", nil)
 		require.Equal(t, http.StatusInternalServerError, begin.Code)
 	})
+}
+
+func TestPagesShowTheVersion(t *testing.T) {
+	t.Parallel()
+
+	browser := signedIn(t)
+
+	for _, path := range []string{loginPath, "/", healthPath, whitelistPath, "/logs"} {
+		body := html.UnescapeString(browser.do(http.MethodGet, path, nil).Body.String())
+		require.Contains(t, body, "tamis 1.2.3+noweb", path)
+	}
+
+	fragment := browser.do(http.MethodGet, "/", nil, htmxHeader, "true").Body.String()
+	require.NotContains(t, fragment, "1.2.3", "a swapped fragment is not a page")
+}
+
+func TestNoVersionIsShownWhenThereIsNone(t *testing.T) {
+	t.Parallel()
+
+	srv, err := web.New(
+		testConfig(),
+		newHarness(t).db,
+		slog.New(slog.DiscardHandler),
+		web.Options{},
+	)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, loginPath, nil))
+	require.NotContains(t, rec.Body.String(), "<footer")
 }

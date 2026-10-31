@@ -10,13 +10,23 @@ import (
 
 	"github.com/hugoh/tamis/internal/cli"
 	"github.com/hugoh/tamis/internal/secret"
+	"github.com/hugoh/tamis/internal/web"
 )
 
 // version is overridden at build time via -ldflags.
 var version = "dev"
 
+// noWebMarker is added to the version of a binary built without the web
+// interface's front-end files.
+const noWebMarker = "+noweb"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	shown := version
+	if !web.HasAssets() {
+		shown += noWebMarker
+	}
 
 	code := cli.Run(ctx, os.Args[1:], cli.Env{
 		Stdin:   os.Stdin,
@@ -25,7 +35,7 @@ func main() {
 		Getenv:  os.Getenv,
 		Prompt:  cli.TerminalPrompt(os.Stdin, os.Stderr),
 		Keyring: secret.System{},
-	}, version)
+	}, shown)
 
 	stop()
 	os.Exit(code)

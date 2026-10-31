@@ -359,6 +359,12 @@ Environment=XDG_STATE_HOME=/var/lib
 systemd decrypts it into a private, in-memory directory only the service can
 read, and passes its location in `$CREDENTIALS_DIRECTORY`.
 
+Under systemd, tamis logs to stderr and the journal keeps it:
+`journalctl -u tamis`. When systemd says its output goes to the journal
+(`$JOURNAL_STREAM`), each line carries its priority and no timestamp of its
+own, so `journalctl -u tamis -p warning` shows just the warnings and errors,
+such as a rule naming a folder that doesn't exist.
+
 ## Probe a server
 
 `tamis probe` checks which IMAP features a server actually supports, so the

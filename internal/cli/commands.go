@@ -50,11 +50,17 @@ type app struct {
 	color      string
 }
 
-// logger logs to stderr, including debug lines under --verbose.
+// logger logs to stderr, including debug lines under --verbose. Under systemd
+// (which sets $JOURNAL_STREAM for a service whose output goes to the journal)
+// each line carries its priority, for `journalctl -p`.
 func (a *app) logger(cmd *cobra.Command) *slog.Logger {
 	level := slog.LevelInfo
 	if a.verbose {
 		level = slog.LevelDebug
+	}
+
+	if a.env.Getenv("JOURNAL_STREAM") != "" {
+		return slog.New(newJournalHandler(cmd.ErrOrStderr(), level))
 	}
 
 	return slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level}))

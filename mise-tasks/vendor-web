@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Copy htmx and build the daisyUI/Tailwind stylesheet into internal/web/static/vendor (--check: only verify)"
-#USAGE flag "--check" help="fail if the files in place differ from what the pinned versions and templates produce"
+#MISE description="Copy htmx and build the daisyUI/Tailwind stylesheet into internal/web/static/vendor"
 set -euo pipefail
 
 web=internal/web
@@ -32,18 +31,10 @@ for file in "$new/htmx.min.js" "$new/theme.css"; do
   [ "$(tail -c1 "$file")" = "" ] || echo >>"$file"
 done
 
-status=0
 for file in htmx.min.js htmx.LICENSE theme.css; do
-  if cmp -s "$new/$file" "$dest/$file"; then
-    continue
-  fi
-  if [ "${usage_check:-false}" = true ]; then
-    echo "vendored $file is stale: run mise run vendor-web" >&2
-    status=1
-  else
-    # Only touch what changed, so an unchanged file does not trigger a rebuild.
+  # Only touch what changed, so an unchanged file does not trigger a rebuild.
+  if ! cmp -s "$new/$file" "$dest/$file"; then
     mkdir -p "$dest"
     cp "$new/$file" "$dest/$file"
   fi
 done
-exit "$status"

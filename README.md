@@ -332,13 +332,20 @@ mise run ci
 ```
 
 The web interface embeds htmx and a stylesheet from `internal/web/static/vendor`.
-The stylesheet is built by the Tailwind CLI with the daisyUI plugin, from only
-the classes in `internal/web/templates`, so it stays small. The tool versions
-are pinned in `.config/mise/conf.d/web.toml`, where Renovate updates them. The
-results are committed, so building tamis needs none of this. After a version bump
-or a change to a template's classes, run `mise run vendor-web`;
-`mise run vendor-web --check` fails if the committed files are stale, and a test
-fails if a template uses a class the stylesheet lacks.
+They are not committed: the stylesheet is built by the Tailwind CLI with the
+daisyUI plugin, from only the classes in `internal/web/templates`, so it stays
+small. The tool versions are pinned in `.config/mise/conf.d/web.toml`, where
+Renovate updates them, so an update is just a change to that file.
+
+`mise run vendor-web` produces the files, and the `prebuild` task from the
+template runs it before every `mise run build`, `test`, `lint-go` and so on, so
+`mise run ci` needs nothing extra. A test fails if a template uses a class the
+stylesheet lacks.
+
+A plain `go build` or `go install` does not run it. Such a binary still works,
+but `tamis version` shows a `+noweb` suffix and the web interface refuses to
+start, saying to run `mise run vendor-web` and rebuild. A full build shows the
+plain version, which is also at the foot of every page.
 
 ## License
 

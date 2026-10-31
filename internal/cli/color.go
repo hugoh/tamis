@@ -101,13 +101,14 @@ func (c cell) render(colors palette) string {
 const tableGap = 2
 
 // writeTable prints rows as aligned columns. Columns are padded by the width
-// of their visible text, so colour doesn't shift them; the last column isn't
-// padded.
+// of their visible text, so colour doesn't shift them; the last cell of a row
+// isn't padded, so it doesn't count towards the width either (rows may differ
+// in length, as a heading above a table does).
 func writeTable(out io.Writer, colors palette, rows [][]cell) error {
 	var widths []int
 
 	for _, row := range rows {
-		for i, c := range row {
+		for i, c := range row[:max(len(row)-1, 0)] {
 			if i == len(widths) {
 				widths = append(widths, 0)
 			}

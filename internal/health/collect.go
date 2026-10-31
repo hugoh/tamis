@@ -2,11 +2,13 @@ package health
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
+	"github.com/hugoh/tamis/internal/rules"
 	"github.com/hugoh/tamis/internal/store"
 )
 
@@ -38,6 +40,8 @@ func Collect(ctx context.Context, database *store.Store, cfg *config.Config) (*R
 		Retention: cfg.Policy.JournalRetention.Duration,
 		Auth:      pin,
 		Web:       web,
+		Config:    configInfo(cfg),
+		Rules:     rulesInfo(cfg.Rules),
 		Now:       time.Now(),
 	}), nil
 }
@@ -66,4 +70,27 @@ func collectWeb(ctx context.Context, database *store.Store, cfg config.Web) (Web
 	}
 
 	return web, nil
+}
+
+func configInfo(cfg *config.Config) ConfigInfo {
+	return ConfigInfo{
+		Path:    cfg.Path,
+		Account: fmt.Sprintf("%s on %s", cfg.Account.User, cfg.Account.Host),
+		Mode:    string(cfg.Policy.Mode),
+	}
+}
+
+// rulesInfo compiles the script again, so a file edited or removed since the
+// configuration loaded shows up.
+func rulesInfo(cfg config.Rules) RulesInfo {
+	if cfg.Script == "" {
+		return RulesInfo{}
+	}
+
+	loaded, err := rules.Load(cfg.Script)
+	if err != nil {
+		return RulesInfo{Script: cfg.Script, Err: err}
+	}
+
+	return RulesInfo{Script: cfg.Script, Targets: loaded.Targets()}
 }

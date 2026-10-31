@@ -40,6 +40,8 @@ var ErrNoPasswordCommand = errors.New("account.password_command is not set")
 
 // Config is the whole configuration file.
 type Config struct {
+	// Path is the file this was loaded from.
+	Path string `toml:"-"`
 	// State is the SQLite database path; "~/" expands to the home directory.
 	State   string  `toml:"state"`
 	Account Account `toml:"account"`
@@ -330,6 +332,7 @@ func Load(getenv func(string) string, path string) (*Config, error) {
 	}
 
 	cfg := defaults()
+	cfg.Path = path
 
 	if err := toml.NewDecoder(file).DisallowUnknownFields().Decode(&cfg); err != nil {
 		return nil, decodeError(path, err)
@@ -538,6 +541,13 @@ func (c *Config) expandPaths() error {
 	return c.loadRules()
 }
 
+// RulesError is a filing script that doesn't compile.
+type RulesError struct{ Err error }
+
+func (e *RulesError) Error() string { return "rules.script: " + e.Err.Error() }
+
+func (e *RulesError) Unwrap() error { return e.Err }
+
 // loadRules expands the script path and compiles the script, so a mistake
 // stops tamis at startup and not on the first message that reaches it.
 func (c *Config) loadRules() error {
@@ -552,7 +562,7 @@ func (c *Config) loadRules() error {
 	}
 
 	if _, err := rules.Load(c.Rules.Script); err != nil {
-		return fmt.Errorf("%w: rules.script: %w", errInvalid, err)
+		return fmt.Errorf("%w: %w", errInvalid, &RulesError{err})
 	}
 
 	return nil

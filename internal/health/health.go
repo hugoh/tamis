@@ -40,7 +40,32 @@ const (
 	NameAuthID      = "provider auth id"
 	NameWeb         = "web interface"
 	NamePasskeys    = "web passkeys"
+	NameConfig      = "config file"
+	NameRules       = "filing rules"
 )
+
+// Sections group the checks in a report, in this order.
+const (
+	SectionConfig    = "Configuration"
+	SectionRules     = "Rules"
+	SectionTraining  = "Training"
+	SectionDecisions = "Decisions"
+	SectionWeb       = "Web interface"
+)
+
+var sections = map[string]string{ //nolint:gochecknoglobals // constant lookup
+	NameConfig:      SectionConfig,
+	NameAuthID:      SectionConfig,
+	NameRules:       SectionRules,
+	NameBalance:     SectionTraining,
+	NameUncertain:   SectionDecisions,
+	NameCorrections: SectionDecisions,
+	NameLast:        SectionDecisions,
+	NameJournal:     SectionDecisions,
+	NameRecent:      SectionDecisions,
+	NameWeb:         SectionWeb,
+	NamePasskeys:    SectionWeb,
+}
 
 const (
 	percent        = 100
@@ -54,9 +79,14 @@ const (
 
 // Check is the result of one health check.
 type Check struct {
-	Name   string `json:"name"`
-	Status Status `json:"status"`
-	Detail string `json:"detail,omitempty"`
+	Section string `json:"section"`
+	Name    string `json:"name"`
+	Status  Status `json:"status"`
+	Detail  string `json:"detail,omitempty"`
+}
+
+func newCheck(name string, status Status, detail string) Check {
+	return Check{Section: sections[name], Name: name, Status: status, Detail: detail}
 }
 
 // Report collects the checks.
@@ -72,7 +102,22 @@ type Input struct {
 	Retention time.Duration
 	Auth      engine.AuthPin
 	Web       Web
+	Config    ConfigInfo
+	Rules     RulesInfo
 	Now       time.Time
+}
+
+// ConfigInfo describes the configuration that loaded.
+type ConfigInfo struct {
+	Path, Account, Mode string
+}
+
+// RulesInfo is what compiling the filing rules found. Script is empty when
+// none are configured.
+type RulesInfo struct {
+	Script  string
+	Targets []string
+	Err     error
 }
 
 // Web is what the checks know about the web interface.
@@ -99,13 +144,15 @@ func Run(input Input) *Report {
 	judged := judgements(input.Recent)
 
 	checks := []Check{
+		configFile(input.Config),
+		authID(input.Auth),
+		filingRules(input.Rules),
 		balance(input.Stats),
 		uncertainRate(judged),
 		correctionRate(judged),
 		lastDecision(input.Recent, input.Now),
 		journal(input.Stats, input.Retention),
 		recentVerdicts(input.Recent, judged),
-		authID(input.Auth),
 		webInterface(input.Web),
 	}
 
@@ -116,29 +163,65 @@ func Run(input Input) *Report {
 	return &Report{Checks: checks}
 }
 
+// ConfigFailed is the report for a configuration that doesn't load. When the
+// problem is in the filing rules, it is shown under Rules.
+func ConfigFailed(err error, inRules bool) *Report {
+	name := NameConfig
+	if inRules {
+		name = NameRules
+	}
+
+	return &Report{Checks: []Check{newCheck(name, StatusFail, err.Error())}}
+}
+
+func configFile(info ConfigInfo) Check {
+	return newCheck(NameConfig, StatusOK,
+		fmt.Sprintf("%s: %s, %s mode", info.Path, info.Account, info.Mode))
+}
+
+func filingRules(rules RulesInfo) Check {
+	switch {
+	case rules.Script == "":
+		return newCheck(NameRules, StatusSkip, "not configured")
+	case rules.Err != nil:
+		return newCheck(NameRules, StatusFail, fmt.Sprintf("%s: %v", rules.Script, rules.Err))
+	case len(rules.Targets) == 0:
+		return newCheck(NameRules, StatusWarn,
+			rules.Script+": no fileinto commands, so nothing is filed")
+	}
+
+	noun := "folders"
+	if len(rules.Targets) == 1 {
+		noun = "folder"
+	}
+
+	return newCheck(NameRules, StatusOK, fmt.Sprintf("%s: files into %d %s: %s",
+		rules.Script, len(rules.Targets), noun, strings.Join(rules.Targets, ", ")))
+}
+
 func webInterface(web Web) Check {
 	switch {
 	case !web.Enabled:
-		return Check{NameWeb, StatusSkip, "not enabled"}
+		return newCheck(NameWeb, StatusSkip, "not enabled")
 	case !web.Reachable:
-		return Check{NameWeb, StatusWarn, fmt.Sprintf(
+		return newCheck(NameWeb, StatusWarn, fmt.Sprintf(
 			"nothing is listening on %s; is 'tamis run' going?", web.Listen,
-		)}
+		))
 	default:
-		return Check{
+		return newCheck(
 			NameWeb,
 			StatusOK,
 			fmt.Sprintf("listening on %s, at %s", web.Listen, web.Origin),
-		}
+		)
 	}
 }
 
 func passkeys(count int) Check {
 	if count == 0 {
-		return Check{NamePasskeys, StatusWarn, "none enrolled; run 'tamis web enroll'"}
+		return newCheck(NamePasskeys, StatusWarn, "none enrolled; run 'tamis web enroll'")
 	}
 
-	return Check{NamePasskeys, StatusOK, fmt.Sprintf("%d enrolled", count)}
+	return newCheck(NamePasskeys, StatusOK, fmt.Sprintf("%d enrolled", count))
 }
 
 func balance(stats store.Stats) Check {
@@ -147,13 +230,13 @@ func balance(stats store.Stats) Check {
 
 	switch {
 	case fewest == 0:
-		return Check{NameBalance, StatusFail, detail + ": it needs examples of both"}
+		return newCheck(NameBalance, StatusFail, detail+": it needs examples of both")
 	case fewest < minPerClass:
-		return Check{NameBalance, StatusWarn, detail + ": fewer than 50 of one kind"}
+		return newCheck(NameBalance, StatusWarn, detail+": fewer than 50 of one kind")
 	case most > maxImbalance*fewest:
-		return Check{NameBalance, StatusWarn, detail + ": more than 10 to 1"}
+		return newCheck(NameBalance, StatusWarn, detail+": more than 10 to 1")
 	default:
-		return Check{NameBalance, StatusOK, detail}
+		return newCheck(NameBalance, StatusOK, detail)
 	}
 }
 
@@ -206,7 +289,11 @@ func correctedCount(decisions []store.Decision) int {
 }
 
 func tooFew(name string, judged int) Check {
-	return Check{name, StatusSkip, fmt.Sprintf("%d judged decisions, need %d", judged, minSample)}
+	return newCheck(
+		name,
+		StatusSkip,
+		fmt.Sprintf("%d judged decisions, need %d", judged, minSample),
+	)
 }
 
 func rate(name string, count, total int, limit float64, what string) Check {
@@ -220,51 +307,51 @@ func rate(name string, count, total int, limit float64, what string) Check {
 	)
 
 	if share > limit {
-		return Check{name, StatusWarn, detail}
+		return newCheck(name, StatusWarn, detail)
 	}
 
-	return Check{name, StatusOK, detail}
+	return newCheck(name, StatusOK, detail)
 }
 
 func lastDecision(recent []store.Decision, now time.Time) Check {
 	const name = NameLast
 
 	if len(recent) == 0 {
-		return Check{name, StatusWarn, "none yet; has 'tamis run' ever run?"}
+		return newCheck(name, StatusWarn, "none yet; has 'tamis run' ever run?")
 	}
 
 	age := now.Sub(recent[0].At).Round(time.Minute)
 	if age > staleAfter {
-		return Check{name, StatusWarn, fmt.Sprintf("%s ago; is 'tamis run' running?", age)}
+		return newCheck(name, StatusWarn, fmt.Sprintf("%s ago; is 'tamis run' running?", age))
 	}
 
-	return Check{name, StatusOK, fmt.Sprintf("%s ago", age)}
+	return newCheck(name, StatusOK, fmt.Sprintf("%s ago", age))
 }
 
 func authID(pin engine.AuthPin) Check {
 	switch pin.Source {
 	case engine.AuthStale:
-		return Check{NameAuthID, StatusWarn, fmt.Sprintf(
+		return newCheck(NameAuthID, StatusWarn, fmt.Sprintf(
 			"learnt for %s but the account now uses %s, so it is not used; run 'tamis bootstrap'",
 			pin.LearntFor, pin.Host,
-		)}
+		))
 	case engine.AuthUnset:
-		return Check{
+		return newCheck(
 			NameAuthID, StatusSkip,
 			"not learnt; only the topmost header counts (run 'tamis bootstrap' to learn it)",
-		}
+		)
 	case engine.AuthOff:
-		return Check{NameAuthID, StatusOK, "off: only the topmost header counts"}
+		return newCheck(NameAuthID, StatusOK, "off: only the topmost header counts")
 	case engine.AuthConfigured, engine.AuthLearnt:
-		return Check{NameAuthID, StatusOK, fmt.Sprintf("%s (%s)", pin.ID, pin.Source)}
+		return newCheck(NameAuthID, StatusOK, fmt.Sprintf("%s (%s)", pin.ID, pin.Source))
 	}
 
-	return Check{NameAuthID, StatusSkip, "unknown"}
+	return newCheck(NameAuthID, StatusSkip, "unknown")
 }
 
 func journal(stats store.Stats, retention time.Duration) Check {
 	if stats.Decisions == 0 {
-		return Check{NameJournal, StatusSkip, "empty"}
+		return newCheck(NameJournal, StatusSkip, "empty")
 	}
 
 	kept := "kept forever"
@@ -272,13 +359,13 @@ func journal(stats store.Stats, retention time.Duration) Check {
 		kept = fmt.Sprintf("kept %d days", retention/(24*time.Hour)) //nolint:mnd // hours per day
 	}
 
-	return Check{NameJournal, StatusOK, fmt.Sprintf("%d decisions since %s, %s",
-		stats.Decisions, stats.OldestDecision.Format(time.DateOnly), kept)}
+	return newCheck(NameJournal, StatusOK, fmt.Sprintf("%d decisions since %s, %s",
+		stats.Decisions, stats.OldestDecision.Format(time.DateOnly), kept))
 }
 
 func recentVerdicts(recent, judged []store.Decision) Check {
 	if len(recent) == 0 {
-		return Check{NameRecent, StatusSkip, "no decisions yet"}
+		return newCheck(NameRecent, StatusSkip, "no decisions yet")
 	}
 
 	verdicts := map[string]int{}
@@ -287,27 +374,11 @@ func recentVerdicts(recent, judged []store.Decision) Check {
 		verdicts[decision.Verdict]++
 	}
 
-	return Check{NameRecent, StatusOK, fmt.Sprintf(
+	return newCheck(NameRecent, StatusOK, fmt.Sprintf(
 		"last %d: %d good, %d spam, %d uncertain; %d corrected",
 		len(recent), verdicts[engine.VerdictGood], verdicts[engine.VerdictSpam],
 		verdicts[engine.VerdictUncertain], correctedCount(judged),
-	)}
-}
-
-// WriteText renders the report for a terminal, with problems in capitals.
-func (r *Report) WriteText(w io.Writer) error {
-	return report.WriteTable( //nolint:wrapcheck // the error already says "write report"
-		w, func(table io.Writer) {
-			for _, check := range r.Checks {
-				status := string(check.Status)
-				if check.Status == StatusWarn || check.Status == StatusFail {
-					status = strings.ToUpper(status)
-				}
-
-				_, _ = fmt.Fprintf(table, "%s\t%s\t%s\n", status, check.Name, check.Detail)
-			}
-		},
-	)
+	))
 }
 
 // WriteJSON renders the report as indented JSON.

@@ -264,12 +264,6 @@ func TestCommandErrors(t *testing.T) {
 			readConfigFailed,
 		},
 		{
-			"doctor with missing config",
-			[]string{"doctor", configFlag, missingConfig},
-			passwordEnv(),
-			readConfigFailed,
-		},
-		{
 			"login with missing config",
 			[]string{loginCmd, configFlag, missingConfig},
 			passwordEnv(),

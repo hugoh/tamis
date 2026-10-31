@@ -18,7 +18,6 @@ import (
 	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
-	"github.com/hugoh/tamis/internal/health"
 	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/mail"
 	"github.com/hugoh/tamis/internal/rules"
@@ -706,50 +705,6 @@ func (a *app) statusCommand() *cobra.Command {
 			)
 		},
 	}
-}
-
-func (a *app) doctorCommand() *cobra.Command {
-	var asJSON bool
-
-	cmd := &cobra.Command{
-		Use:   "doctor",
-		Short: "Check that the filter is in good shape",
-		Long: "Check that the filter is in good shape: whether it has learnt from both kinds\n" +
-			"of mail, how it has been deciding lately, and whether it is still deciding.\n" +
-			"Exits non-zero when a check fails.",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.withStore(
-				cmd,
-				func(ctx context.Context, cfg *config.Config, database *store.Store) error {
-					report, err := health.Collect(ctx, database, cfg)
-					if err != nil {
-						return err //nolint:wrapcheck // store errors carry their context
-					}
-
-					if asJSON {
-						err = report.WriteJSON(cmd.OutOrStdout())
-					} else {
-						err = report.WriteText(cmd.OutOrStdout())
-					}
-
-					if err != nil {
-						return errors.Join(errReported, err)
-					}
-
-					if report.Failed() {
-						return errReported
-					}
-
-					return nil
-				},
-			)
-		},
-	}
-
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print the report as JSON")
-
-	return cmd
 }
 
 // authServerIDLine says which authserv-id tamis pins Authentication-Results to,

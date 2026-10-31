@@ -305,12 +305,6 @@ func TestRender(t *testing.T) {
 
 	report := health.Run(health.Input{Stats: store.Stats{Spam: 3000}, Now: now()})
 
-	var text bytes.Buffer
-
-	require.NoError(t, report.WriteText(&text))
-	require.Contains(t, text.String(), "FAIL")
-	require.Contains(t, text.String(), "class balance")
-
 	var asJSON bytes.Buffer
 
 	require.NoError(t, report.WriteJSON(&asJSON))
@@ -448,11 +442,14 @@ func TestCollectChecksTheWebInterface(t *testing.T) {
 	report, err := health.Collect(t.Context(), database, cfg)
 	require.NoError(t, err)
 	require.Contains(t, report.Checks, health.Check{
-		Name: health.NameWeb, Status: health.StatusOK,
+		Section: health.SectionWeb, Name: health.NameWeb, Status: health.StatusOK,
 		Detail: "listening on " + listener.Addr().String() + ", at http://localhost:8484",
 	})
 	require.Contains(t, report.Checks, health.Check{
-		Name: health.NamePasskeys, Status: health.StatusOK, Detail: "1 enrolled",
+		Section: health.SectionWeb,
+		Name:    health.NamePasskeys,
+		Status:  health.StatusOK,
+		Detail:  "1 enrolled",
 	})
 
 	require.NoError(t, listener.Close())

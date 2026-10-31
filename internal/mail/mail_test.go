@@ -695,3 +695,79 @@ func dialConfig(srv *imaptest.Server) mail.DialConfig {
 		TLSConfig: srv.TLSConfig,
 	}
 }
+
+// gatedHandler holds the "connection dropped" log line until gate closes, so a
+// test can stop the drop while it is mid-write.
+type gatedHandler struct {
+	started chan struct{}
+	gate    chan struct{}
+	once    *sync.Once
+}
+
+func (gatedHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h gatedHandler) Handle(_ context.Context, record slog.Record) error {
+	if strings.Contains(record.Message, "connection dropped") {
+		h.once.Do(func() { close(h.started) })
+		<-h.gate
+	}
+
+	return nil
+}
+
+func (h gatedHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h gatedHandler) WithGroup(string) slog.Handler      { return h }
+
+func TestStopWaitsForADropInFlight(t *testing.T) {
+	t.Parallel()
+
+	handler := gatedHandler{
+		started: make(chan struct{}), gate: make(chan struct{}), once: &sync.Once{},
+	}
+
+	var release sync.Once
+
+	open := func() { release.Do(func() { close(handler.gate) }) }
+	t.Cleanup(open)
+
+	srv := imaptest.Start(t, imaptest.Rev2())
+
+	client, err := mail.Dial(t.Context(), mail.DialConfig{
+		Addr: srv.Addr, Username: imaptest.Username, Password: imaptest.Password,
+		Plaintext: true, Logger: slog.New(handler),
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stop := client.CloseWhenDone(ctx)
+
+	cancel()
+	<-handler.started
+
+	stopped := make(chan bool, 1)
+
+	go func() { stopped <- stop() }()
+
+	select {
+	case <-stopped:
+		t.Fatal("stop returned while the drop was still writing its log line")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	open()
+	require.False(t, <-stopped, "the drop ran")
+	require.False(t, stop(), "asking again doesn't hang")
+}
+
+func TestStopBeforeTheContextEndsPreventsTheDrop(t *testing.T) {
+	t.Parallel()
+
+	client := connect(t, imaptest.Start(t, imaptest.Rev2()))
+
+	stop := client.CloseWhenDone(t.Context())
+	require.True(t, stop())
+	require.True(t, stop(), "asking again says the same")
+
+	_, err := client.State("INBOX")
+	require.NoError(t, err, "the connection is still up")
+}

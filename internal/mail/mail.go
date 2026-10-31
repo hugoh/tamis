@@ -12,6 +12,7 @@ import (
 	"net"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -127,13 +128,35 @@ func (c *Client) Close() error {
 
 // CloseWhenDone drops the connection when ctx ends, which unblocks a command
 // waiting on a server that stopped answering. The returned function cancels
-// it.
+// it, like context.AfterFunc's, with one difference: if the drop has already
+// started it waits for it to finish, so nothing is still logging once the
+// caller moves on. It reports whether it prevented the drop, and gives the same
+// answer when called again.
 func (c *Client) CloseWhenDone(ctx context.Context) func() bool {
-	return context.AfterFunc(ctx, func() {
+	var (
+		finished  = make(chan struct{})
+		once      sync.Once
+		prevented bool
+	)
+
+	cancel := context.AfterFunc(ctx, func() {
+		defer close(finished)
+
 		_ = c.imap.Close()
 
 		c.log.Debug("connection dropped: its context ended", "addr", c.addr)
 	})
+
+	return func() bool {
+		once.Do(func() {
+			prevented = cancel()
+			if !prevented {
+				<-finished
+			}
+		})
+
+		return prevented
+	}
 }
 
 // State is a folder's UIDVALIDITY and next UID.

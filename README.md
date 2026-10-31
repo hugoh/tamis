@@ -155,6 +155,7 @@ Everything it does has a command-line counterpart:
 | Health | `tamis doctor`, `tamis status` |
 | Whitelist | `tamis whitelist list`, `add`, `rm` |
 | Passkeys | `tamis web enroll`, `web passkeys`, `web revoke` |
+| The certificate to trust | `tamis web cert` |
 | Logs, live daemon state | the daemon's stderr (the browser view is web-only) |
 
 Turn it on in the configuration:
@@ -175,9 +176,10 @@ tamis web enroll   # prints a link that works once, for 15 minutes
 Open the link in the browser you will use. Run `tamis web enroll` again to add
 another device.
 
-Browsers only allow passkeys on `https://` pages and on `localhost`, and the
-server itself speaks plain HTTP. So either:
+Browsers only allow passkeys on `https://` pages and on `localhost`, and by
+default the server speaks plain HTTP. So either:
 
+- **Serve HTTPS from tamis itself**, with no proxy (see below).
 - **Behind a TLS reverse proxy** (Caddy, nginx, `tailscale serve`...): proxy
   your `origin` to `listen`, which can stay on loopback. The proxy must pass the
   browser's `Origin` header through. If `listen` is not a loopback address,
@@ -188,6 +190,42 @@ server itself speaks plain HTTP. So either:
 
 The origin's host name is what a passkey is tied to: after changing it, enrol
 again.
+
+### HTTPS from tamis itself
+
+```toml
+[web]
+enabled = true
+listen = "0.0.0.0:8484"
+origin = "https://minipc.example.net:8484"
+self_signed = true   # or: tls_cert = "/path/cert.pem" and tls_key = "/path/key.pem"
+```
+
+With `self_signed`, tamis makes a certificate for the origin's host the first
+time it is needed and keeps it next to the state database. It is read at start,
+and made again (so it must be trusted again) when the host changes or less than
+a month of its 800 days remain.
+
+Browsers only accept passkeys from a certificate they **trust**: clicking
+through a warning is not enough, and Chrome refuses outright. Install the
+certificate on each device:
+
+```sh
+tamis web cert         # its fingerprint, to check what you installed
+tamis web cert --pem   # the certificate itself (never the key); save it as tamis.pem
+```
+
+- **macOS (Safari, Chrome):** open `tamis.pem`, then in Keychain Access set
+  Trust → "When using this certificate" → Always Trust. Or:
+  `sudo security add-trusted-cert -d -r trustRoot -p ssl -k /Library/Keychains/System.keychain tamis.pem`
+- **Firefox** keeps its own store: import the file under Settings → Certificates
+  → Authorities, or set `security.enterprise_roots.enabled` to use the system's.
+- **iOS:** install the file as a profile, then enable it under Settings →
+  General → About → Certificate Trust Settings.
+
+A certificate from a real CA, or one made by a tool such as
+[mkcert](https://github.com/FiloSottile/mkcert), works the same way through
+`tls_cert` and `tls_key`; tamis does not reload them, so restart after renewing.
 
 `tamis doctor` reports whether the interface is listening and how many passkeys
 are enrolled. Passkeys live in the state database. Sessions and the log lines

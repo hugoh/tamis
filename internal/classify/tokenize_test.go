@@ -51,6 +51,34 @@ Content-Type: multipart/alternative; boundary=b1
 			notWant: []string{"html", "body", "href"},
 		},
 		{
+			name: "html markup edge cases",
+			raw: message(`From: shop@promo.example
+Subject: Offer
+Content-Type: text/html; charset=utf-8
+`, `<a title="a>b" href="http://x.example/">visible</a>`+
+				`<!-- a > hiddencomment --><style>p>b{x:y}</style>`+"\r\n"),
+			want:    []string{"visible", "url:x.example"},
+			notWant: []string{"href", "hiddencomment", "title"},
+		},
+		{
+			name: "url host parsing",
+			raw: message(
+				"Subject: x\nContent-Type: text/plain\n",
+				"http://user@host.example.com:8080/a#f http://example.org#frag https://a.example.co.uk/x\r\n",
+			),
+			want: []string{
+				"url:host.example.com", "url:example.com", "url:example.org",
+				"url:a.example.co.uk", "url:example.co.uk",
+			},
+			notWant: []string{
+				"url:user@host.example.com",
+				"url:example.org#frag",
+				"url:co.uk",
+				"url:com",
+				"url:uk",
+			},
+		},
+		{
 			name: "long word",
 			raw:  message("Subject: x\nContent-Type: text/plain\n", strings.Repeat("a", 40)+"\r\n"),
 			want: []string{"skip:a 40"},

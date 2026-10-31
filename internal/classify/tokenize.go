@@ -5,8 +5,9 @@ package classify
 import (
 	"bytes"
 	"fmt"
-	"html"
 	"io"
+	"net/netip"
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode"
@@ -15,6 +16,8 @@ import (
 	// Registers non-UTF-8 charsets so real-world mail decodes.
 	_ "github.com/emersion/go-message/charset"
 	"github.com/emersion/go-message/mail"
+	"golang.org/x/net/html"
+	"golang.org/x/net/publicsuffix"
 )
 
 const (
@@ -24,12 +27,7 @@ const (
 	skipBucket   = 10
 )
 
-var (
-	urlPattern    = regexp.MustCompile(`(?i)https?://[^\s"'<>()]+`)
-	hiddenPattern = regexp.MustCompile(`(?is)<(script|style)\b.*?</(script|style)>`)
-	tagPattern    = regexp.MustCompile(`(?s)<[^>]*>`)
-	hrefPattern   = regexp.MustCompile(`(?i)href\s*=\s*["']?([^"'\s>]+)`)
-)
+var urlPattern = regexp.MustCompile(`(?i)https?://[^\s"'<>()]+`)
 
 // Tokenize extracts the distinct features of a raw RFC 5322 message: words
 // from the subject and text parts, sender address and domain, recipient
@@ -133,15 +131,51 @@ func addPartTokens(tokens *tokenSet, part *message.Entity) {
 }
 
 func stripHTML(text string) string {
-	text = hiddenPattern.ReplaceAllString(text, " ")
+	var visible, links strings.Builder
 
-	var links strings.Builder
+	hidden := 0
+	tokenizer := html.NewTokenizer(strings.NewReader(text))
 
-	for _, match := range hrefPattern.FindAllStringSubmatch(text, -1) {
-		links.WriteString(" " + match[1])
+	for {
+		kind := tokenizer.Next()
+
+		switch kind {
+		case html.ErrorToken:
+			return visible.String() + links.String()
+		case html.TextToken:
+			if hidden == 0 {
+				visible.WriteString(tokenizer.Token().Data)
+			}
+		case html.StartTagToken, html.SelfClosingTagToken, html.EndTagToken:
+			name, hasAttr := tokenizer.TagName()
+			hidden += hiddenDelta(kind, string(name))
+
+			for hasAttr {
+				var key, value []byte
+
+				key, value, hasAttr = tokenizer.TagAttr()
+				if string(key) == "href" {
+					links.WriteString(" " + string(value))
+				}
+			}
+
+			visible.WriteByte(' ')
+		case html.CommentToken, html.DoctypeToken:
+		}
+	}
+}
+
+func hiddenDelta(kind html.TokenType, tag string) int {
+	switch {
+	case tag != "script" && tag != "style":
+		return 0
+	case kind == html.StartTagToken:
+		return 1
+	case kind == html.EndTagToken:
+		return -1
 	}
 
-	return html.UnescapeString(tagPattern.ReplaceAllString(text, " ")) + links.String()
+	return 0
 }
 
 type tokenSet struct {
@@ -186,16 +220,28 @@ func (s *tokenSet) addText(prefix, text string) {
 	}
 }
 
-// addURL records the link's host and each parent domain down to two labels,
-// so "a.b.example.com" also counts as "example.com".
+// addURL records the link's host and each parent domain down to the
+// registrable one, so "a.b.example.co.uk" also counts as "example.co.uk".
 func (s *tokenSet) addURL(link string) {
-	host := strings.ToLower(link[strings.Index(link, "://")+3:])
-	host, _, _ = strings.Cut(host, "/")
-	host, _, _ = strings.Cut(host, "?")
-	host, _, _ = strings.Cut(host, ":")
+	parsed, err := url.Parse(link)
+	if err != nil || parsed.Hostname() == "" {
+		return
+	}
 
-	labels := strings.Split(host, ".")
-	for i := 0; i+2 <= len(labels); i++ {
-		s.add("url:" + strings.Join(labels[i:], "."))
+	host := strings.ToLower(parsed.Hostname())
+	s.add("url:" + host)
+
+	if _, err := netip.ParseAddr(host); err == nil {
+		return
+	}
+
+	registrable, err := publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil {
+		return
+	}
+
+	for host != registrable {
+		_, host, _ = strings.Cut(host, ".")
+		s.add("url:" + host)
 	}
 }

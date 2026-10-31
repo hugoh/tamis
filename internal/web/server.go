@@ -49,6 +49,7 @@ type Server struct {
 	run        RunActions
 	status     *live.Status
 	logs       *live.Ring
+	debug      *live.DebugSwitch
 	actionMu   sync.Mutex
 	mux        *http.ServeMux
 	sessions   table[struct{}]
@@ -64,6 +65,9 @@ type Options struct {
 	Status *live.Status
 	// Logs holds its recent log lines.
 	Logs *live.Ring
+	// Debug lets the Logs page turn debug logging on for a while; without it
+	// the page has no such switch.
+	Debug *live.DebugSwitch
 	// Version is shown at the foot of every page; empty shows nothing.
 	Version string
 }
@@ -144,6 +148,7 @@ func newServer(
 		run:     opts.Run,
 		status:  opts.Status,
 		logs:    opts.Logs,
+		debug:   opts.Debug,
 		mux:     http.NewServeMux(),
 	}
 	srv.routes()
@@ -233,6 +238,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /rules", s.requireSession(http.HandlerFunc(s.rules)))
 	s.mux.Handle("POST /rules/test", s.requireSession(http.HandlerFunc(s.rulesTest)))
 	s.mux.Handle("GET /logs", s.requireSession(http.HandlerFunc(s.logLines)))
+	s.mux.Handle("POST /logs/debug", s.requireSession(http.HandlerFunc(s.setDebug)))
 	s.mux.Handle("GET /whitelist", s.requireSession(http.HandlerFunc(s.whitelist)))
 	s.mux.Handle("POST /whitelist", s.requireSession(http.HandlerFunc(s.whitelistAdd)))
 	s.mux.Handle("POST /whitelist/remove", s.requireSession(http.HandlerFunc(s.whitelistRemove)))

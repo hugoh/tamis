@@ -297,7 +297,58 @@ type logRow struct {
 	When, Level, Text string
 }
 
+// debugView is the state of the debug switch on the Logs page.
+type debugView struct {
+	// Available is false when the server has no switch.
+	Available bool
+	// Locked means debug is on for good, from --verbose.
+	Locked bool
+	On     bool
+	Until  string
+	// Span is how long turning it on lasts.
+	Span string
+}
+
+type logsBody struct {
+	Rows  []logRow
+	Debug debugView
+}
+
+func (s *Server) debugView() debugView {
+	if s.debug == nil {
+		return debugView{}
+	}
+
+	enabled, until := s.debug.State()
+	view := debugView{
+		Available: true,
+		Locked:    s.debug.Locked(),
+		On:        enabled,
+		Span:      minutes(s.debug.Span()),
+	}
+
+	if enabled {
+		view.Until = localClock(until)
+	}
+
+	return view
+}
+
+// minutes writes a duration the way a page says it: "15 minutes".
+func minutes(span time.Duration) string {
+	count := int(span.Round(time.Minute) / time.Minute)
+	if count == 1 {
+		return "1 minute"
+	}
+
+	return strconv.Itoa(count) + " minutes"
+}
+
 func (s *Server) logLines(resp http.ResponseWriter, req *http.Request) {
+	s.renderLogs(resp, req)
+}
+
+func (s *Server) renderLogs(resp http.ResponseWriter, req *http.Request) {
 	entries := s.logs.Entries()
 	rows := make([]logRow, 0, len(entries))
 
@@ -310,7 +361,7 @@ func (s *Server) logLines(resp http.ResponseWriter, req *http.Request) {
 		})
 	}
 
-	body := struct{ Rows []logRow }{rows}
+	body := logsBody{Rows: rows, Debug: s.debugView()}
 
 	if req.Header.Get("Hx-Request") == "true" {
 		if err := s.pages[pageLogs].ExecuteTemplate(resp, "entries", body); err != nil {
@@ -321,6 +372,25 @@ func (s *Server) logLines(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	s.render(resp, pageLogs, view{Title: pageLogs, Nav: pageLogs, Body: body})
+}
+
+// setDebug turns debug logging on or off, then shows the logs as they are.
+func (s *Server) setDebug(resp http.ResponseWriter, req *http.Request) {
+	if s.debug == nil {
+		http.NotFound(resp, req)
+
+		return
+	}
+
+	switch req.FormValue("state") {
+	case "on":
+		s.debug.On()
+	case "off":
+		s.debug.Off()
+	}
+
+	req.Header.Set("Hx-Request", "true")
+	s.renderLogs(resp, req)
 }
 
 func whitelistSorts() []sortChoice {

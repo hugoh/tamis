@@ -45,7 +45,7 @@ func newHarness(t *testing.T) *harness {
 	return newHarnessWith(t, testConfig())
 }
 
-func newHarnessWith(t *testing.T, cfg *config.Config) *harness {
+func newHarnessWith(t *testing.T, cfg *config.Config, tweaks ...func(*web.Options)) *harness {
 	t.Helper()
 
 	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "tamis.db"))
@@ -56,12 +56,12 @@ func newHarnessWith(t *testing.T, cfg *config.Config) *harness {
 	status := live.NewStatus(time.Now())
 	logs := live.NewRing(50)
 
-	srv, err := web.New(
-		cfg,
-		db,
-		slog.New(slog.DiscardHandler),
-		web.Options{Run: actions.run, Status: status, Logs: logs, Version: testVersion},
-	)
+	options := web.Options{Run: actions.run, Status: status, Logs: logs, Version: testVersion}
+	for _, tweak := range tweaks {
+		tweak(&options)
+	}
+
+	srv, err := web.New(cfg, db, slog.New(slog.DiscardHandler), options)
 	require.NoError(t, err)
 
 	return &harness{

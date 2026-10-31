@@ -330,6 +330,10 @@ A certificate from a real CA, or one made by a tool such as
 `tamis doctor` reports whether the interface is listening and how many passkeys
 are enrolled. Passkeys live in the state database. Sessions and the log lines
 shown in the browser live in memory, so a restart signs you out and clears them.
+The Logs page keeps the last 1000 lines.
+Its **Turn on** button switches the daemon to debug logging for 15 minutes
+(then back by itself), without a restart; the debug lines go to the journal
+too. Under `--verbose` debug is on for good and the button is replaced by a note.
 
 The interface sends a strict Content-Security-Policy, refuses state-changing
 requests whose `Origin` is not yours, and serves its own copies of

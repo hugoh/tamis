@@ -54,11 +54,20 @@ type app struct {
 // (which sets $JOURNAL_STREAM for a service whose output goes to the journal)
 // each line carries its priority, for `journalctl -p`.
 func (a *app) logger(cmd *cobra.Command) *slog.Logger {
-	level := slog.LevelInfo
+	return a.loggerAt(cmd, a.baseLevel())
+}
+
+// baseLevel is the level the daemon logs at: info, or debug under --verbose.
+func (a *app) baseLevel() slog.Level {
 	if a.verbose {
-		level = slog.LevelDebug
+		return slog.LevelDebug
 	}
 
+	return slog.LevelInfo
+}
+
+// loggerAt is logger with a level that may change while it runs.
+func (a *app) loggerAt(cmd *cobra.Command, level slog.Leveler) *slog.Logger {
 	if a.env.Getenv("JOURNAL_STREAM") != "" {
 		return slog.New(newJournalHandler(cmd.ErrOrStderr(), level))
 	}
@@ -323,10 +332,11 @@ func (a *app) watch(
 	once bool,
 ) error {
 	logs := live.NewRing(logRingSize)
-	logger := slog.New(logs.Handler(a.logger(cmd).Handler()))
+	debug := live.NewDebugSwitch(a.baseLevel(), debugSpan)
+	logger := slog.New(logs.Handler(a.loggerAt(cmd, debug.Level()).Handler()))
 	status := live.NewStatus(time.Now())
 
-	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs)
+	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs, debug)
 	if err != nil {
 		return err
 	}

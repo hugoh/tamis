@@ -32,7 +32,7 @@ func (s *prioritySink) Write(line []byte) (int, error) {
 	return s.out.Write(line) //nolint:wrapcheck // a failed write to stderr says enough
 }
 
-func newJournalHandler(out io.Writer, level slog.Level) *journalHandler {
+func newJournalHandler(out io.Writer, level slog.Leveler) *journalHandler {
 	sink := &prioritySink{out: out}
 
 	return &journalHandler{

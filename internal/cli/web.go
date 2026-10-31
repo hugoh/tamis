@@ -23,6 +23,8 @@ import (
 const (
 	enrollTTL   = 15 * time.Minute
 	logRingSize = 1000
+	// debugSpan is how long the Logs page's debug switch stays on.
+	debugSpan = 15 * time.Minute
 )
 
 var errNoTLS = errors.New(
@@ -213,6 +215,7 @@ func (a *app) startWeb(
 	logger *slog.Logger,
 	status *live.Status,
 	logs *live.Ring,
+	debug *live.DebugSwitch,
 ) (func(), error) {
 	if !cfg.Web.Enabled {
 		return func() {}, nil
@@ -226,6 +229,7 @@ func (a *app) startWeb(
 			Run:     a.engineRunner(cfg, database, logger),
 			Status:  status,
 			Logs:    logs,
+			Debug:   debug,
 			Version: a.version,
 		},
 	)

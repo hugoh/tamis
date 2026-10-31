@@ -86,7 +86,7 @@ tamis status      # mode, folders, how much it has learnt
 tamis doctor      # is the filter in good shape? (--json; exits 1 on failure)
 tamis undo 42     # reverse decision 42 from the log
 tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
-tamis whitelist list   # also: add ADDRESS..., rm ADDRESS...
+tamis whitelist list   # also: add ADDRESS..., rm ADDRESS... or rm --matching TEXT
 tamis web enroll       # one-time link to enrol a passkey for the web interface
 ```
 
@@ -153,7 +153,7 @@ Everything it does has a command-line counterpart:
 |---|---|
 | Decisions, with Undo / Spam / Good | `tamis log`, `tamis undo`, `tamis learn` |
 | Health | `tamis doctor`, `tamis status` |
-| Whitelist | `tamis whitelist list`, `add`, `rm` |
+| Whitelist | `tamis whitelist list`, `add`, `rm` (also `rm --matching TEXT`) |
 | Passkeys | `tamis web enroll`, `web passkeys`, `web revoke` |
 | The certificate to trust | `tamis web cert` |
 | Logs, live daemon state | the daemon's stderr (the browser view is web-only) |
@@ -242,6 +242,14 @@ on the server: rows load as you scroll, columns sort when you click their
 headers, and the search box and the verdict buttons filter the whole journal,
 not just what is on screen. The address bar follows, so a view can be
 bookmarked.
+
+To remove addresses from the whitelist, tick them (the header box ticks every
+row loaded so far) and choose "Remove selected…", or choose "Remove all…" to
+take out everything the current search matches, including rows not loaded yet.
+Either way a dialog lists exactly what will go, and nothing is removed until you
+confirm; if the matches changed in the meantime, tamis refuses and removes
+nothing. On the command line, `tamis whitelist rm --matching TEXT` lists the
+matches and does nothing more until you repeat it with `--yes`.
 
 ## Where tamis keeps things
 

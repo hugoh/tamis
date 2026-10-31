@@ -12,7 +12,6 @@ import (
 	"net"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -39,6 +38,8 @@ var (
 	ErrUnsafeMove = errors.New("server supports neither MOVE nor UIDPLUS; refusing an unsafe move")
 	// ErrNoIdle means the server doesn't advertise IDLE.
 	ErrNoIdle = errors.New("server does not support IDLE")
+
+	errNoMessageCount = errors.New("server sent no message count")
 )
 
 // DialConfig says how to connect.
@@ -153,6 +154,20 @@ func (c *Client) State(mailbox string) (State, error) {
 		"uidnext", status.UIDNext)
 
 	return State{UIDValidity: status.UIDValidity, UIDNext: uint32(status.UIDNext)}, nil
+}
+
+// Messages returns how many messages mailbox holds, without selecting it.
+func (c *Client) Messages(mailbox string) (uint32, error) {
+	status, err := c.imap.Status(mailbox, &imap.StatusOptions{NumMessages: true}).Wait()
+	if err != nil {
+		return 0, fmt.Errorf("status %s: %w", mailbox, err)
+	}
+
+	if status.NumMessages == nil {
+		return 0, fmt.Errorf("status %s: %w", mailbox, errNoMessageCount)
+	}
+
+	return *status.NumMessages, nil
 }
 
 // UIDsAfter lists the UIDs in mailbox greater than after, ascending.
@@ -505,24 +520,17 @@ func (c *Client) selectMailbox(mailbox string) error {
 		return nil
 	}
 
-	_, err := c.selectData(mailbox)
-
-	return err
-}
-
-func (c *Client) selectData(mailbox string) (*imap.SelectData, error) {
-	data, err := c.imap.Select(mailbox, nil).Wait()
-	if err != nil {
+	if _, err := c.imap.Select(mailbox, nil).Wait(); err != nil {
 		c.selected = ""
 
-		return nil, fmt.Errorf("select %s: %w", mailbox, err)
+		return fmt.Errorf("select %s: %w", mailbox, err)
 	}
 
 	c.selected = mailbox
 
 	c.log.Debug("select", "mailbox", mailbox)
 
-	return data, nil
+	return nil
 }
 
 func uidSet(uids []uint32) imap.UIDSet {
@@ -541,161 +549,4 @@ func bracket(messageID string) string {
 	}
 
 	return "<" + messageID + ">"
-}
-
-// WaitForNewMail returns when mailbox receives a message or a message's flags
-// change, after maxWait, or when ctx ends, whichever comes first. seen is the folder state the caller
-// last handled: if the folder already holds newer mail, or has a new
-// UIDVALIDITY, it returns at once. It IDLEs on its own connection, so it can
-// run between passes without disturbing them. It returns ErrNoIdle without
-// waiting when the server doesn't advertise IDLE.
-func WaitForNewMail(
-	ctx context.Context,
-	cfg DialConfig,
-	mailbox string,
-	seen State,
-	maxWait time.Duration,
-) error {
-	changed := make(chan string, 1)
-	notify := func(reason string) {
-		select {
-		case changed <- reason:
-		default:
-		}
-	}
-	handler := &imapclient.UnilateralDataHandler{
-		Mailbox: func(data *imapclient.UnilateralDataMailbox) {
-			if data.NumMessages != nil {
-				notify("new mail")
-			}
-		},
-		// An unsolicited FETCH during IDLE reports changed flags, such as
-		// a junk mark set in another client.
-		Fetch: func(msg *imapclient.FetchMessageData) {
-			_, _ = msg.Collect()
-
-			notify("flags changed")
-		},
-	}
-
-	client, err := dial(ctx, cfg, handler)
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = client.Close() }()
-
-	if !client.imap.Caps().Has(imap.CapIdle) {
-		return ErrNoIdle
-	}
-
-	data, err := client.selectData(mailbox)
-	if err != nil {
-		return err
-	}
-
-	if data.UIDValidity != seen.UIDValidity || uint32(data.UIDNext) > seen.UIDNext {
-		client.log.DebugContext(
-			ctx,
-			"idle ended",
-			"mailbox",
-			mailbox,
-			"reason",
-			"mail already waiting",
-		)
-
-		return nil
-	}
-
-	return client.idleUntil(ctx, mailbox, changed, maxWait)
-}
-
-// Watch is a folder and the state the caller last handled in it.
-type Watch struct {
-	Mailbox string
-	Seen    State
-}
-
-// WaitForNewMailIn is WaitForNewMail over several folders: it IDLEs on one
-// connection per folder and returns as soon as any of them has mail or ends.
-// A folder that fails drops out; the first failure is returned only when
-// every folder failed. The other waits are stopped on return.
-func WaitForNewMailIn(
-	ctx context.Context,
-	cfg DialConfig,
-	watches []Watch,
-	maxWait time.Duration,
-) error {
-	ctx, cancel := context.WithCancel(ctx)
-
-	results := make(chan error, len(watches))
-
-	var group sync.WaitGroup
-
-	for _, watch := range watches {
-		group.Go(func() {
-			results <- WaitForNewMail(ctx, cfg, watch.Mailbox, watch.Seen, maxWait)
-		})
-	}
-
-	defer func() {
-		cancel()
-		group.Wait()
-	}()
-
-	var failure error
-
-	for range watches {
-		err := <-results
-		if err == nil {
-			return nil
-		}
-
-		if failure == nil {
-			failure = err
-		}
-	}
-
-	return failure
-}
-
-// idleUntil IDLEs until a change is reported on changed, maxWait passes or
-// ctx ends.
-func (c *Client) idleUntil(
-	ctx context.Context,
-	mailbox string,
-	changed <-chan string,
-	maxWait time.Duration,
-) error {
-	idle, err := c.imap.Idle()
-	if err != nil {
-		return fmt.Errorf("idle %s: %w", mailbox, err)
-	}
-
-	c.log.DebugContext(ctx, "idle", "mailbox", mailbox, "max_wait", maxWait)
-
-	waitCtx, cancel := context.WithTimeout(ctx, maxWait)
-	defer cancel()
-
-	var reason string
-
-	select {
-	case reason = <-changed:
-	case <-waitCtx.Done():
-		reason = "timeout"
-		if ctx.Err() != nil {
-			reason = "stopped"
-		}
-	}
-
-	stopCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), idleStopTimeout)
-	defer stop()
-
-	defer c.CloseWhenDone(stopCtx)()
-
-	_ = idle.Close()
-
-	c.log.DebugContext(ctx, "idle ended", "mailbox", mailbox, "reason", reason)
-
-	return nil
 }

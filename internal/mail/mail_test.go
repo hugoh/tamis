@@ -16,7 +16,6 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/hugoh/tamis/internal/imaptest"
 	"github.com/hugoh/tamis/internal/mail"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,6 +76,46 @@ func TestState(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before.UIDValidity, after.UIDValidity)
 	require.Equal(t, uids[0]+1, after.UIDNext)
+}
+
+const inboxName = "INBOX"
+
+func TestMessages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		seeded  int
+		mailbox string
+		want    uint32
+		wantErr bool
+	}{
+		{"empty", 0, inboxName, 0, false},
+		{"two messages", 2, inboxName, 2, false},
+		{"missing mailbox", 0, "Nope", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := connect(t, imaptest.Start(t, imaptest.Rev2()))
+
+			for range tt.seeded {
+				seed(t, client, inboxName, raw("a@x", "b@y", "one"))
+			}
+
+			got, err := client.Messages(tt.mailbox)
+			if tt.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestUIDsAfter(t *testing.T) {
@@ -610,117 +649,6 @@ func TestDebugLogsExchanges(t *testing.T) {
 	require.NotContains(t, logs.String(), imaptest.Username)
 }
 
-func TestWaitForNewMail(t *testing.T) {
-	t.Parallel()
-
-	const maxWait = 2 * time.Second
-
-	tests := []struct {
-		name string
-		// prepare runs after the caller's state is noted and before the
-		// wait, and may return a function to run shortly after it starts.
-		prepare func(t *testing.T, client *mail.Client, seen *mail.State) func()
-		quick   bool
-	}{
-		{
-			name: "message arrives",
-			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) func() {
-				t.Helper()
-
-				return func() { seed(t, client, "INBOX", raw("a@x", "b@y", "pushed")) }
-			},
-			quick: true,
-		},
-		{
-			name:    "nothing arrives",
-			prepare: func(*testing.T, *mail.Client, *mail.State) func() { return nil },
-			quick:   false,
-		},
-		{
-			name: "a message is marked",
-			prepare: func(t *testing.T, client *mail.Client, seen *mail.State) func() {
-				t.Helper()
-				uids := seed(t, client, "INBOX", raw("a@x", "b@y", "marked later"))
-
-				state, err := client.State("INBOX")
-				require.NoError(t, err)
-
-				*seen = state
-
-				return func() { require.NoError(t, client.AddKeyword("INBOX", uids, "Junk")) }
-			},
-			quick: true,
-		},
-		{
-			name: "message arrived before the wait",
-			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) func() {
-				t.Helper()
-				seed(t, client, "INBOX", raw("a@x", "b@y", "early"))
-
-				return nil
-			},
-			quick: true,
-		},
-		{
-			name: "mailbox was replaced",
-			prepare: func(_ *testing.T, _ *mail.Client, seen *mail.State) func() {
-				seen.UIDValidity++
-
-				return nil
-			},
-			quick: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			srv := imaptest.Start(t, imaptest.Rev2())
-			client := connect(t, srv)
-
-			seen, err := client.State("INBOX")
-			require.NoError(t, err)
-
-			if later := tt.prepare(t, client, &seen); later != nil {
-				time.AfterFunc(200*time.Millisecond, later)
-			}
-
-			start := time.Now()
-			err = mail.WaitForNewMail(t.Context(), dialConfig(srv), "INBOX", seen, maxWait)
-			elapsed := time.Since(start)
-
-			require.NoError(t, err)
-
-			if tt.quick {
-				require.Less(t, elapsed, maxWait)
-			} else {
-				require.GreaterOrEqual(t, elapsed, maxWait)
-			}
-		})
-	}
-}
-
-func TestWaitForNewMailWithoutIdle(t *testing.T) {
-	t.Parallel()
-
-	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
-
-	go serveWithoutIdle(listener)
-
-	cfg := mail.DialConfig{
-		Addr:      listener.Addr().String(),
-		Username:  imaptest.Username,
-		Password:  imaptest.Password,
-		Plaintext: true,
-	}
-
-	err = mail.WaitForNewMail(t.Context(), cfg, "INBOX", mail.State{}, time.Second)
-	require.ErrorIs(t, err, mail.ErrNoIdle)
-}
-
 // serveWithoutIdle answers every command with OK and advertises only
 // IMAP4rev1, which is all a client needs to log in and see IDLE is missing.
 func serveWithoutIdle(listener net.Listener) {
@@ -740,30 +668,6 @@ func serveWithoutIdle(listener net.Listener) {
 	}
 }
 
-func TestWaitForNewMailStopsWithContext(t *testing.T) {
-	t.Parallel()
-
-	srv := imaptest.Start(t, imaptest.Rev2())
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-
-	defer cancel()
-
-	start := time.Now()
-	err := mail.WaitForNewMail(ctx, dialConfig(srv), "INBOX", currentState(t, srv), time.Minute)
-
-	require.NoError(t, err)
-	require.Less(t, time.Since(start), 5*time.Second)
-}
-
-func currentState(t *testing.T, srv *imaptest.Server) mail.State {
-	t.Helper()
-
-	state, err := connect(t, srv).State("INBOX")
-	require.NoError(t, err)
-
-	return state
-}
-
 func dialConfig(srv *imaptest.Server) mail.DialConfig {
 	return mail.DialConfig{
 		Addr:      srv.Addr,
@@ -771,238 +675,5 @@ func dialConfig(srv *imaptest.Server) mail.DialConfig {
 		Password:  imaptest.Password,
 		Plaintext: srv.TLSConfig == nil,
 		TLSConfig: srv.TLSConfig,
-	}
-}
-
-const (
-	idleStarted = "msg=idle "
-	idleEnded   = `msg="idle ended"`
-)
-
-func TestWaitForNewMailLogsWhatItDoes(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		maxWait time.Duration
-		// prepare returns the context to wait under, and may add mail.
-		prepare func(t *testing.T, client *mail.Client, seen *mail.State) context.Context
-		want    []string
-		notWant []string
-	}{
-		{
-			name:    "new mail arrives",
-			maxWait: 5 * time.Second,
-			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) context.Context {
-				t.Helper()
-				time.AfterFunc(200*time.Millisecond, func() {
-					_, err := client.Append("INBOX", raw("a@x", "b@y", "pushed"), nil, time.Time{})
-					assert.NoError(t, err)
-				})
-
-				return t.Context()
-			},
-			want: []string{idleStarted, "max_wait=5s", idleEnded, `reason="new mail"`},
-		},
-		{
-			name:    "nothing arrives",
-			maxWait: 300 * time.Millisecond,
-			prepare: func(t *testing.T, _ *mail.Client, _ *mail.State) context.Context {
-				t.Helper()
-
-				return t.Context()
-			},
-			want: []string{idleStarted, idleEnded, "reason=timeout"},
-		},
-		{
-			name:    "mail was already waiting",
-			maxWait: 5 * time.Second,
-			prepare: func(t *testing.T, client *mail.Client, _ *mail.State) context.Context {
-				t.Helper()
-				seed(t, client, "INBOX", raw("a@x", "b@y", "early"))
-
-				return t.Context()
-			},
-			want:    []string{idleEnded, `reason="mail already waiting"`},
-			notWant: []string{idleStarted},
-		},
-		{
-			name:    "stopped from outside",
-			maxWait: time.Minute,
-			prepare: func(t *testing.T, _ *mail.Client, _ *mail.State) context.Context {
-				t.Helper()
-
-				ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
-				t.Cleanup(cancel)
-
-				return ctx
-			},
-			want: []string{idleStarted, idleEnded, "reason=stopped"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			srv := imaptest.Start(t, imaptest.Rev2())
-			client := connect(t, srv)
-
-			seen, err := client.State("INBOX")
-			require.NoError(t, err)
-
-			ctx := tt.prepare(t, client, &seen)
-
-			var logs bytes.Buffer
-
-			cfg := dialConfig(srv)
-			cfg.Logger = slog.New(
-				slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}),
-			)
-
-			require.NoError(t, mail.WaitForNewMail(ctx, cfg, "INBOX", seen, tt.maxWait))
-
-			for _, want := range tt.want {
-				require.Contains(t, logs.String(), want)
-			}
-
-			for _, notWant := range tt.notWant {
-				require.NotContains(t, logs.String(), notWant)
-			}
-
-			require.Contains(
-				t,
-				logs.String(),
-				"msg=disconnected",
-				"closing the connection is logged",
-			)
-		})
-	}
-}
-
-func TestWaitForNewMailInAnyFolder(t *testing.T) {
-	t.Parallel()
-
-	const (
-		maxWait = 2 * time.Second
-		second  = "Work"
-	)
-
-	tests := []struct {
-		name string
-		// prepare runs before the wait and may return a function to run shortly after it starts.
-		prepare func(t *testing.T, client *mail.Client) func()
-		quick   bool
-	}{
-		{
-			name: "message arrives in the second folder",
-			prepare: func(t *testing.T, client *mail.Client) func() {
-				t.Helper()
-
-				return func() { seed(t, client, second, raw("a@x", "b@y", "pushed")) }
-			},
-			quick: true,
-		},
-		{
-			name: "message arrived in the second folder before the wait",
-			prepare: func(t *testing.T, client *mail.Client) func() {
-				t.Helper()
-				seed(t, client, second, raw("a@x", "b@y", "early"))
-
-				return nil
-			},
-			quick: true,
-		},
-		{
-			name:    "no mail arrives",
-			prepare: func(*testing.T, *mail.Client) func() { return nil },
-			quick:   false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			srv := imaptest.Start(t, imaptest.Rev2())
-			client := connect(t, srv)
-			require.NoError(t, client.Ensure(second))
-
-			watches := make([]mail.Watch, 0, 2)
-
-			for _, folder := range []string{"INBOX", second} {
-				state, err := client.State(folder)
-				require.NoError(t, err)
-
-				watches = append(watches, mail.Watch{Mailbox: folder, Seen: state})
-			}
-
-			if later := tt.prepare(t, client); later != nil {
-				time.AfterFunc(200*time.Millisecond, later)
-			}
-
-			start := time.Now()
-			err := mail.WaitForNewMailIn(t.Context(), dialConfig(srv), watches, maxWait)
-			elapsed := time.Since(start)
-
-			require.NoError(t, err)
-
-			if tt.quick {
-				require.Less(t, elapsed, maxWait)
-			} else {
-				require.GreaterOrEqual(t, elapsed, maxWait)
-			}
-		})
-	}
-}
-
-func TestWaitForNewMailInSurvivesAFailingFolder(t *testing.T) {
-	t.Parallel()
-
-	const maxWait = 2 * time.Second
-
-	tests := []struct {
-		name    string
-		folders []string
-		arrives bool
-		wantErr bool
-	}{
-		{"another folder still hears of mail", []string{"Missing", "INBOX"}, true, false},
-		{"every folder fails", []string{"Missing", "AlsoMissing"}, false, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			srv := imaptest.Start(t, imaptest.Rev2())
-			client := connect(t, srv)
-
-			state, err := client.State("INBOX")
-			require.NoError(t, err)
-
-			watches := make([]mail.Watch, 0, len(tt.folders))
-			for _, folder := range tt.folders {
-				watches = append(watches, mail.Watch{Mailbox: folder, Seen: state})
-			}
-
-			if tt.arrives {
-				time.AfterFunc(200*time.Millisecond, func() {
-					seed(t, client, "INBOX", raw("a@x", "b@y", "pushed"))
-				})
-			}
-
-			start := time.Now()
-			err = mail.WaitForNewMailIn(t.Context(), dialConfig(srv), watches, maxWait)
-
-			if tt.wantErr {
-				require.Error(t, err)
-
-				return
-			}
-
-			require.NoError(t, err)
-			require.Less(t, time.Since(start), maxWait)
-		})
 	}
 }

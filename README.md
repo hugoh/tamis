@@ -306,7 +306,7 @@ read, and passes its location in `$CREDENTIALS_DIRECTORY`.
 
 `tamis probe` checks which IMAP features a server actually supports, so the
 sync strategy can be chosen from evidence rather than advertised
-capabilities. It asks for the password (for iCloud, an app-specific one), or
+capabilities. [docs/imap.md](docs/imap.md) describes how tamis uses the server. It asks for the password (for iCloud, an app-specific one), or
 reads it from `$TAMIS_PASSWORD` or stdin.
 
 ```sh

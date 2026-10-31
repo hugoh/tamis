@@ -33,6 +33,7 @@ const (
 	passTimeout       = 10 * time.Minute
 	// newMailSettle lets a burst of arrivals land before the next pass.
 	newMailSettle    = time.Second
+	watchRetry       = time.Minute
 	bootstrapTimeout = time.Hour
 	tablePadding     = 2
 	stateDirMode     = 0o700
@@ -141,39 +142,44 @@ func (a *app) dialConfig(cfg *config.Config, password string, logger *slog.Logge
 	}
 }
 
-// waitForNextPass blocks until new mail arrives in a watched folder or
-// poll_interval passes. It reports whether IDLE is still worth trying:
-// a transient failure falls back to sleeping for this round only.
-func (a *app) waitForNextPass(
+// waitForNextPass blocks until the watcher hears of new mail or flag changes,
+// or poll_interval passes: the poll covers the folders that aren't watched
+// and a watcher that has dropped out.
+func waitForNextPass(
 	ctx context.Context,
 	cfg *config.Config,
-	database *store.Store,
-	logger *slog.Logger,
+	watcher *mail.Watcher,
 	status *live.Status,
-) bool {
-	status.Wait(live.Idle)
-
-	err := a.idle(ctx, cfg, database, logger)
-
-	switch {
-	case err == nil:
-		pause(ctx, newMailSettle)
-
-		return true
-	case errors.Is(err, mail.ErrNoIdle):
-		logger.InfoContext(ctx, "server has no IDLE; polling")
+) {
+	if watcher.Idling() > 0 {
+		status.Wait(live.Idle)
+	} else {
 		status.Wait(live.Polling)
-		pause(ctx, cfg.Policy.PollInterval.Duration)
-
-		return false
-	default:
-		logger.WarnContext(ctx, "idle failed; sleeping instead", "err", err)
-		status.Failed(time.Now(), err)
-		status.Wait(live.Polling)
-		pause(ctx, cfg.Policy.PollInterval.Duration)
-
-		return true
 	}
+
+	select {
+	case <-watcher.Changed():
+		pause(ctx, newMailSettle)
+	case <-time.After(cfg.Policy.PollInterval.Duration):
+	case <-ctx.Done():
+	}
+}
+
+// startWatcher IDLEs on the watched folders. It watches nothing when the
+// password can't be found; polling still covers them.
+func (a *app) startWatcher(
+	ctx context.Context,
+	cfg *config.Config,
+	logger *slog.Logger,
+) *mail.Watcher {
+	password, err := a.password(ctx, cfg)
+	if err != nil {
+		logger.WarnContext(ctx, "not watching for new mail; polling", "err", err)
+
+		return mail.Watch(ctx, mail.DialConfig{}, nil, watchRetry)
+	}
+
+	return mail.Watch(ctx, a.dialConfig(cfg, password, logger), cfg.Folders.Watch, watchRetry)
 }
 
 func pause(ctx context.Context, d time.Duration) {
@@ -181,46 +187,6 @@ func pause(ctx context.Context, d time.Duration) {
 	case <-ctx.Done():
 	case <-time.After(d):
 	}
-}
-
-// idle waits for mail the last pass hasn't seen in any watched folder. A pass
-// leaves a cursor for each, which tells the server's UIDNEXT whether mail
-// slipped in since.
-func (a *app) idle(
-	ctx context.Context,
-	cfg *config.Config,
-	database *store.Store,
-	logger *slog.Logger,
-) error {
-	watches := make([]mail.Watch, 0, len(cfg.Folders.Watch))
-
-	for _, folder := range cfg.Folders.Watch {
-		cursor, found, err := database.Cursor(ctx, folder)
-		if err != nil {
-			return fmt.Errorf("idle: %w", err)
-		}
-
-		if !found {
-			return fmt.Errorf("idle: no cursor for %s", folder) //nolint:err113 // not a sentinel
-		}
-
-		watches = append(watches, mail.Watch{
-			Mailbox: folder,
-			Seen:    mail.State{UIDValidity: cursor.UIDValidity, UIDNext: cursor.LastUID + 1},
-		})
-	}
-
-	password, err := a.password(ctx, cfg)
-	if err != nil {
-		return fmt.Errorf("idle: %w", err)
-	}
-
-	return mail.WaitForNewMailIn( //nolint:wrapcheck // mail errors carry their context
-		ctx,
-		a.dialConfig(cfg, password, logger),
-		watches,
-		cfg.Policy.PollInterval.Duration,
-	)
 }
 
 // password finds the account's password; see passwordFinder.
@@ -342,7 +308,6 @@ func (a *app) watch(
 	logs := live.NewRing(logRingSize)
 	logger := slog.New(logs.Handler(a.logger(cmd).Handler()))
 	status := live.NewStatus(time.Now())
-	useIdle := true
 
 	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs)
 	if err != nil {
@@ -352,6 +317,16 @@ func (a *app) watch(
 	defer stopWeb()
 
 	var pruner journalPruner
+
+	// Watching starts after the first good pass: a rejected login should be
+	// tried once, not once per folder.
+	var watcher *mail.Watcher
+
+	defer func() {
+		if watcher != nil {
+			watcher.Close()
+		}
+	}()
 
 	for {
 		if err := pruner.prune(
@@ -371,18 +346,37 @@ func (a *app) watch(
 			return nil
 		}
 
-		if err != nil {
-			logger.ErrorContext(ctx, "pass failed", "err", err)
-			status.Failed(time.Now(), err)
-		}
-
-		if useIdle && err == nil {
-			useIdle = a.waitForNextPass(ctx, cfg, database, logger, status)
-		} else {
-			status.Wait(live.Polling)
-			pause(ctx, cfg.Policy.PollInterval.Duration)
-		}
+		watcher = a.rest(ctx, cfg, logger, status, watcher, err)
 	}
+}
+
+// rest waits for the next pass, starting the watcher after the first good
+// pass. A failed pass only sleeps, so a persistent failure isn't retried at
+// the pace of mail arriving.
+func (a *app) rest(
+	ctx context.Context,
+	cfg *config.Config,
+	logger *slog.Logger,
+	status *live.Status,
+	watcher *mail.Watcher,
+	passErr error,
+) *mail.Watcher {
+	if passErr != nil {
+		logger.ErrorContext(ctx, "pass failed", "err", passErr)
+		status.Failed(time.Now(), passErr)
+		status.Wait(live.Polling)
+		pause(ctx, cfg.Policy.PollInterval.Duration)
+
+		return watcher
+	}
+
+	if watcher == nil {
+		watcher = a.startWatcher(ctx, cfg, logger)
+	}
+
+	waitForNextPass(ctx, cfg, watcher, status)
+
+	return watcher
 }
 
 func (a *app) pass(

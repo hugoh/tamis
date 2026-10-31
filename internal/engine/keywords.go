@@ -61,6 +61,10 @@ func (e *Engine) learnFolderKeywords(
 		return err
 	}
 
+	if flagsUnchanged(condstore, changedSince, current) {
+		return nil
+	}
+
 	for label, keywords := range junkMarks() {
 		uids, err := e.mail.SearchKeywords(folder, keywords, since, changedSince)
 		if err != nil {
@@ -83,6 +87,12 @@ func (e *Engine) learnFolderKeywords(
 	}
 
 	return nil
+}
+
+// flagsUnchanged reports whether CONDSTORE proves no flag changed since the
+// last search, so searching would match nothing.
+func flagsUnchanged(condstore bool, changedSince uint64, current mail.ModState) bool {
+	return condstore && changedSince > 0 && changedSince == current.HighestModSeq
 }
 
 // changedSince is the mod-sequence the folder's last search reached, or 0

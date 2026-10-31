@@ -25,6 +25,7 @@ const (
 	opFetch  = "FETCH"
 	opMove   = "MOVE"
 	opStore  = "STORE"
+	opStatus = "STATUS"
 	opSelect = "SELECT"
 	inTrain  = "train from"
 )
@@ -571,7 +572,7 @@ func TestRunOnceFailures(t *testing.T) {
 	}{
 		{
 			name: "train folder can't be listed",
-			fail: func(op, _ string) bool { return op == "LIST" },
+			fail: func(op, _ string) bool { return op == "LIST" || op == opStatus },
 			want: inTrain,
 		},
 		{
@@ -1703,4 +1704,81 @@ func TestKeywordSearchesWithoutCondstoreSaveNothing(t *testing.T) {
 	_, ok, err := e.db.ModSeq(t.Context(), inbox)
 	require.NoError(t, err)
 	require.False(t, ok)
+}
+
+// searching records the folders each UID search runs against.
+type searching struct {
+	*mail.Client
+
+	searched []string
+}
+
+func (s *searching) UIDsAfter(mailbox string, after uint32) ([]uint32, error) {
+	s.searched = append(s.searched, mailbox)
+
+	return s.Client.UIDsAfter(mailbox, after) //nolint:wrapcheck // test double
+}
+
+func TestIdlePassSearchesNothing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		arrive       func(t *testing.T, e *env)
+		wantScanned  int
+		wantSearched []string
+	}{
+		{"nothing changed", func(*testing.T, *env) {}, 0, nil},
+		{
+			"new mail in a watched folder",
+			func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, inbox, e.hammy("a@example.com"))
+			},
+			1,
+			[]string{inbox},
+		},
+		{
+			"mail in a training folder",
+			func(t *testing.T, e *env) {
+				t.Helper()
+				e.append(t, trainSpam, e.spammy("b@example.com"))
+			},
+			0,
+			[]string{trainSpam, junk},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := setup(t, config.ModeShadow)
+			e.run(t)
+
+			server := &searching{Client: e.client}
+			e.engine = engine.New(server, e.db, e.cfg, slog.New(slog.DiscardHandler))
+
+			tt.arrive(t, e)
+
+			require.Equal(t, tt.wantScanned, e.run(t).Scanned)
+			require.Equal(t, tt.wantSearched, server.searched)
+		})
+	}
+}
+
+func TestUnchangedModSeqSearchesNoKeywords(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeShadow)
+	server := e.withCondstore()
+	server.highest = 10
+
+	e.run(t)
+
+	server.searched = nil
+
+	e.run(t)
+
+	require.Empty(t, server.searched)
 }

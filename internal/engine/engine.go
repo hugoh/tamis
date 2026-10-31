@@ -63,6 +63,7 @@ type Mailbox interface {
 // MailboxReader finds and reads messages.
 type MailboxReader interface {
 	State(mailbox string) (mail.State, error)
+	Messages(mailbox string) (uint32, error)
 	UIDsAfter(mailbox string, after uint32) ([]uint32, error)
 	SeenBefore(mailbox string, before time.Time) ([]uint32, error)
 	FindMessageID(mailbox, messageID string) ([]uint32, error)
@@ -186,6 +187,24 @@ func (e *Engine) scan(ctx context.Context, folder string, handle handler) error 
 		return e.startAtCurrent(ctx, folder, state)
 	}
 
+	return e.scanNew(ctx, folder, max(state.UIDNext, 1)-1, cursor, handle)
+}
+
+// scanNew handles the messages after the cursor, if the folder's last used
+// UID says there are any. UIDs up to lastUsed that the search doesn't return
+// are gone for good; leaving the cursor behind them makes IDLE report them as
+// new forever.
+func (e *Engine) scanNew(
+	ctx context.Context,
+	folder string,
+	lastUsed uint32,
+	cursor store.Cursor,
+	handle handler,
+) error {
+	if cursor.LastUID >= lastUsed {
+		return nil
+	}
+
 	uids, err := e.mail.UIDsAfter(folder, cursor.LastUID)
 	if err != nil {
 		return fmt.Errorf("scan %s: %w", folder, err)
@@ -197,9 +216,6 @@ func (e *Engine) scan(ctx context.Context, folder string, handle handler) error 
 		}
 	}
 
-	// UIDs below UIDNEXT that the search didn't return are gone for good;
-	// leaving the cursor behind them makes IDLE report them as new forever.
-	lastUsed := max(state.UIDNext, 1) - 1
 	if cursor.LastUID >= lastUsed {
 		return nil
 	}

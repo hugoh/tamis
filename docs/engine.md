@@ -26,7 +26,7 @@ flowchart LR
 
 | Package | Role |
 |---|---|
-| `mail` | IMAP operations: folder state, UID search, peeked fetch, move, keywords |
+| `mail` | IMAP operations: folder state, UID search, peeked fetch, move, keywords, IDLE watching (see [imap.md](imap.md)) |
 | `classify` | Turns a message into tokens and scores them (SpamBayes-style chi-square) |
 | `auth` | Decides whether the provider authenticated the `From` domain |
 | `store` | Token counts, trained messages, whitelist, folder cursors and mod-sequences, decision journal |
@@ -34,17 +34,15 @@ flowchart LR
 
 ## A pass
 
-`RunOnce` is one pass over the account. The daemon repeats it when new mail
-arrives in a watched folder, or after `policy.poll_interval` if none does.
-Between passes it IDLEs on one extra connection per watched folder, and the
-first to hear of new mail or changed flags ends the wait, so a junk mark set
-in another client is learnt straight away. A folder whose IDLE fails drops out and
-the others keep waiting; the loop falls back to sleeping only when all fail. Before idling it compares each folder's
-UIDNEXT with the cursor the pass saved, so mail that arrived in between starts
-the next pass at once. It falls
-back to plain sleeping when the server doesn't advertise IDLE, the connection
-fails, or the last pass failed. Everything else (training folders, Sent, Junk,
-including marks set in Junk) is still only looked at on a pass.
+`RunOnce` is one pass over the account. The daemon repeats it when a watcher
+hears of new mail or changed flags in a watched folder, or after
+`policy.poll_interval` if none does. Each watched folder has its own long-lived
+IDLE connection, kept across passes, so a junk mark set in another client is
+learnt straight away and a quiet mailbox costs no logins. A folder whose
+connection fails is retried; one whose server can't IDLE is given up on, and the
+poll covers it. Everything else (training folders, Sent, Junk, including marks
+set in Junk) is still only looked at on a pass. [imap.md](imap.md) lists the
+commands behind each step.
 
 ```mermaid
 flowchart TD
@@ -440,8 +438,8 @@ mail could be spam that slipped through and that nobody has looked at yet.
 
 - IDLE watches only the watched folders; Sent, Junk and the training folders
   wait for the next pass.
-- One connection per pass, reopened every pass, plus one per watched folder for
-  IDLE between them. A server that limits concurrent sessions may refuse some.
+- One connection per pass, reopened every pass, plus one long-lived IDLE
+  connection per watched folder. A server that limits concurrent sessions may refuse some.
 - Corrections rely on `$TamisFiled` surviving a move back from Junk. Servers
   that drop keywords on MOVE won't report corrections; the training folders
   still work.

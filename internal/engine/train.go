@@ -30,9 +30,22 @@ func (e *Engine) trainFolders() []trainFolder {
 	}
 }
 
+// isEmpty reports whether the folder exists and holds nothing, which a
+// STATUS answers without selecting it. Any doubt, such as a missing folder, is
+// false.
+func (e *Engine) isEmpty(folder string) bool {
+	count, err := e.mail.Messages(folder)
+
+	return err == nil && count == 0
+}
+
 // train learns every message in a training folder, then moves it on. This
 // is an explicit request from the user, so it runs in shadow mode too.
 func (e *Engine) train(ctx context.Context, folder trainFolder, summary *Summary) error {
+	if e.isEmpty(folder.name) {
+		return nil
+	}
+
 	if err := e.mail.Ensure(folder.name); err != nil {
 		return fmt.Errorf("train from %s: %w", folder.name, err)
 	}

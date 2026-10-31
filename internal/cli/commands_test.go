@@ -591,3 +591,18 @@ func TestBootstrapRefresh(t *testing.T) {
 		"the message that arrived meanwhile is still judged",
 	)
 }
+
+func TestRunLoopKeepsItsIdleConnectionBetweenPasses(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, `poll_interval = "100ms"`)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 1500*time.Millisecond)
+	defer cancel()
+
+	got := a.runContext(ctx, t, "--verbose", runCmd)
+	require.Zero(t, got.code, got.stderr)
+	require.GreaterOrEqual(t, strings.Count(got.stderr, "pass complete"), 3)
+	require.Equal(t, 1, strings.Count(got.stderr, "msg=idle mailbox=INBOX"),
+		"polling passes shouldn't restart IDLE")
+}

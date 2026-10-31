@@ -1,23 +1,27 @@
 # tamis
 
-A second-opinion spam filter for remote mailboxes.
+A second-opinion spam filter and mail sorter for remote mailboxes.
 
 `tamis` connects to a mail account over IMAP (later JMAP), watches the folders
 you choose, and re-checks what your provider's own filter decided: it catches
 spam that slipped into the inbox, rescues mail from people you know out of the
-junk folder, and learns from the corrections you make in any mail client. The training model is
-inspired by SpamSieve's drone setup, but runs as a server-side daemon instead
-of on a Mac running Apple Mail.
+junk folder, and learns from the corrections you make in any mail client. It
+can also file the good mail that remains into folders with Sieve rules, for
+providers like iCloud that have no server-side filtering to speak of. The
+training model is inspired by SpamSieve's drone setup, but runs as a
+server-side daemon instead of on a Mac running Apple Mail.
 
 > A *tamis* is a drum sieve.
 
 ## Status
 
 MVP: a personal Bayes filter with a whitelist built from your Sent mail,
-training folders, corrections learnt from your own moves, and a shadow mode
-that only records what it would do. It starts in shadow mode.
+training folders, corrections learnt from your own moves, Sieve rules that file
+good mail into folders, and a shadow mode that only records what it would do.
+It starts in shadow mode.
 
 - [`docs/engine.md`](docs/engine.md): how mail is processed today.
+- [`docs/rules.md`](docs/rules.md): filing good mail into folders with Sieve.
 - [`docs/design.md`](docs/design.md): where it is heading.
 
 ## Quick start
@@ -146,11 +150,54 @@ When `tamis log` looks right for a week or two, set `mode = "live"`. If tamis
 then files something it shouldn't have, `tamis undo ID` moves it back, learns
 it as good and whitelists the sender.
 
+## Filing rules
+
+Besides catching spam, tamis can file mail it judges good into folders, with a
+[Sieve](https://www.rfc-editor.org/rfc/rfc5228) script. iCloud has no
+server-side Sieve, so tamis runs the script itself. Write it, for example, as
+`~/.config/tamis/rules.sieve`:
+
+```sieve
+require ["fileinto", "body"];
+
+if header :contains "list-id" "golang-nuts" {
+    fileinto "Lists/Go";
+    stop;
+}
+if address :is "from" "billing@shop.example" {
+    fileinto "Receipts";
+}
+```
+
+Name it in the configuration:
+
+```toml
+[rules]
+script = "~/.config/tamis/rules.sieve"
+```
+
+Check it before relying on it:
+
+```sh
+tamis rules check            # does the script compile?
+tamis rules test some.eml    # which folder would this saved message go to?
+```
+
+The first `fileinto` that matches wins; mail that matches nothing stays in the
+inbox. Rules only see mail tamis judges good, so they never file spam or mail
+it is unsure about, and they only apply to mail that arrives after tamis
+starts. The script is compiled when tamis starts, and a script with an error
+stops it: restart `tamis run` after editing. In shadow mode a rule only
+records what it would do (`tamis log` shows it); in live mode it moves the
+message and creates the folder if needed. `tamis undo` doesn't cover rule-filed
+mail: move it back by hand, and tamis won't file it again.
+[`docs/rules.md`](docs/rules.md) has the details and limits.
+
 ## Web interface
 
 `tamis run` can also serve a small web interface: the decision log with undo
-and learn buttons, health, the whitelist (view and edit) and the daemon's
-recent log lines. It signs in with passkeys only; there are no passwords.
+and learn buttons, health, the whitelist (view and edit), the filing rules
+(view, validate and try a message) and the daemon's recent log lines. It signs in with passkeys only; there are no passwords.
 Everything it does has a command-line counterpart:
 
 | In the browser | On the command line |
@@ -158,6 +205,7 @@ Everything it does has a command-line counterpart:
 | Decisions, with Undo / Spam / Good | `tamis log`, `tamis undo`, `tamis learn` |
 | Health | `tamis doctor`, `tamis status` |
 | Whitelist | `tamis whitelist list`, `add`, `rm` (also `rm --matching TEXT`) |
+| Rules | `tamis rules show`, `check`, `test` |
 | Passkeys | `tamis web enroll`, `web passkeys`, `web revoke` |
 | The certificate to trust | `tamis web cert` |
 | Logs, live daemon state | the daemon's stderr (the browser view is web-only) |

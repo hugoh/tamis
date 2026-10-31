@@ -1,6 +1,8 @@
 # Engine
 
-How tamis processes mail. This describes what the code in
+How tamis processes mail: it judges each new message (spam, good or
+uncertain), moves spam to Junk, rescues good mail from Junk, and can file good
+mail into folders with [Sieve rules](rules.md). This describes what the code in
 [`internal/engine`](../internal/engine) does today; [`design.md`](design.md)
 covers where it is heading.
 

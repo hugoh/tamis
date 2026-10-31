@@ -13,10 +13,17 @@ second opinion:
 - score each message with a personal classifier;
 - flag or move messages, in both directions: catch spam the provider missed,
   rescue good mail the provider junked;
+- file the good mail that remains into folders, with user-written Sieve rules
+  ([rules.md](rules.md));
 - learn from the user's corrections, made in any mail client.
 
+Spam filtering stays the core. Filing is a second job that runs only after a
+message has been judged good, so a rule can never hide mail the filter was
+unsure about.
+
 Non-goals for now: hosting it for other people, sending mail, replacing the
-provider's delivery-time checks (DNS blocklists, SPF/DKIM/DMARC).
+provider's delivery-time checks (DNS blocklists, SPF/DKIM/DMARC), and being a
+general mail-rules engine: of Sieve, tamis acts only on `fileinto`.
 
 ## Prior art
 
@@ -181,5 +188,6 @@ web UI / API, TOML config
 |---|---|
 | 0 | iCloud capability probe: which extensions actually work (`tamis probe`) |
 | MVP (done, see [engine.md](engine.md)) | IMAP, Train folders, token Bayes, whitelist from Sent, shadow mode, SQLite, CLI |
+| Filing (done, see [rules.md](rules.md)) | Sieve rules file good mail into folders; `tamis rules`; web Rules page |
 | Next | Opt-in Jev signal, inferred corrections, rescue from Junk, digest, web UI with undo |
 | Later | JMAP, OAuth (Gmail, Microsoft), local embeddings, optional Rspamd signal |

@@ -22,8 +22,10 @@ message has been judged good, so a rule can never hide mail the filter was
 unsure about.
 
 Non-goals for now: hosting it for other people, sending mail, replacing the
-provider's delivery-time checks (DNS blocklists, SPF/DKIM/DMARC), and being a
-general mail-rules engine: of Sieve, tamis acts only on `fileinto`.
+provider's delivery-time checks (DNS blocklists, SPF/DKIM/DMARC), being a
+general mail-rules engine (of Sieve, tamis acts only on `fileinto`), and editing
+rules: they are written offline in a text editor, and tamis neither edits them
+nor speaks ManageSieve ([rules.md](rules.md#editing)).
 
 ## Prior art
 

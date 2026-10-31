@@ -114,6 +114,18 @@ from the script's text, so a folder name built from a variable
 view, so it shows edits made after the daemon started. The running daemon,
 however, compiled the script at startup: restart `tamis run` to apply an edit.
 
+## Editing
+
+Rules are edited offline, with a text editor, in the file `rules.script` names.
+Tamis has no rule editing of its own: the web Rules page and `tamis rules` only
+view, validate and try. It does not speak ManageSieve
+([RFC 5804](https://www.rfc-editor.org/rfc/rfc5804)), as a server or a client,
+so Sieve editors such as Roundcube's managesieve plugin or the Thunderbird
+Sieve add-on can't connect to it. Use `tamis rules check --folders` and `tamis
+rules test` after an edit, then restart `tamis run`. Tamis would have no use for
+ManageSieve as a client either, as long as its mailbox has no Sieve of its own,
+as on iCloud.
+
 ## Limitations
 
 - Only the first 256 KiB of a message is fetched, so `body` tests don't see

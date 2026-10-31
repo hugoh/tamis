@@ -2,7 +2,6 @@ package web
 
 import (
 	"net/http"
-	"net/url"
 	"slices"
 	"strconv"
 	"time"
@@ -18,9 +17,7 @@ const (
 	pageWhitelist = "whitelist"
 	pageLogs      = "logs"
 
-	defaultDecisions = 100
-	maxDecisions     = 500
-	timeLayout       = "2006-01-02 15:04"
+	timeLayout = "2006-01-02 15:04"
 )
 
 // view is what every page template receives.
@@ -40,15 +37,20 @@ type decisionRow struct {
 	Failed bool
 }
 
-type filter struct {
-	Label, Href string
-	Active      bool
+type verdictChoice struct {
+	Value, Label string
+	Checked      bool
 }
 
 type decisionsBody struct {
-	Rows    []decisionRow
-	Verdict string
-	Filters []filter
+	tableState
+
+	Rows     []decisionRow
+	Count    string
+	Verdict  string
+	Verdicts []verdictChoice
+	Columns  []column
+	MoreHref string
 }
 
 type checkRow struct {
@@ -57,6 +59,19 @@ type checkRow struct {
 
 type addressRow struct {
 	Address, Source, Added string
+}
+
+func decisionSorts() []sortChoice {
+	return []sortChoice{
+		{store.SortTime, "Time", false},
+		{store.SortID, "ID", false},
+		{store.SortVerdict, "Verdict", true},
+		{store.SortReason, "Reason", true},
+		{store.SortScore, "Score", false},
+		{store.SortAction, "Action", true},
+		{store.SortFrom, "From", true},
+		{store.SortSubject, "Subject", true},
+	}
 }
 
 func verdicts() []string {
@@ -68,6 +83,37 @@ func (s *Server) render(resp http.ResponseWriter, name string, data view) {
 
 	if err := s.pages[name].ExecuteTemplate(resp, "layout", data); err != nil {
 		s.log.Error("render page", "page", name, "err", err)
+	}
+}
+
+// renderTable answers a table request: the whole page, or for htmx just the
+// results (a new search or sort) or just more rows (scrolling).
+func (s *Server) renderTable(
+	resp http.ResponseWriter,
+	req *http.Request,
+	page string,
+	state tableState,
+	body any,
+) {
+	if req.Header.Get("Hx-Request") != "true" {
+		s.render(resp, page, view{Title: page, Nav: page, Body: body})
+
+		return
+	}
+
+	fragment := "results"
+	if state.Offset > 0 {
+		fragment = "rows"
+	}
+
+	s.renderFragment(resp, page, fragment, body)
+}
+
+func (s *Server) renderFragment(resp http.ResponseWriter, page, fragment string, data any) {
+	resp.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	if err := s.pages[page].ExecuteTemplate(resp, fragment, data); err != nil {
+		s.log.Error("render fragment", "page", page, "fragment", fragment, "err", err)
 	}
 }
 
@@ -83,48 +129,55 @@ func localTime(when time.Time) string {
 	return local.Format(timeLayout)
 }
 
-// decisionQuery reads the limit and verdict filter, ignoring bad values.
-func decisionQuery(query url.Values) (int, string) {
-	limit, err := strconv.Atoi(query.Get("n"))
-	if err != nil || limit < 1 || limit > maxDecisions {
-		limit = defaultDecisions
-	}
+func (s *Server) decisions(resp http.ResponseWriter, req *http.Request) {
+	query := req.URL.Query()
+	state := parseTableState("/", query, decisionSorts())
 
 	verdict := query.Get("verdict")
 	if !slices.Contains(verdicts(), verdict) {
 		verdict = ""
 	}
 
-	return limit, verdict
-}
+	state.Filters["verdict"] = verdict
 
-func (s *Server) decisions(resp http.ResponseWriter, req *http.Request) {
-	limit, verdict := decisionQuery(req.URL.Query())
-
-	// ponytail: the filter applies to the newest n decisions, not the whole
-	// journal; push it into the store query if that's not enough.
-	all, err := s.db.Decisions(req.Context(), limit)
+	found, total, err := s.db.QueryDecisions(req.Context(), store.DecisionQuery{
+		Verdict: verdict, Search: state.Search, Sort: state.Sort, Asc: state.Asc,
+		Offset: state.Offset, Limit: pageSize,
+	})
 	if err != nil {
 		s.fail(resp, "list decisions", err)
 
 		return
 	}
 
-	body := decisionsBody{
-		Verdict: verdict,
-		Filters: filters(verdict),
-		Rows:    decisionRows(all, verdict),
+	rows := make([]decisionRow, 0, len(found))
+	for _, decision := range found {
+		rows = append(rows, decisionRowFor(decision))
 	}
 
-	if req.Header.Get("Hx-Request") == "true" {
-		if err := s.pages[pageDecisions].ExecuteTemplate(resp, "table", body); err != nil {
-			s.log.Error("render table", "err", err)
-		}
+	s.renderTable(resp, req, pageDecisions, state, decisionsBody{
+		tableState: state,
+		Rows:       rows,
+		Count:      countLabel(total, "decision", "decisions", verdict != "" || state.Search != ""),
+		Verdict:    verdict,
+		Verdicts:   verdictChoices(verdict),
+		Columns:    state.columns(decisionSorts()),
+		MoreHref:   state.moreHref(len(rows), total),
+	})
+}
 
-		return
+func verdictChoices(selected string) []verdictChoice {
+	choices := make([]verdictChoice, 0, 1+len(verdicts()))
+	choices = append(choices, verdictChoice{Value: "", Label: "All", Checked: selected == ""})
+
+	for _, verdict := range verdicts() {
+		choices = append(
+			choices,
+			verdictChoice{Value: verdict, Label: verdict, Checked: verdict == selected},
+		)
 	}
 
-	s.render(resp, pageDecisions, view{Title: pageDecisions, Nav: pageDecisions, Body: body})
+	return choices
 }
 
 func decisionRowFor(decision store.Decision) decisionRow {
@@ -140,35 +193,6 @@ func decisionRowFor(decision store.Decision) decisionRow {
 		CanUndo:  undoable(decision),
 		CanLearn: learnable(decision),
 	}
-}
-
-func decisionRows(all []store.Decision, verdict string) []decisionRow {
-	var rows []decisionRow
-
-	for _, decision := range all {
-		if verdict != "" && decision.Verdict != verdict {
-			continue
-		}
-
-		rows = append(rows, decisionRowFor(decision))
-	}
-
-	return rows
-}
-
-func filters(active string) []filter {
-	list := make([]filter, 0, 1+len(verdicts()))
-	list = append(list, filter{Label: "All", Href: "/", Active: active == ""})
-
-	for _, verdict := range verdicts() {
-		list = append(list, filter{
-			Label:  verdict,
-			Href:   "/?" + url.Values{"verdict": {verdict}}.Encode(),
-			Active: verdict == active,
-		})
-	}
-
-	return list
 }
 
 // actionLabel says what was done; what live mode would do is prefixed, and a
@@ -278,52 +302,88 @@ func (s *Server) logLines(resp http.ResponseWriter, req *http.Request) {
 	s.render(resp, pageLogs, view{Title: pageLogs, Nav: pageLogs, Body: body})
 }
 
+func whitelistSorts() []sortChoice {
+	return []sortChoice{
+		{store.SortAddress, "Address", true},
+		{store.SortSource, "Source", true},
+		{store.SortAdded, "Added", false},
+	}
+}
+
 type whitelistBody struct {
-	Addresses []addressRow
-	Error     string
+	tableState
+
+	Rows     []addressRow
+	Count    string
+	Columns  []column
+	MoreHref string
+	// Error is why an edit failed. OOB asks for the add form to be reset, which
+	// is right after a successful add.
+	Error string
+	OOB   bool
 }
 
 func (s *Server) whitelist(resp http.ResponseWriter, req *http.Request) {
-	body, err := s.whitelistBody(req, nil)
+	state := parseTableState("/whitelist", req.URL.Query(), whitelistSorts())
+
+	body, err := s.whitelistBody(req, state, nil, false)
 	if err != nil {
 		s.fail(resp, "list whitelist", err)
 
 		return
 	}
 
-	s.render(resp, pageWhitelist, view{Title: pageWhitelist, Nav: pageWhitelist, Body: body})
+	s.renderTable(resp, req, pageWhitelist, state, body)
 }
 
-// renderAddresses answers an edit with the refreshed list, and what went
-// wrong, if anything.
+// renderAddresses answers an edit with the refreshed list for the search and
+// sort the page had, and what went wrong, if anything.
 func (s *Server) renderAddresses(resp http.ResponseWriter, req *http.Request, editErr error) {
-	body, err := s.whitelistBody(req, editErr)
+	state := parseTableState("/whitelist", req.Form, whitelistSorts())
+	state.Offset = 0
+
+	body, err := s.whitelistBody(req, state, editErr, editErr == nil)
 	if err != nil {
 		s.fail(resp, "list whitelist", err)
 
 		return
 	}
 
-	resp.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	if err := s.pages[pageWhitelist].ExecuteTemplate(resp, "addresses", body); err != nil {
-		s.log.Error("render whitelist", "err", err)
-	}
+	s.renderFragment(resp, pageWhitelist, "results", body)
 }
 
-func (s *Server) whitelistBody(req *http.Request, editErr error) (whitelistBody, error) {
-	addresses, err := s.db.Addresses(req.Context())
+func (s *Server) whitelistBody(
+	req *http.Request,
+	state tableState,
+	editErr error,
+	resetForm bool,
+) (whitelistBody, error) {
+	found, total, err := s.db.QueryAddresses(req.Context(), store.AddressQuery{
+		Search: state.Search,
+		Sort:   state.Sort,
+		Desc:   !state.Asc,
+		Offset: state.Offset,
+		Limit:  pageSize,
+	})
 	if err != nil {
 		return whitelistBody{}, err //nolint:wrapcheck // store errors carry their context
 	}
 
-	body := whitelistBody{Addresses: make([]addressRow, 0, len(addresses))}
+	body := whitelistBody{
+		tableState: state,
+		Rows:       make([]addressRow, 0, len(found)),
+		Count:      countLabel(total, "address", "addresses", state.Search != ""),
+		Columns:    state.columns(whitelistSorts()),
+		MoreHref:   state.moreHref(len(found), total),
+		OOB:        resetForm,
+	}
+
 	if editErr != nil {
 		body.Error = editErr.Error()
 	}
 
-	for _, address := range addresses {
-		body.Addresses = append(body.Addresses, addressRow{
+	for _, address := range found {
+		body.Rows = append(body.Rows, addressRow{
 			Address: address.Address, Source: address.Source, Added: localTime(address.AddedAt),
 		})
 	}

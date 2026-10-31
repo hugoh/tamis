@@ -1,6 +1,10 @@
 {{define "content"}}
-<h1>Sign in</h1>
-<button id="login">Sign in with a passkey</button>
-<p id="status" role="status"></p>
+<div class="card bg-base-200 shadow-sm max-w-sm mx-auto mt-16">
+<div class="card-body items-center text-center">
+<h1 class="card-title">Sign in</h1>
+<button id="login" class="btn btn-primary">Sign in with a passkey</button>
+<p id="status" role="status" class="text-error min-h-6"></p>
+</div>
+</div>
 {{end}}
 {{define "scripts"}}<script src="/static/webauthn.js"></script>{{end}}

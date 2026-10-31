@@ -2,8 +2,12 @@ package web_test
 
 import (
 	"bytes"
+	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +20,8 @@ import (
 )
 
 const (
+	escapedScript = "&lt;script&gt;"
+	none          = "none"
 	whitelistPath = "/whitelist"
 	removePath    = "/whitelist/remove"
 	undoPath      = "/decisions/1/undo"
@@ -54,7 +60,7 @@ func signedIn(t *testing.T) *harness {
 	})
 	browser.record(store.Decision{
 		Mailbox: inbox, From: "evil@example.net", Subject: "<script>alert(1)</script>",
-		Score: 0.5, Verdict: engine.VerdictUncertain, Reason: bayes, Action: "none",
+		Score: 0.5, Verdict: engine.VerdictUncertain, Reason: bayes, Action: none,
 	})
 	require.NoError(t, browser.db.AddAddress(t.Context(), "Friend@Example.com", "manual"))
 	browser.enroll(browser.token())
@@ -86,7 +92,7 @@ func TestDecisionsPage(t *testing.T) {
 	require.Contains(t, body, ">move:Junk<", "an applied action is shown as done")
 	require.Contains(t, body, "would move:Junk", "a shadow-mode action says so")
 	require.Contains(t, body, `href="/health"`)
-	require.Contains(t, body, "/static/vendor/pico.min.css")
+	require.Contains(t, body, "/static/vendor/theme.css")
 	require.Contains(t, body, "/static/vendor/htmx.min.js")
 }
 
@@ -105,13 +111,15 @@ func TestDecisionsFilter(t *testing.T) {
 		query         string
 		shown, hidden []string
 	}{
-		"spam only":   {"?verdict=spam", []string{spamSubject}, []string{goodSubject}},
-		"good only":   {"?verdict=good", []string{goodSubject}, []string{spamSubject}},
-		"unknown":     {"?verdict=bogus", []string{spamSubject, goodSubject}, nil},
-		"limit":       {"?n=1", []string{"<script>"}, []string{spamSubject}},
-		"bad limit":   {"?n=lots", []string{spamSubject, goodSubject}, nil},
-		"negative n":  {"?n=-4", []string{spamSubject, goodSubject}, nil},
-		"huge number": {"?n=99999999", []string{spamSubject, goodSubject}, nil},
+		"spam only":     {"?verdict=spam", []string{spamSubject}, []string{goodSubject}},
+		"good only":     {"?verdict=good", []string{goodSubject}, []string{spamSubject}},
+		"unknown":       {"?verdict=bogus", []string{spamSubject, goodSubject}, nil},
+		"search":        {"?q=lunch", []string{goodSubject}, []string{spamSubject}},
+		"search sender": {"?q=SPAMMER", []string{spamSubject}, []string{goodSubject}},
+		"both":          {"?q=lunch&verdict=spam", nil, []string{spamSubject, goodSubject}},
+		"bad sort":      {"?sort=x;drop", []string{spamSubject, goodSubject}, nil},
+		"bad offset":    {"?offset=lots", []string{spamSubject, goodSubject}, nil},
+		"huge offset":   {"?offset=99999999999999999999", []string{spamSubject, goodSubject}, nil},
 	}
 
 	for name, tt := range tests {
@@ -122,10 +130,6 @@ func TestDecisionsFilter(t *testing.T) {
 			require.Equal(t, http.StatusOK, rec.Code)
 
 			for _, want := range tt.shown {
-				if want == "<script>" {
-					want = "&lt;script&gt;"
-				}
-
 				require.Contains(t, rec.Body.String(), want)
 			}
 
@@ -136,7 +140,113 @@ func TestDecisionsFilter(t *testing.T) {
 	}
 }
 
-func TestHtmxGetsOnlyTheTable(t *testing.T) {
+func TestDecisionsFilterButtonsShowTheState(t *testing.T) {
+	t.Parallel()
+
+	browser := signedIn(t)
+
+	checked := func(body, value string) bool {
+		return strings.Contains(body, `value="`+value+`" aria-label="`) &&
+			regexp.MustCompile(`value="`+value+`" aria-label="[^"]*" checked`).MatchString(body)
+	}
+
+	all := browser.do(http.MethodGet, "/", nil).Body.String()
+	require.True(t, checked(all, ""))
+	require.False(t, checked(all, "spam"))
+
+	spam := browser.do(http.MethodGet, "/?verdict=spam", nil).Body.String()
+	require.True(t, checked(spam, "spam"), "the chosen verdict is the one highlighted")
+	require.False(t, checked(spam, ""))
+	require.False(t, checked(spam, "good"))
+}
+
+func TestDecisionsSearchBoxKeepsItsText(t *testing.T) {
+	t.Parallel()
+
+	body := signedIn(t).do(http.MethodGet, "/?q=lunch", nil).Body.String()
+	require.Contains(t, body, `name="q" value="lunch"`)
+	require.Contains(t, body, "1 decision match")
+}
+
+func TestDecisionsSort(t *testing.T) {
+	t.Parallel()
+
+	browser := signedIn(t)
+
+	order := func(query string) []string {
+		body := browser.do(http.MethodGet, "/"+query, nil).Body.String()
+
+		type found struct {
+			at      int
+			subject string
+		}
+
+		list := make([]found, 0, 3)
+
+		for _, subject := range []string{spamSubject, goodSubject, escapedScript} {
+			list = append(list, found{strings.Index(body, subject), subject})
+		}
+
+		slices.SortFunc(list, func(a, b found) int { return a.at - b.at })
+
+		out := make([]string, len(list))
+		for i, entry := range list {
+			out[i] = entry.subject
+		}
+
+		return out
+	}
+
+	require.Equal(
+		t,
+		[]string{escapedScript, goodSubject, spamSubject},
+		order(""),
+		"newest first",
+	)
+	require.Equal(
+		t,
+		[]string{spamSubject, goodSubject, escapedScript},
+		order("?sort=time&dir=asc"),
+	)
+	require.Equal(
+		t,
+		[]string{spamSubject, escapedScript, goodSubject},
+		order("?sort=score&dir=desc"),
+	)
+	require.Equal(
+		t,
+		[]string{goodSubject, escapedScript, spamSubject},
+		order("?sort=score&dir=asc"),
+	)
+}
+
+func TestDecisionsHeadersSortAndKeepTheFilters(t *testing.T) {
+	t.Parallel()
+
+	body := signedIn(
+		t,
+	).do(http.MethodGet, "/?q=lunch&verdict=good&sort=score&dir=asc", nil).
+		Body.String()
+
+	require.Contains(t, body, `aria-sort="ascending"`)
+	require.Contains(t, body, "Score ▲")
+	require.Contains(t, body, `aria-sort="none"`)
+
+	header := regexp.MustCompile(`hx-get="([^"]*sort=score[^"]*)"`).FindStringSubmatch(body)
+	require.NotNil(t, header)
+	require.Contains(t, header[1], "dir=desc", "clicking the sorted column flips it")
+	require.Contains(t, header[1], "q=lunch")
+	require.Contains(t, header[1], "verdict=good")
+
+	other := regexp.MustCompile(`hx-get="([^"]*sort=from[^"]*)"`).FindStringSubmatch(body)
+	require.NotNil(t, other)
+	require.Contains(t, other[1], "dir=asc", "text columns start ascending")
+
+	require.Contains(t, body, `type="hidden" form="toolbar" name="sort" value="score"`)
+	require.Contains(t, body, `type="hidden" form="toolbar" name="dir" value="asc"`)
+}
+
+func TestHtmxGetsOnlyWhatChanged(t *testing.T) {
 	t.Parallel()
 
 	browser := signedIn(t)
@@ -144,11 +254,85 @@ func TestHtmxGetsOnlyTheTable(t *testing.T) {
 	full := browser.do(http.MethodGet, "/?verdict=spam", nil)
 	require.Contains(t, full.Body.String(), "<html")
 
-	part := browser.do(http.MethodGet, "/?verdict=spam", nil, "HX-Request", "true")
+	part := browser.do(http.MethodGet, "/?verdict=spam", nil, htmxHeader, "true")
 	require.Equal(t, http.StatusOK, part.Code)
 	require.NotContains(t, part.Body.String(), "<html")
+	require.NotContains(t, part.Body.String(), `id="toolbar"`, "the controls stay where they are")
+	require.True(t, strings.HasPrefix(part.Body.String(), `<div id="results">`))
 	require.Contains(t, part.Body.String(), spamSubject)
 	require.NotContains(t, part.Body.String(), goodSubject)
+}
+
+func manyDecisions(t *testing.T, count int) *harness {
+	t.Helper()
+
+	browser := newHarness(t)
+
+	for i := range count {
+		browser.record(store.Decision{
+			Mailbox: inbox, From: "bulk@example.net", Subject: fmt.Sprintf("bulk message %03d", i),
+			Score: 0.5, Verdict: engine.VerdictUncertain, Reason: bayes, Action: none,
+		})
+	}
+
+	browser.enroll(browser.token())
+
+	return browser
+}
+
+func TestDecisionsLoadMoreRows(t *testing.T) {
+	t.Parallel()
+
+	browser := manyDecisions(t, 230)
+
+	first := browser.do(http.MethodGet, "/?sort=id&dir=asc", nil).Body.String()
+	require.Equal(t, 100, strings.Count(first, ">bulk message"))
+	require.Contains(t, first, "230 decisions")
+	require.Contains(t, first, "bulk message 000")
+	require.NotContains(t, first, "bulk message 100")
+
+	more := regexp.MustCompile(`<tr hx-get="([^"]*)" hx-trigger="intersect once" hx-swap="outerHTML">`).
+		FindStringSubmatch(first)
+	require.NotNil(t, more, "a sentinel row fetches the next page when it scrolls into view")
+	require.Contains(t, more[1], "offset=100")
+	require.Contains(t, more[1], "sort=id")
+
+	second := browser.do(
+		http.MethodGet,
+		html.UnescapeString(more[1]),
+		nil,
+		htmxHeader,
+		"true",
+	).Body.String()
+	require.Equal(t, 100, strings.Count(second, ">bulk message"))
+	require.Contains(t, second, "bulk message 100")
+	require.NotContains(t, second, "<html")
+	require.NotContains(t, second, "<table")
+	require.Contains(t, second, "offset=200")
+
+	last := browser.do(
+		http.MethodGet,
+		"/?sort=id&dir=asc&offset=200",
+		nil,
+		htmxHeader,
+		"true",
+	).Body.String()
+	require.Equal(t, 30, strings.Count(last, ">bulk message"))
+	require.NotContains(t, last, "intersect once", "no sentinel after the last page")
+}
+
+func TestDecisionsSearchLargeJournal(t *testing.T) {
+	t.Parallel()
+
+	browser := manyDecisions(t, 230)
+
+	body := browser.do(http.MethodGet, "/?q=message%201", nil, htmxHeader, "true").Body.String()
+	require.Contains(t, body, "100 decisions match")
+	require.Equal(t, 100, strings.Count(body, ">bulk message 1"))
+
+	none := browser.do(http.MethodGet, "/?q=message%20999", nil, htmxHeader, "true").Body.String()
+	require.Contains(t, none, "0 decisions match")
+	require.Contains(t, none, "No decisions match")
 }
 
 func TestHealthPage(t *testing.T) {
@@ -173,9 +357,8 @@ func TestVendoredAssets(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]string{
-		"/static/vendor/pico.min.css": "text/css",
-		"/static/vendor/htmx.min.js":  "text/javascript",
-		"/static/app.css":             "text/css",
+		"/static/vendor/theme.css":   "text/css",
+		"/static/vendor/htmx.min.js": "text/javascript",
 	}
 
 	for path, contentType := range tests {

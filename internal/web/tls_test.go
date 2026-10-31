@@ -6,6 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -188,6 +190,7 @@ func TestTLSListenerServesHTTPS(t *testing.T) {
 
 	server := &http.Server{
 		ReadHeaderTimeout: time.Second,
+		ErrorLog:          log.New(io.Discard, "", 0),
 		Handler: http.HandlerFunc(func(resp http.ResponseWriter, _ *http.Request) {
 			_, _ = resp.Write([]byte("hello"))
 		}),

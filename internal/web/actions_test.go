@@ -151,7 +151,7 @@ func TestActionFailureIsShownInTheRow(t *testing.T) {
 	rec := browser.form(undoPath, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "message not found where tamis left it")
-	require.Contains(t, rec.Body.String(), "status-fail")
+	require.Contains(t, rec.Body.String(), "text-error")
 	require.Contains(t, rec.Body.String(), spamSubject)
 }
 

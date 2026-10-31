@@ -1,24 +1,23 @@
 {{define "content"}}
-<h1>Health</h1>
-{{with .Body.Daemon}}<h2>Daemon</h2>
-<table>
-<tbody>
-<tr><th scope="row">Started</th><td>{{.Started}}</td></tr>
-<tr><th scope="row">Doing</th><td>{{if .Doing}}{{.Doing}}{{else}}nothing yet{{end}}</td></tr>
-<tr><th scope="row">Passes</th><td>{{.Passes}}</td></tr>
-<tr><th scope="row">Last pass</th><td>{{.LastPass}}{{if .Summary}}: {{.Summary}}{{end}}</td></tr>
-{{if .LastError}}<tr><th scope="row">Last error</th><td class="status-fail">{{.LastError}}</td></tr>{{end}}
-</tbody>
-</table>
-<h2>Checks</h2>
-{{end}}<table>
+<h1 class="text-2xl font-semibold mb-4">Health</h1>
+{{with .Body.Daemon}}<h2 class="text-lg font-semibold mb-2">Daemon</h2>
+<div class="stats stats-vertical sm:stats-horizontal shadow-sm bg-base-200 mb-4">
+<div class="stat"><div class="stat-title">Doing</div><div class="stat-value text-xl">{{if .Doing}}{{.Doing}}{{else}}nothing yet{{end}}</div><div class="stat-desc">since {{.Started}}</div></div>
+<div class="stat"><div class="stat-title">Passes</div><div class="stat-value text-xl">{{.Passes}}</div></div>
+<div class="stat"><div class="stat-title">Last pass</div><div class="stat-value text-xl">{{.LastPass}}</div><div class="stat-desc">{{.Summary}}</div></div>
+</div>
+{{if .LastError}}<div role="alert" class="alert alert-error alert-soft mb-4"><span><strong>Last error</strong> {{.LastError}}</span></div>{{end}}
+<h2 class="text-lg font-semibold mb-2">Checks</h2>
+{{end}}<div class="overflow-x-auto">
+<table class="table table-sm">
 <thead><tr><th>Status</th><th>Check</th><th>Detail</th></tr></thead>
 <tbody>
 {{range .Body.Checks}}<tr>
-<td class="status-{{.Status}}">{{.Status}}</td>
+<td><span class="badge badge-sm {{if eq .Status "ok"}}badge-success{{else if eq .Status "warn"}}badge-warning{{else if eq .Status "fail"}}badge-error{{else}}badge-ghost{{end}}">{{.Status}}</span></td>
 <td>{{.Name}}</td>
 <td>{{.Detail}}</td>
 </tr>
 {{end}}</tbody>
 </table>
+</div>
 {{end}}

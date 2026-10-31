@@ -113,7 +113,7 @@ func (a *authenticator) register(optionsJSON []byte) []byte {
 	a.userHandle = userHandle
 
 	attestation, err := cbor.Marshal(map[string]any{
-		"fmt":      "none",
+		"fmt":      none,
 		"attStmt":  map[string]any{},
 		"authData": a.authData(flagUserPresent|flagUserVerified|flagAttested, true),
 	})

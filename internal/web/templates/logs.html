@@ -1,20 +1,20 @@
 {{define "entries"}}<div id="logs" hx-get="/logs" hx-trigger="every 10s" hx-swap="outerHTML">
-{{if .Rows}}<div class="overflow-auto">
-<table class="striped">
+{{if .Rows}}<div class="overflow-x-auto">
+<table class="table table-xs table-zebra table-pin-rows">
 <thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
 <tbody>
-{{range .Rows}}<tr class="level-{{.Level}}">
-<td>{{.When}}</td>
-<td>{{.Level}}</td>
-<td>{{.Text}}</td>
+{{range .Rows}}<tr>
+<td class="whitespace-nowrap">{{.When}}</td>
+<td><span class="badge badge-sm {{if eq .Level "ERROR"}}badge-error{{else if eq .Level "WARN"}}badge-warning{{else}}badge-ghost{{end}}">{{.Level}}</span></td>
+<td class="font-mono">{{.Text}}</td>
 </tr>
 {{end}}</tbody>
 </table>
-</div>{{else}}<p>No log lines yet.</p>{{end}}
+</div>{{else}}<p class="py-8 text-center opacity-70">No log lines yet.</p>{{end}}
 </div>{{end}}
 
 {{define "content"}}
-<h1>Logs</h1>
-<p><small>The daemon's recent log lines, refreshed every 10 seconds. They are lost when it restarts.</small></p>
+<h1 class="text-2xl font-semibold mb-2">Logs</h1>
+<p class="text-sm opacity-70 mb-4">The daemon's recent log lines, refreshed every 10 seconds. They are lost when it restarts.</p>
 {{template "entries" .Body}}
 {{end}}

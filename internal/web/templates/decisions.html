@@ -1,34 +1,43 @@
-{{define "row"}}<tr>
-<td>{{.ID}}</td>
-<td>{{.When}}</td>
-<td class="verdict-{{.Verdict}}">{{.Verdict}}</td>
+{{define "row"}}<tr class="hover:bg-base-300">
+<th>{{.ID}}</th>
+<td class="whitespace-nowrap">{{.When}}</td>
+<td><span class="badge badge-sm {{if eq .Verdict "spam"}}badge-error{{else if eq .Verdict "good"}}badge-success{{else}}badge-warning{{end}}">{{.Verdict}}</span></td>
 <td>{{.Reason}}</td>
-<td>{{.Score}}</td>
-<td>{{.Action}}{{if .Note}}<br><small class="{{if .Failed}}status-fail{{else}}status-ok{{end}}">{{.Note}}</small>{{end}}</td>
-<td>{{.From}}</td>
-<td>{{.Subject}}</td>
-<td class="actions">
-{{if .CanUndo}}<button class="outline secondary" hx-post="/decisions/{{.ID}}/undo" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Undo</button>{{end}}
-{{if .CanLearn}}<button class="outline secondary" hx-post="/decisions/{{.ID}}/learn?label=spam" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Spam</button>
-<button class="outline secondary" hx-post="/decisions/{{.ID}}/learn?label=good" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Good</button>{{end}}
+<td class="tabular-nums">{{.Score}}</td>
+<td>{{.Action}}{{if .Note}}<div class="text-xs {{if .Failed}}text-error{{else}}text-success{{end}}">{{.Note}}</div>{{end}}</td>
+<td class="max-w-48 truncate" title="{{.From}}">{{.From}}</td>
+<td class="max-w-72 truncate" title="{{.Subject}}">{{.Subject}}</td>
+<td class="whitespace-nowrap">
+{{if .CanUndo}}<button class="btn btn-xs" hx-post="/decisions/{{.ID}}/undo" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Undo</button>{{end}}
+{{if .CanLearn}}<button class="btn btn-xs btn-error btn-outline" hx-post="/decisions/{{.ID}}/learn?label=spam" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Spam</button>
+<button class="btn btn-xs btn-success btn-outline" hx-post="/decisions/{{.ID}}/learn?label=good" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Good</button>{{end}}
 </td>
 </tr>{{end}}
 
-{{define "table"}}<div id="decisions">
-{{if .Rows}}<div class="overflow-auto">
-<table class="striped">
-<thead><tr><th>ID</th><th>Time</th><th>Verdict</th><th>Reason</th><th>Score</th><th>Action</th><th>From</th><th>Subject</th><th></th></tr></thead>
+{{define "rows"}}{{range .Rows}}{{template "row" .}}
+{{end}}{{if .MoreHref}}<tr hx-get="{{.MoreHref}}" hx-trigger="intersect once" hx-swap="outerHTML"><td colspan="9" class="text-center"><span class="loading loading-dots loading-sm"></span></td></tr>{{end}}{{end}}
+
+{{define "results"}}<div id="results">
+<input type="hidden" form="toolbar" name="sort" value="{{.Sort}}">
+<input type="hidden" form="toolbar" name="dir" value="{{.Dir}}">
+<p class="text-sm opacity-70 my-2">{{.Count}}</p>
+{{if .Rows}}<div class="overflow-x-auto">
+<table class="table table-xs table-zebra table-pin-rows">
+<thead><tr>{{range .Columns}}<th aria-sort="{{.AriaSort}}"><a class="link link-hover" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">{{.Label}}{{if .Arrow}} {{.Arrow}}{{end}}</a></th>{{end}}<th></th></tr></thead>
 <tbody>
-{{range .Rows}}{{template "row" .}}
-{{end}}</tbody>
+{{template "rows" .}}
+</tbody>
 </table>
-</div>{{else}}<p>No decisions{{if .Verdict}} with verdict {{.Verdict}}{{end}} yet.</p>{{end}}
+</div>{{else}}<p class="py-8 text-center opacity-70">No decisions {{if or .Search .Verdict}}match{{else}}yet{{end}}.</p>{{end}}
 </div>{{end}}
 
 {{define "content"}}
-<h1>Decisions</h1>
-<div role="group">
-{{range .Body.Filters}}<a role="button" class="{{if .Active}}contrast{{else}}secondary outline{{end}}" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#decisions" hx-swap="outerHTML" hx-push-url="true">{{.Label}}</a>
+<h1 class="text-2xl font-semibold mb-4">Decisions</h1>
+<form id="toolbar" class="flex flex-wrap items-center gap-3" hx-get="/" hx-target="#results" hx-swap="outerHTML" hx-push-url="true" hx-include="#toolbar">
+<input type="search" name="q" value="{{.Body.Search}}" placeholder="Search sender, subject, reason…" aria-label="Search" class="input input-sm w-72" hx-get="/" hx-trigger="input changed delay:300ms, search">
+<div class="join">
+{{range .Body.Verdicts}}<input class="join-item btn btn-sm" type="radio" name="verdict" value="{{.Value}}" aria-label="{{.Label}}"{{if .Checked}} checked{{end}} hx-get="/" hx-trigger="change">
 {{end}}</div>
-{{template "table" .Body}}
+</form>
+{{template "results" .Body}}
 {{end}}

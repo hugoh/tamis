@@ -1,25 +1,39 @@
-{{define "addresses"}}<div id="whitelist">
-<form hx-post="/whitelist" hx-target="#whitelist" hx-swap="outerHTML">
-<fieldset role="group">
-<input type="text" name="address" placeholder="someone@example.org" required aria-label="Address to whitelist">
-<button>Add</button>
-</fieldset>
-</form>
-{{if .Error}}<p class="status-fail" role="alert">{{.Error}}</p>{{end}}
-{{if .Addresses}}<table class="striped">
-<thead><tr><th>Address</th><th>Source</th><th>Added</th><th></th></tr></thead>
-<tbody>
-{{range .Addresses}}<tr>
+{{define "addform"}}<form id="add" class="join"{{if .OOB}} hx-swap-oob="true"{{end}} hx-post="/whitelist" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar">
+<input class="input input-sm join-item w-72" name="address" placeholder="someone@example.org" required aria-label="Address to whitelist">
+<button class="btn btn-sm btn-primary join-item">Add</button>
+</form>{{end}}
+
+{{define "rows"}}{{range .Rows}}<tr class="hover:bg-base-300">
 <td>{{.Address}}</td>
 <td>{{.Source}}</td>
-<td>{{.Added}}</td>
-<td><form hx-post="/whitelist/remove" hx-target="#whitelist" hx-swap="outerHTML"><input type="hidden" name="address" value="{{.Address}}"><button class="outline secondary">Remove</button></form></td>
+<td class="whitespace-nowrap">{{.Added}}</td>
+<td><form hx-post="/whitelist/remove" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar"><input type="hidden" name="address" value="{{.Address}}"><button class="btn btn-xs btn-outline">Remove</button></form></td>
 </tr>
-{{end}}</tbody>
-</table>{{else}}<p>No addresses whitelisted.</p>{{end}}
+{{end}}{{if .MoreHref}}<tr hx-get="{{.MoreHref}}" hx-trigger="intersect once" hx-swap="outerHTML"><td colspan="4" class="text-center"><span class="loading loading-dots loading-sm"></span></td></tr>{{end}}{{end}}
+
+{{define "results"}}<div id="results">
+<input type="hidden" form="toolbar" name="sort" value="{{.Sort}}">
+<input type="hidden" form="toolbar" name="dir" value="{{.Dir}}">
+{{if .OOB}}{{template "addform" .}}{{end}}
+{{if .Error}}<div role="alert" class="alert alert-error alert-soft my-2"><span>{{.Error}}</span></div>{{end}}
+<p class="text-sm opacity-70 my-2">{{.Count}}</p>
+{{if .Rows}}<div class="overflow-x-auto">
+<table class="table table-sm table-zebra table-pin-rows">
+<thead><tr>{{range .Columns}}<th aria-sort="{{.AriaSort}}"><a class="link link-hover" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">{{.Label}}{{if .Arrow}} {{.Arrow}}{{end}}</a></th>{{end}}<th></th></tr></thead>
+<tbody>
+{{template "rows" .}}
+</tbody>
+</table>
+</div>{{else}}<p class="py-8 text-center opacity-70">{{if .Search}}No addresses match.{{else}}No addresses whitelisted.{{end}}</p>{{end}}
 </div>{{end}}
 
 {{define "content"}}
-<h1>Whitelist</h1>
-{{template "addresses" .Body}}
+<h1 class="text-2xl font-semibold mb-4">Whitelist</h1>
+<div class="flex flex-wrap items-center gap-3 mb-2">
+{{template "addform" .Body}}
+<form id="toolbar" hx-get="/whitelist" hx-target="#results" hx-swap="outerHTML" hx-push-url="true" hx-include="#toolbar">
+<input type="search" name="q" value="{{.Body.Search}}" placeholder="Search addresses…" aria-label="Search" class="input input-sm w-72" hx-get="/whitelist" hx-trigger="input changed delay:300ms, search">
+</form>
+</div>
+{{template "results" .Body}}
 {{end}}

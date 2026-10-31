@@ -1,5 +1,7 @@
 # Front-end files tamis embeds (internal/web/static/vendor). Renovate bumps the
-# versions; run `mise run vendor-web` to copy the files, which are committed.
+# versions; run `mise run vendor-web` to copy htmx and rebuild the stylesheet.
+# The results are committed, so building tamis needs none of this.
 [tools]
-"npm:@picocss/pico" = "2.1.1"
+"npm:@tailwindcss/cli" = "4.3.3"
+"npm:daisyui" = "5.7.50"
 "npm:htmx.org" = "2.0.11"

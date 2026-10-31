@@ -1,30 +1,42 @@
 #!/usr/bin/env bash
-#MISE description="Copy htmx and Pico.css from npm into internal/web/static/vendor (--check: only verify)"
-#USAGE flag "--check" help="fail if the committed files differ from the versions in .config/mise/conf.d/web.toml"
+#MISE description="Copy htmx and build the daisyUI/Tailwind stylesheet into internal/web/static/vendor (--check: only verify)"
+#USAGE flag "--check" help="fail if the committed files differ from what the pinned versions and templates produce"
 set -euo pipefail
 
 web=internal/web
 htmx=$(mise where npm:htmx.org)/node_modules/htmx.org
-pico=$(mise where npm:@picocss/pico)/node_modules/@picocss/pico
+cli=$(mise where npm:@tailwindcss/cli)/node_modules
+tailwind=("$cli"/.mise/tailwindcss@*/node_modules/tailwindcss)
+daisyui=$(mise where npm:daisyui)/node_modules/daisyui
 out=$web/static/vendor
-if [ "${usage_check:-false}" = true ]; then
-  out=$(mktemp -d)
-  trap 'rm -rf "$out"' EXIT
-fi
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
 
+if [ "${usage_check:-false}" = true ]; then
+  out=$work/out
+fi
 mkdir -p "$out"
+
 cp "$htmx/dist/htmx.min.js" "$out/htmx.min.js"
 cp "$htmx/LICENSE" "$out/htmx.LICENSE"
-cp "$pico/css/pico.min.css" "$out/pico.min.css"
-cp "$pico/LICENSE.md" "$out/pico.LICENSE"
+
+# Tailwind finds its own files and plugins by walking up from the stylesheet,
+# which mise's per-tool install directories defeat: name them by path instead.
+# Only the classes the templates use end up in the output.
+cat >"$work/input.css" <<CSS
+@import "${tailwind[0]}/index.css" source(none);
+@plugin "$daisyui";
+@source "$PWD/$web/templates";
+CSS
+"$cli/.bin/tailwindcss" --input "$work/input.css" --output "$out/theme.css" --minify
 
 # The repo's end-of-file check wants every file to end in a newline.
-for file in "$out/htmx.min.js" "$out/pico.min.css"; do
+for file in "$out/htmx.min.js" "$out/theme.css"; do
   [ "$(tail -c1 "$file")" = "" ] || echo >>"$file"
 done
 
 if [ "${usage_check:-false}" = true ]; then
-  for file in htmx.min.js htmx.LICENSE pico.min.css pico.LICENSE; do
+  for file in htmx.min.js htmx.LICENSE theme.css; do
     cmp -s "$out/$file" "$web/static/vendor/$file" || {
       echo "vendored $file is stale: run mise run vendor-web" >&2
       exit 1

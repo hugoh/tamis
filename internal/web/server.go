@@ -157,7 +157,18 @@ func newServer(
 }
 
 // ServeHTTP implements http.Handler.
-func (s *Server) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+func (s *Server) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
+	resp := &statusWriter{ResponseWriter: writer, status: http.StatusOK}
+	started := time.Now()
+
+	ctx := req.Context()
+
+	defer func() {
+		s.log.DebugContext(ctx, "web request",
+			"method", req.Method, "path", req.URL.Path,
+			"status", resp.status, "duration", time.Since(started))
+	}()
+
 	header := resp.Header()
 	header.Set("Content-Security-Policy", contentSecurityPolicy)
 	header.Set("X-Content-Type-Options", "nosniff")
@@ -173,6 +184,21 @@ func (s *Server) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 
 	s.mux.ServeHTTP(resp, req)
 }
+
+// statusWriter remembers the status code for the access log.
+type statusWriter struct {
+	http.ResponseWriter
+
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap lets http.ResponseController reach the real writer.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // parsePages gives every page its own template set: the layout plus the
 // page's own "content" block.
@@ -193,6 +219,8 @@ func parsePages(fsys fs.FS) (map[string]*template.Template, error) {
 
 const (
 	readHeaderTimeout = 10 * time.Second
+	readTimeout       = 30 * time.Second
+	idleTimeout       = 2 * time.Minute
 	shutdownTimeout   = 5 * time.Second
 )
 
@@ -202,6 +230,8 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	httpServer := &http.Server{
 		Handler:           s,
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 		ErrorLog:          log.New(serverErrors{s.log}, "", 0),
 	}
 	failed := make(chan error, 1)
@@ -233,25 +263,24 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /auth/login/begin", s.loginBegin)
 	s.mux.HandleFunc("POST /auth/login/finish", s.loginFinish)
 	s.mux.HandleFunc("POST /auth/logout", s.logout)
-	s.mux.Handle("GET /{$}", s.requireSession(http.HandlerFunc(s.decisions)))
-	s.mux.Handle("GET /health", s.requireSession(http.HandlerFunc(s.health)))
-	s.mux.Handle("GET /rules", s.requireSession(http.HandlerFunc(s.rules)))
-	s.mux.Handle("POST /rules/test", s.requireSession(http.HandlerFunc(s.rulesTest)))
-	s.mux.Handle("GET /logs", s.requireSession(http.HandlerFunc(s.logLines)))
-	s.mux.Handle("POST /logs/debug", s.requireSession(http.HandlerFunc(s.setDebug)))
-	s.mux.Handle("GET /whitelist", s.requireSession(http.HandlerFunc(s.whitelist)))
-	s.mux.Handle("POST /whitelist", s.requireSession(http.HandlerFunc(s.whitelistAdd)))
-	s.mux.Handle("POST /whitelist/remove", s.requireSession(http.HandlerFunc(s.whitelistRemove)))
-	s.mux.Handle(
-		"POST /whitelist/remove/confirm",
-		s.requireSession(http.HandlerFunc(s.whitelistConfirm)),
-	)
-	s.mux.Handle(
-		"GET /whitelist/remove/cancel",
-		s.requireSession(http.HandlerFunc(s.whitelistCancel)),
-	)
-	s.mux.Handle("POST /decisions/{id}/undo", s.requireSession(http.HandlerFunc(s.undo)))
-	s.mux.Handle("POST /decisions/{id}/learn", s.requireSession(http.HandlerFunc(s.learn)))
+	s.authed("GET /{$}", s.decisions)
+	s.authed("GET /health", s.health)
+	s.authed("GET /rules", s.rules)
+	s.authed("POST /rules/test", s.rulesTest)
+	s.authed("GET /logs", s.logLines)
+	s.authed("POST /logs/debug", s.setDebug)
+	s.authed("GET /whitelist", s.whitelist)
+	s.authed("POST /whitelist", s.whitelistAdd)
+	s.authed("POST /whitelist/remove", s.whitelistRemove)
+	s.authed("POST /whitelist/remove/confirm", s.whitelistConfirm)
+	s.authed("GET /whitelist/remove/cancel", s.whitelistCancel)
+	s.authed("POST /decisions/{id}/undo", s.undo)
+	s.authed("POST /decisions/{id}/learn", s.learn)
+}
+
+// authed registers a route that needs a signed-in session.
+func (s *Server) authed(pattern string, handler http.HandlerFunc) {
+	s.mux.Handle(pattern, s.requireSession(handler))
 }
 
 // bare serves a page that has no navigation: the ones before you sign in.

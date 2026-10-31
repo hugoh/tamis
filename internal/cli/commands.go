@@ -54,16 +54,26 @@ type app struct {
 // (which sets $JOURNAL_STREAM for a service whose output goes to the journal)
 // each line carries its priority, for `journalctl -p`.
 func (a *app) logger(cmd *cobra.Command) *slog.Logger {
-	level := slog.LevelInfo
+	return a.loggerAt(cmd, a.baseLevel())
+}
+
+// baseLevel is the level the daemon logs at: info, or debug under --verbose.
+func (a *app) baseLevel() slog.Level {
 	if a.verbose {
-		level = slog.LevelDebug
+		return slog.LevelDebug
 	}
 
-	if a.env.Getenv("JOURNAL_STREAM") != "" {
-		return slog.New(newJournalHandler(cmd.ErrOrStderr(), level))
+	return slog.LevelInfo
+}
+
+// loggerAt is logger with a level that may change while it runs.
+func (a *app) loggerAt(cmd *cobra.Command, level slog.Leveler) *slog.Logger {
+	out := cmd.ErrOrStderr()
+	if underJournal(a.env.Getenv("JOURNAL_STREAM"), out) {
+		return slog.New(newJournalHandler(out, level))
 	}
 
-	return slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level}))
+	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: level}))
 }
 
 // withStore opens the configuration and state database for the duration of body.
@@ -323,10 +333,11 @@ func (a *app) watch(
 	once bool,
 ) error {
 	logs := live.NewRing(logRingSize)
-	logger := slog.New(logs.Handler(a.logger(cmd).Handler()))
+	debug := live.NewDebugSwitch(a.baseLevel(), debugSpan)
+	logger := slog.New(logs.Handler(a.loggerAt(cmd, debug.Level()).Handler()))
 	status := live.NewStatus(time.Now())
 
-	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs)
+	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs, debug)
 	if err != nil {
 		return err
 	}

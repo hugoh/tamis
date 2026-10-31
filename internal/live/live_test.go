@@ -195,3 +195,102 @@ func TestRingIsSafeForConcurrentUse(t *testing.T) {
 	wg.Wait()
 	require.Len(t, ring.Entries(), 10)
 }
+
+func TestDebugSwitch(t *testing.T) {
+	t.Parallel()
+
+	debug := live.NewDebugSwitch(slog.LevelInfo, time.Hour)
+	require.False(t, debug.Locked())
+	require.Equal(t, slog.LevelInfo, debug.Level().Level())
+
+	on, _ := debug.State()
+	require.False(t, on)
+
+	debug.On()
+
+	on, until := debug.State()
+	require.True(t, on)
+	require.WithinDuration(t, time.Now().Add(time.Hour), until, time.Minute)
+	require.Equal(t, slog.LevelDebug, debug.Level().Level())
+
+	debug.Off()
+
+	on, _ = debug.State()
+	require.False(t, on)
+	require.Equal(t, slog.LevelInfo, debug.Level().Level())
+}
+
+func TestDebugSwitchTurnsItselfOff(t *testing.T) {
+	t.Parallel()
+
+	debug := live.NewDebugSwitch(slog.LevelInfo, 30*time.Millisecond)
+	debug.On()
+
+	require.Eventually(t, func() bool {
+		on, _ := debug.State()
+
+		return !on && debug.Level().Level() == slog.LevelInfo
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+func TestTurningDebugOnAgainRestartsTheTimer(t *testing.T) {
+	t.Parallel()
+
+	debug := live.NewDebugSwitch(slog.LevelInfo, 200*time.Millisecond)
+	debug.On()
+	time.Sleep(120 * time.Millisecond)
+	debug.On()
+	time.Sleep(120 * time.Millisecond)
+
+	on, _ := debug.State()
+	require.True(t, on, "the first timer would have fired by now")
+}
+
+func TestDebugSwitchWhenAlreadyVerbose(t *testing.T) {
+	t.Parallel()
+
+	debug := live.NewDebugSwitch(slog.LevelDebug, time.Hour)
+	require.True(t, debug.Locked(), "--verbose already logs debug")
+
+	debug.On()
+	debug.Off()
+	require.Equal(
+		t,
+		slog.LevelDebug,
+		debug.Level().Level(),
+		"the switch can't lower a verbose level",
+	)
+}
+
+func TestNilDebugSwitchIsHarmless(t *testing.T) {
+	t.Parallel()
+
+	var debug *live.DebugSwitch
+
+	debug.On()
+	debug.Off()
+
+	on, _ := debug.State()
+	require.False(t, on)
+	require.False(t, debug.Locked())
+}
+
+func TestDebugSwitchIsSafeForConcurrentUse(t *testing.T) {
+	t.Parallel()
+
+	debug := live.NewDebugSwitch(slog.LevelInfo, time.Millisecond)
+
+	var group sync.WaitGroup
+
+	for range 8 {
+		group.Go(func() {
+			for range 50 {
+				debug.On()
+				debug.State()
+				debug.Off()
+			}
+		})
+	}
+
+	group.Wait()
+}

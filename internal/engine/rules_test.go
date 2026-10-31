@@ -1,6 +1,8 @@
 package engine_test
 
 import (
+	"bytes"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -170,4 +172,47 @@ func TestRulesFileIntoAnExistingFolder(t *testing.T) {
 
 	require.Len(t, e.messages(t, listsFolder), 1)
 	require.Empty(t, e.messages(t, inbox))
+}
+
+func (e *env) startupWarnings(t *testing.T, script string) string {
+	t.Helper()
+
+	parsed, err := rules.Parse(strings.NewReader(script))
+	require.NoError(t, err)
+
+	var logs bytes.Buffer
+
+	logged := engine.New(e.client, e.db, e.cfg, slog.New(slog.NewTextHandler(&logs, nil)))
+	logged.SetRules(parsed)
+	require.NoError(t, logged.WarnMissingRuleFolders(t.Context()))
+
+	return logs.String()
+}
+
+func TestWarnMissingRuleFolders(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	require.NoError(t, e.client.Ensure("code"))
+	require.NoError(t, e.client.Ensure("Lists/Go"))
+
+	logs := e.startupWarnings(t, `require ["fileinto"]; fileinto "Lists/Gp"; fileinto "code";`)
+	require.Contains(t, logs, "level=WARN")
+	require.Contains(t, logs, "target=Lists/Gp")
+	require.Contains(t, logs, "nearest=Lists/Go")
+	require.NotContains(t, logs, "target=code")
+}
+
+func TestNoWarningWhenFoldersExistOrAreCreated(t *testing.T) {
+	t.Parallel()
+
+	e := setup(t, config.ModeLive)
+	require.Contains(t, e.startupWarnings(t, listsRule), listsFolder)
+
+	require.NoError(t, e.client.Ensure(listsFolder))
+	require.Empty(t, e.startupWarnings(t, listsRule))
+
+	other := setup(t, config.ModeLive)
+	other.cfg.Rules.CreateFolders = true
+	require.Empty(t, other.startupWarnings(t, listsRule), "missing folders will be created")
 }

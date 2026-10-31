@@ -132,3 +132,20 @@ func TestRulesCheckFoldersOfAFile(t *testing.T) {
 	require.Equal(t, 1, got.code)
 	require.Contains(t, got.stdout, `no such folder "Lists/Go"`)
 }
+
+func TestRunWarnsAboutMissingRuleFolders(t *testing.T) {
+	t.Parallel()
+
+	a := withRules(t, "require [\"fileinto\"];\nfileinto \"Nope\";\n")
+
+	got := a.run(t, runCmd, onceFlag)
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stderr, "level=WARN")
+	require.Contains(t, got.stderr, "target=Nope")
+
+	require.NoError(t, a.client.Ensure("Nope"))
+
+	got = a.run(t, runCmd, onceFlag)
+	require.Zero(t, got.code, got.stderr)
+	require.NotContains(t, got.stderr, "target=Nope")
+}

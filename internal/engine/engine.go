@@ -69,6 +69,7 @@ type Mailbox interface {
 // MailboxFolders tells which folders are there.
 type MailboxFolders interface {
 	Exists(mailbox string) (bool, error)
+	Folders() ([]string, error)
 }
 
 // MailboxReader finds and reads messages.

@@ -340,6 +340,8 @@ func (a *app) watch(
 		}
 	}()
 
+	checkRules := cfg.Rules.Script != ""
+
 	for {
 		if err := pruner.prune(
 			ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
@@ -349,7 +351,7 @@ func (a *app) watch(
 
 		status.Wait(live.Running)
 
-		err := a.pass(ctx, cfg, database, logger, status)
+		err := a.pass(ctx, cfg, database, logger, status, &checkRules)
 		if once || errors.Is(err, mail.ErrLogin) {
 			return err
 		}
@@ -397,6 +399,7 @@ func (a *app) pass(
 	database *store.Store,
 	logger *slog.Logger,
 	status *live.Status,
+	checkRules *bool,
 ) error {
 	return a.withEngine(
 		ctx,
@@ -405,6 +408,14 @@ func (a *app) pass(
 		logger,
 		passTimeout,
 		func(ctx context.Context, eng *engine.Engine) error {
+			if *checkRules {
+				*checkRules = false
+
+				if err := eng.WarnMissingRuleFolders(ctx); err != nil {
+					logger.WarnContext(ctx, "could not check the rule folders", "err", err)
+				}
+			}
+
 			summary, err := eng.RunOnce(ctx)
 			if err != nil {
 				return err //nolint:wrapcheck // engine errors carry their context

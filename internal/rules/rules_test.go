@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const codeFolder = "code"
+
 const script = `require ["fileinto", "body"];
 if header :contains "list-id" "golang-nuts" { fileinto "Lists/Go"; stop; }
 if address :is "from" "billing@shop.example" { fileinto "Receipts"; }
@@ -145,4 +147,19 @@ fileinto "${dir}/x";`,
 			require.Equal(t, tt.want, parsed.Targets())
 		})
 	}
+}
+
+func TestMissing(t *testing.T) {
+	t.Parallel()
+
+	got := rules.Missing(
+		[]string{"INBOX", "Elsewhere", "jobsearh"},
+		[]string{"INBOX", "jobsearch", codeFolder},
+	)
+
+	require.Equal(t, []rules.Absent{
+		{Folder: "Elsewhere"},
+		{Folder: "jobsearh", Nearest: "jobsearch"},
+	}, got)
+	require.Empty(t, rules.Missing([]string{codeFolder}, []string{codeFolder}))
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/rules"
 )
 
 // ruleTarget is the folder the rules file a good message into, or "" to leave
@@ -100,4 +101,31 @@ func (e *Engine) fileByRule(
 	}
 
 	return e.record(ctx, folder, message, verdict, action, true)
+}
+
+// WarnMissingRuleFolders logs each folder the rules file into that the
+// mailbox lacks, so a typo shows when tamis starts and not only when a
+// message first matches. It says nothing when missing folders are created.
+func (e *Engine) WarnMissingRuleFolders(ctx context.Context) error {
+	if e.rules == nil || e.cfg.Rules.CreateFolders {
+		return nil
+	}
+
+	existing, err := e.mail.Folders()
+	if err != nil {
+		return fmt.Errorf("check rule folders: %w", err)
+	}
+
+	for _, absent := range rules.Missing(e.rules.Targets(), existing) {
+		e.log.WarnContext(
+			ctx,
+			"rules file into a folder that doesn't exist; matching mail stays put",
+			"target",
+			absent.Folder,
+			"nearest",
+			absent.Nearest,
+		)
+	}
+
+	return nil
 }

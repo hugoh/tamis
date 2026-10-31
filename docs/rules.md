@@ -76,7 +76,10 @@ in place, so one odd message can't stall the pass.
 
 A rule whose folder doesn't exist is skipped in both modes, with a warning in
 the log: the message stays where it is and is journalled as an ordinary
-decision. This is the default so that a typo (`jobsearh`) never quietly makes
+decision. `tamis run` also checks every `fileinto` folder once, on its first
+pass that connects, and logs a warning for each missing one (with the nearest
+existing name for a typo), so a mistake shows at startup and not when a
+message first matches. This is the default so that a typo (`jobsearh`) never quietly makes
 a new folder; create the folders you name, or set `create_folders = true`.
 
 The verdict stays `good`, so spam-correction logic (which only trusts `move:`

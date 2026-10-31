@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/hugoh/tamis/internal/config"
@@ -19,12 +17,7 @@ var (
 	errMissingFolders = errors.New("rules file into folders that don't exist")
 )
 
-const (
-	folderCheckTimeout = time.Minute
-	// maxTypos is how far a folder name may be from a target and still be
-	// offered as a correction.
-	maxTypos = 2
-)
+const folderCheckTimeout = time.Minute
 
 func (a *app) rulesCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -130,70 +123,28 @@ func (a *app) checkFolders(cmd *cobra.Command, targets []string) error {
 	}
 
 	out := cmd.OutOrStdout()
-	missing := 0
 
-	for _, target := range targets {
-		if slices.Contains(existing, target) {
-			continue
-		}
-
-		missing++
-
-		if near := nearest(target, existing); near != "" {
-			_, _ = fmt.Fprintf(out, "no such folder %q (did you mean %q?)\n", target, near)
+	absent := rules.Missing(targets, existing)
+	for _, folder := range absent {
+		if folder.Nearest != "" {
+			_, _ = fmt.Fprintf(
+				out,
+				"no such folder %q (did you mean %q?)\n",
+				folder.Folder,
+				folder.Nearest,
+			)
 		} else {
-			_, _ = fmt.Fprintf(out, "no such folder %q\n", target)
+			_, _ = fmt.Fprintf(out, "no such folder %q\n", folder.Folder)
 		}
 	}
 
-	if missing > 0 {
-		return fmt.Errorf("%w: %d folder(s)", errMissingFolders, missing)
+	if len(absent) > 0 {
+		return fmt.Errorf("%w: %d folder(s)", errMissingFolders, len(absent))
 	}
 
 	_, _ = fmt.Fprintf(out, "all %d folders exist\n", len(targets))
 
 	return nil
-}
-
-// nearest is the existing name within a couple of typos of target, or "".
-func nearest(target string, existing []string) string {
-	best, bestDistance := "", maxTypos+1
-
-	for _, name := range existing {
-		if distance := editDistance(
-			strings.ToLower(target),
-			strings.ToLower(name),
-		); distance < bestDistance {
-			best, bestDistance = name, distance
-		}
-	}
-
-	return best
-}
-
-func editDistance(left, right string) int {
-	previous := make([]int, len(right)+1)
-	for col := range previous {
-		previous[col] = col
-	}
-
-	for row := 1; row <= len(left); row++ {
-		current := make([]int, len(right)+1)
-		current[0] = row
-
-		for col := 1; col <= len(right); col++ {
-			cost := 1
-			if left[row-1] == right[col-1] {
-				cost = 0
-			}
-
-			current[col] = min(previous[col]+1, current[col-1]+1, previous[col-1]+cost)
-		}
-
-		previous = current
-	}
-
-	return previous[len(right)]
 }
 
 func (a *app) rulesTestCommand() *cobra.Command {

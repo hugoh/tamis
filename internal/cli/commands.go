@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -166,7 +168,8 @@ func waitForNextPass(
 	cfg *config.Config,
 	watcher *mail.Watcher,
 	status *live.Status,
-) {
+	hup <-chan os.Signal,
+) bool {
 	if watcher.Idling() > 0 {
 		status.Wait(live.Idle)
 	} else {
@@ -178,7 +181,11 @@ func waitForNextPass(
 		pause(ctx, newMailSettle)
 	case <-time.After(cfg.Policy.PollInterval.Duration):
 	case <-ctx.Done():
+	case <-hup:
+		return true
 	}
+
+	return false
 }
 
 // startWatcher IDLEs on the watched folders. It watches nothing when the
@@ -358,6 +365,9 @@ func (a *app) watch(
 
 	checkRules := cfg.Rules.Script != ""
 
+	hup, stopHup := reloadSignal()
+	defer stopHup()
+
 	for {
 		if err := pruner.prune(
 			ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
@@ -376,8 +386,46 @@ func (a *app) watch(
 			return nil
 		}
 
-		watcher = a.rest(ctx, cfg, logger, status, watcher, err)
+		var reload bool
+
+		watcher, reload = a.rest(ctx, cfg, logger, status, watcher, err, hup)
+		if reload {
+			cfg, watcher = a.reload(ctx, cfg, watcher, logger)
+			checkRules = cfg.Rules.Script != ""
+		}
 	}
+}
+
+func reloadSignal() (<-chan os.Signal, func()) {
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+
+	return hup, func() { signal.Stop(hup) }
+}
+
+// reload swaps in the configuration file's current contents, or keeps the old
+// one when it no longer loads. Rules are read afresh on every pass. The state
+// database and the web interface keep their startup settings.
+func (a *app) reload(
+	ctx context.Context,
+	cfg *config.Config,
+	watcher *mail.Watcher,
+	logger *slog.Logger,
+) (*config.Config, *mail.Watcher) {
+	fresh, err := config.Load(a.env.Getenv, a.configPath)
+	if err != nil {
+		logger.ErrorContext(ctx, "SIGHUP: keeping the current configuration", "err", err)
+
+		return cfg, watcher
+	}
+
+	logger.InfoContext(ctx, "SIGHUP: configuration and rules reloaded")
+
+	if watcher != nil {
+		watcher.Close()
+	}
+
+	return fresh, nil
 }
 
 // rest waits for the next pass, starting the watcher after the first good
@@ -390,23 +438,28 @@ func (a *app) rest(
 	status *live.Status,
 	watcher *mail.Watcher,
 	passErr error,
-) *mail.Watcher {
+	hup <-chan os.Signal,
+) (*mail.Watcher, bool) {
 	if passErr != nil {
 		logger.ErrorContext(ctx, "pass failed", "err", passErr)
 		status.Failed(time.Now(), passErr)
 		status.Wait(live.Polling)
-		pause(ctx, cfg.Policy.PollInterval.Duration)
 
-		return watcher
+		select {
+		case <-ctx.Done():
+		case <-time.After(cfg.Policy.PollInterval.Duration):
+		case <-hup:
+			return watcher, true
+		}
+
+		return watcher, false
 	}
 
 	if watcher == nil {
 		watcher = a.startWatcher(ctx, cfg, logger)
 	}
 
-	waitForNextPass(ctx, cfg, watcher, status)
-
-	return watcher
+	return watcher, waitForNextPass(ctx, cfg, watcher, status, hup)
 }
 
 func (a *app) pass(

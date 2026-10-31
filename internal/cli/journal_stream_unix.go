@@ -21,7 +21,7 @@ func fileStream(file *os.File) (string, bool) {
 		return "", false
 	}
 
-	dev := uint64(stat.Dev) //nolint:unconvert // the type differs by OS
+	dev := uint64(stat.Dev) //nolint:unconvert,gosec,nolintlint // differs by OS; never negative
 	ino := uint64(stat.Ino) //nolint:unconvert // the type differs by OS
 
 	return fmt.Sprintf("%d:%d", dev, ino), true

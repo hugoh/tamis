@@ -24,6 +24,8 @@ const defaultQueryLimit = 100
 // DecisionQuery picks and orders journal entries. Its zero value is the
 // newest decisions first.
 type DecisionQuery struct {
+	// ID keeps one decision; zero keeps all.
+	ID int64
 	// Verdict keeps one verdict; empty keeps all.
 	Verdict string
 	// Search keeps decisions whose sender, subject, reason or action contain
@@ -70,6 +72,11 @@ func (q DecisionQuery) where() (string, []any) {
 		conditions []string
 		args       []any
 	)
+
+	if q.ID > 0 {
+		conditions = append(conditions, "id = ?")
+		args = append(args, q.ID)
+	}
 
 	if q.Verdict != "" {
 		conditions = append(conditions, "verdict = ?")

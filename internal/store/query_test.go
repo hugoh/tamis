@@ -555,3 +555,32 @@ func TestRemovingAddressesFailsOnAClosedStore(t *testing.T) {
 	_, err = db.RemoveAddressesMatching(t.Context(), "x")
 	require.Error(t, err)
 }
+
+func TestQueryDecisionsByID(t *testing.T) {
+	t.Parallel()
+
+	db := journal(t)
+
+	all, _, err := db.QueryDecisions(t.Context(), store.DecisionQuery{})
+	require.NoError(t, err)
+
+	target := all[2]
+
+	got, total, err := db.QueryDecisions(t.Context(), store.DecisionQuery{ID: target.ID})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, []string{target.Subject}, subjects(got))
+
+	none, total, err := db.QueryDecisions(t.Context(), store.DecisionQuery{ID: 9999})
+	require.NoError(t, err)
+	require.Zero(t, total)
+	require.Empty(t, none)
+
+	mismatch, total, err := db.QueryDecisions(
+		t.Context(),
+		store.DecisionQuery{ID: target.ID, Verdict: "nonsense"},
+	)
+	require.NoError(t, err)
+	require.Zero(t, total, "the other filters still apply")
+	require.Empty(t, mismatch)
+}

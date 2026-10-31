@@ -15,7 +15,7 @@ has_pages: false
 has_prebuild: true
 has_test_int: false
 prebuild_cmd:
-- mise run vendor-web
+- '"$MISE_PROJECT_ROOT/mise-tasks/vendor-web"'
 prebuild_outputs:
 - internal/web/static/vendor/*
 project_name: tamis

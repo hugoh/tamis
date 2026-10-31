@@ -1,0 +1,95 @@
+# DO NOT EDIT — managed by hugoh/go-tools via copier.
+version: 2
+
+before:
+  hooks:
+    - mise run prebuild
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+      - arm
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+      - goos: freebsd
+        goarch: arm
+      - goos: freebsd
+        goarch: "386"
+    flags:
+      - -trimpath
+      - -mod=readonly
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+nfpms:
+  - maintainer: "Hugo Haas <hugoh@hugoh.net>"
+    description: "A second-opinion spam filter and mail sorter for remote mailboxes"
+    homepage: "https://github.com/hugoh/tamis"
+    license: "MIT"
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+
+brews:
+  # DEPRECATED but intentional: homebrew_casks requires Gatekeeper-signed
+  # binaries or macOS flags the cask as malware. brews (Formula) has no
+  # such requirement. See https://goreleaser.com/deprecations/#brews
+  - name: tamis
+    repository:
+      owner: hugoh
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      # main requires a PR (branch protection) - go-release.yml merges it
+      # right after this step.
+      pull_request:
+        enabled: true
+    directory: Formula
+    description: "A second-opinion spam filter and mail sorter for remote mailboxes"
+    homepage: "https://github.com/hugoh/tamis"
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: "⚠️ Breaking Changes"
+      regexp: '^.*?(\w+)(\(.+\))??!:.+$'
+      order: 0
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Documentation
+      regexp: '^.*?docs?(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Dependency Updates
+      regexp: '^.*?(feat|fix|chore)\(deps\).*:.+$'
+      order: 900
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - "^chore\\(release\\): prepare for"
+      - "^chore\\(deps"
+      - "Merge pull request"
+      - "Merge branch"
+
+checksum:
+
+snapshot:

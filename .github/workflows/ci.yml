@@ -40,7 +40,7 @@ jobs:
       contents: write
     with:
       bump_type: ${{ inputs.bump_type || 'auto' }}
-      has_goreleaser: false
+      has_goreleaser: true
     secrets:
       gh_token: ${{ secrets.GITHUB_TOKEN }}
       tap_github_token: ${{ secrets.TAP_GITHUB_TOKEN }}

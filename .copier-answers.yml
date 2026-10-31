@@ -7,18 +7,25 @@ golangci_extra_exclusions: []
 golangci_settings: ''
 golangci_test_exclude_linters:
 - funlen
+goreleaser_before_hooks:
+- mise run prebuild
+goreleaser_version_pkg: main
 has_executable: true
 has_fuzz: false
 has_gen: false
-has_goreleaser: false
+has_goreleaser: true
+has_homebrew_cask: true
 has_pages: false
 has_prebuild: true
 has_test_int: false
+nfpm_extra_contents: []
+package_format: nfpm
 prebuild_cmd: []
 prebuild_depends:
 - vendor-web
 prebuild_outputs:
 - internal/web/static/vendor/*
+project_description: A second-opinion spam filter and mail sorter for remote mailboxes
 project_name: tamis
 testcoverage_excludes:
 - internal/imaptest/

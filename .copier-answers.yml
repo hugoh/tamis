@@ -1,5 +1,5 @@
 # Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
-_commit: v1.26.34
+_commit: v1.27.0
 _src_path: https://github.com/hugoh/go-tools.git
 coverage_total: 90
 golangci_extra_disable: []
@@ -12,7 +12,12 @@ has_fuzz: false
 has_gen: false
 has_goreleaser: false
 has_pages: false
+has_prebuild: true
 has_test_int: false
+prebuild_cmd:
+- mise run vendor-web
+prebuild_outputs:
+- internal/web/static/vendor/*
 project_name: tamis
 testcoverage_excludes:
 - internal/imaptest/

@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	sameMessage       = "<m@example>"
 	originalSubject   = "Original message"
 	correctionSubject = "Correction of it"
 )
@@ -103,4 +104,71 @@ func TestSortingAnEntryKeepsIt(t *testing.T) {
 
 	body := corrected(t).do(http.MethodGet, "/?id=2", nil).Body.String()
 	require.Regexp(t, `hx-get="[^"]*id=2[^"]*sort=score|hx-get="[^"]*sort=score[^"]*id=2`, body)
+}
+
+func TestACorrectionLinksBackToWhatItCorrected(t *testing.T) {
+	t.Parallel()
+
+	browser := corrected(t)
+
+	body := browser.do(http.MethodGet, "/", nil).Body.String()
+	require.Regexp(t, `corrects <a [^>]*href="/\?id=1"[^>]*>#1</a>`, body)
+	require.Regexp(
+		t,
+		`corrected by <a [^>]*href="/\?id=2"[^>]*>#2</a>`,
+		body,
+		"and the original still points forward",
+	)
+
+	single := browser.do(http.MethodGet, "/?id=2", nil).Body.String()
+	require.Regexp(t, `corrects <a [^>]*href="/\?id=1"[^>]*>#1</a>`, single)
+}
+
+func TestAnUndoSaysItUndoes(t *testing.T) {
+	t.Parallel()
+
+	browser := newHarness(t)
+	browser.record(store.Decision{
+		MessageID: sameMessage, Subject: originalSubject,
+		Verdict: engine.VerdictSpam, Reason: bayes, Action: moveToJunk, Applied: true,
+	})
+	browser.record(store.Decision{
+		MessageID: sameMessage, Subject: "undo entry",
+		Verdict: engine.VerdictGood, Reason: engine.ReasonUndo, Action: "move:INBOX", Applied: true,
+	})
+	browser.enroll(browser.token())
+
+	body := browser.do(http.MethodGet, "/", nil).Body.String()
+	require.Regexp(t, `undoes <a [^>]*href="/\?id=1"[^>]*>#1</a>`, body)
+	require.NotRegexp(t, `corrects <a`, body)
+}
+
+func TestSeveralCorrectedEntriesAreAllLinked(t *testing.T) {
+	t.Parallel()
+
+	browser := newHarness(t)
+
+	for range 2 {
+		browser.record(store.Decision{
+			MessageID: sameMessage, Subject: originalSubject,
+			Verdict: engine.VerdictSpam, Reason: bayes, Action: moveToJunk, Applied: true,
+		})
+	}
+
+	browser.record(store.Decision{
+		MessageID: sameMessage,
+		Subject:   correctionSubject,
+		Verdict:   engine.VerdictGood,
+		Reason:    engine.ReasonCorrection,
+		Action:    "train:good",
+		Applied:   true,
+	})
+	browser.enroll(browser.token())
+
+	body := browser.do(http.MethodGet, "/", nil).Body.String()
+	require.Regexp(
+		t,
+		`corrects <a [^>]*href="/\?id=1"[^>]*>#1</a>, <a [^>]*href="/\?id=2"[^>]*>#2</a>`,
+		body,
+	)
 }

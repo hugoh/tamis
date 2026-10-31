@@ -37,6 +37,8 @@ type decisionRow struct {
 	// later entry that corrected it, or 0.
 	Undone      bool
 	CorrectedBy int64
+	// Corrects are the earlier entries this one corrected or undid.
+	Corrects []int64
 	// Note is the outcome of an action just taken on this row.
 	Note   string
 	Failed bool
@@ -217,6 +219,7 @@ func decisionRowFor(decision store.Decision) decisionRow {
 
 		Undone:      decision.Undone,
 		CorrectedBy: decision.CorrectedBy,
+		Corrects:    decision.Corrects,
 	}
 }
 

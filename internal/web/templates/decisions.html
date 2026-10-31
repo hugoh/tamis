@@ -4,7 +4,7 @@
 <td><span class="badge badge-sm {{if eq .Verdict "spam"}}badge-error{{else if eq .Verdict "good"}}badge-success{{else}}badge-warning{{end}}">{{.Verdict}}</span></td>
 <td>{{.Reason}}</td>
 <td class="tabular-nums">{{.Score}}</td>
-<td>{{.Action}}{{if .Undone}} (undone){{else if .CorrectedBy}} (corrected by <a class="link link-hover" href="/?id={{.CorrectedBy}}">#{{.CorrectedBy}}</a>){{end}}{{if .Note}}<div class="text-xs {{if .Failed}}text-error{{else}}text-success{{end}}">{{.Note}}</div>{{end}}</td>
+<td>{{.Action}}{{if .Undone}} (undone){{else if .CorrectedBy}} (corrected by <a class="link link-hover" href="/?id={{.CorrectedBy}}">#{{.CorrectedBy}}</a>){{end}}{{if .Corrects}} ({{if eq .Reason "undo"}}undoes{{else}}corrects{{end}} {{range $i, $id := .Corrects}}{{if $i}}, {{end}}<a class="link link-hover" href="/?id={{$id}}">#{{$id}}</a>{{end}}){{end}}{{if .Note}}<div class="text-xs {{if .Failed}}text-error{{else}}text-success{{end}}">{{.Note}}</div>{{end}}</td>
 <td class="max-w-48 truncate" title="{{.From}}">{{.From}}</td>
 <td class="max-w-72 truncate" title="{{.Subject}}">{{.Subject}}</td>
 <td class="whitespace-nowrap">

@@ -33,6 +33,10 @@ type decisionRow struct {
 	When, Verdict, Reason, Score string
 	Action, From, Subject        string
 	CanUndo, CanLearn            bool
+	// Undone is set once the action was reversed; CorrectedBy is the ID of the
+	// later entry that corrected it, or 0.
+	Undone      bool
+	CorrectedBy int64
 	// Note is the outcome of an action just taken on this row.
 	Note   string
 	Failed bool
@@ -52,6 +56,8 @@ type decisionsBody struct {
 	Verdicts []verdictChoice
 	Columns  []column
 	MoreHref string
+	// OnlyID is the one decision being shown, or 0.
+	OnlyID int64
 }
 
 type checkRow struct {
@@ -143,8 +149,15 @@ func (s *Server) decisions(resp http.ResponseWriter, req *http.Request) {
 
 	state.Filters["verdict"] = verdict
 
+	onlyID, err := strconv.ParseInt(query.Get("id"), 10, 64)
+	if err != nil || onlyID < 1 {
+		onlyID = 0
+	} else {
+		state.Filters["id"] = strconv.FormatInt(onlyID, 10)
+	}
+
 	found, total, err := s.db.QueryDecisions(req.Context(), store.DecisionQuery{
-		Verdict: verdict, Search: state.Search, Sort: state.Sort, Asc: state.Asc,
+		ID: onlyID, Verdict: verdict, Search: state.Search, Sort: state.Sort, Asc: state.Asc,
 		Offset: state.Offset, Limit: pageSize,
 	})
 	if err != nil {
@@ -161,11 +174,17 @@ func (s *Server) decisions(resp http.ResponseWriter, req *http.Request) {
 	s.renderTable(resp, req, pageDecisions, state, decisionsBody{
 		tableState: state,
 		Rows:       rows,
-		Count:      countLabel(total, "decision", "decisions", verdict != "" || state.Search != ""),
-		Verdict:    verdict,
-		Verdicts:   verdictChoices(verdict),
-		Columns:    state.columns(decisionSorts()),
-		MoreHref:   state.moreHref(len(rows), total),
+		Count: countLabel(
+			total,
+			"decision",
+			"decisions",
+			verdict != "" || state.Search != "" || onlyID > 0,
+		),
+		Verdict:  verdict,
+		Verdicts: verdictChoices(verdict),
+		Columns:  state.columns(decisionSorts()),
+		MoreHref: state.moreHref(len(rows), total),
+		OnlyID:   onlyID,
 	})
 }
 
@@ -195,26 +214,20 @@ func decisionRowFor(decision store.Decision) decisionRow {
 		Subject:  decision.Subject,
 		CanUndo:  undoable(decision),
 		CanLearn: learnable(decision),
+
+		Undone:      decision.Undone,
+		CorrectedBy: decision.CorrectedBy,
 	}
 }
 
-// actionLabel says what was done; what live mode would do is prefixed, and a
-// later undo or correction is appended.
+// actionLabel says what was done; what live mode would do is prefixed. The
+// page adds a later undo or correction after it.
 func actionLabel(decision store.Decision) string {
-	label := decision.Action
-
 	if decision.Action != "none" && !decision.Applied {
-		label = "would " + label
+		return "would " + decision.Action
 	}
 
-	switch {
-	case decision.Undone:
-		label += " (undone)"
-	case decision.CorrectedBy > 0:
-		label += " (corrected by " + strconv.FormatInt(decision.CorrectedBy, 10) + ")"
-	}
-
-	return label
+	return decision.Action
 }
 
 type daemonView struct {

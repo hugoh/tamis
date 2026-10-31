@@ -4,7 +4,7 @@
 <td><span class="badge badge-sm {{if eq .Verdict "spam"}}badge-error{{else if eq .Verdict "good"}}badge-success{{else}}badge-warning{{end}}">{{.Verdict}}</span></td>
 <td>{{.Reason}}</td>
 <td class="tabular-nums">{{.Score}}</td>
-<td>{{.Action}}{{if .Note}}<div class="text-xs {{if .Failed}}text-error{{else}}text-success{{end}}">{{.Note}}</div>{{end}}</td>
+<td>{{.Action}}{{if .Undone}} (undone){{else if .CorrectedBy}} (corrected by <a class="link link-hover" href="/?id={{.CorrectedBy}}">#{{.CorrectedBy}}</a>){{end}}{{if .Note}}<div class="text-xs {{if .Failed}}text-error{{else}}text-success{{end}}">{{.Note}}</div>{{end}}</td>
 <td class="max-w-48 truncate" title="{{.From}}">{{.From}}</td>
 <td class="max-w-72 truncate" title="{{.Subject}}">{{.Subject}}</td>
 <td class="whitespace-nowrap">
@@ -20,6 +20,7 @@
 {{define "results"}}<div id="results">
 <input type="hidden" form="toolbar" name="sort" value="{{.Sort}}">
 <input type="hidden" form="toolbar" name="dir" value="{{.Dir}}">
+{{if .OnlyID}}<div role="status" class="alert alert-info alert-soft my-2"><span>Showing decision #{{.OnlyID}} only.</span><a class="link" href="/">Show all</a></div>{{end}}
 <p class="text-sm opacity-70 my-2">{{.Count}}</p>
 {{if .Rows}}<div class="overflow-x-auto">
 <table class="table table-xs table-zebra table-pin-rows">
@@ -28,7 +29,7 @@
 {{template "rows" .}}
 </tbody>
 </table>
-</div>{{else}}<p class="py-8 text-center opacity-70">No decisions {{if or .Search .Verdict}}match{{else}}yet{{end}}.</p>{{end}}
+</div>{{else}}<p class="py-8 text-center opacity-70">No decisions {{if or .Search .Verdict .OnlyID}}match{{else}}yet{{end}}.</p>{{end}}
 </div>{{end}}
 
 {{define "content"}}

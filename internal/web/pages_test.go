@@ -20,6 +20,7 @@ import (
 )
 
 const (
+	moveToJunk    = "move:Junk"
 	healthPath    = "/health"
 	escapedScript = "&lt;script&gt;"
 	none          = "none"
@@ -52,12 +53,12 @@ func signedIn(t *testing.T) *harness {
 		Score:   0.97,
 		Verdict: engine.VerdictSpam,
 		Reason:  "bayes",
-		Action:  "move:Junk",
+		Action:  moveToJunk,
 		Applied: true,
 	})
 	browser.record(store.Decision{
 		Mailbox: inbox, From: "friend@example.com", Subject: goodSubject,
-		Score: 0.05, Verdict: engine.VerdictGood, Reason: bayes, Action: "move:Junk",
+		Score: 0.05, Verdict: engine.VerdictGood, Reason: bayes, Action: moveToJunk,
 	})
 	browser.record(store.Decision{
 		Mailbox: inbox, From: "evil@example.net", Subject: "<script>alert(1)</script>",

@@ -30,6 +30,8 @@ const (
 	ModeLive Mode = "live"
 )
 
+const schemeHTTPS = "https"
+
 var errInvalid = errors.New("invalid config")
 
 // ErrNoPasswordCommand means account.password_command isn't set.
@@ -55,6 +57,19 @@ type Web struct {
 	// "https://tamis.example.net". Its host is the passkeys' relying party ID,
 	// so changing it invalidates enrolled passkeys.
 	Origin string `toml:"origin"`
+	// TLSCert and TLSKey are PEM files for serving HTTPS directly; "~/"
+	// expands to the home directory. Both or neither.
+	TLSCert string `toml:"tls_cert"`
+	TLSKey  string `toml:"tls_key"`
+	// SelfSigned serves HTTPS with a certificate tamis makes for the origin's
+	// host and keeps next to the state database. Browsers only accept passkeys
+	// from a certificate they trust, so install it on each device.
+	SelfSigned bool `toml:"self_signed"`
+}
+
+// TLS reports whether the server speaks HTTPS itself.
+func (w Web) TLS() bool {
+	return w.SelfSigned || w.TLSCert != ""
 }
 
 // RPID is the WebAuthn relying party ID: the host of Origin.
@@ -87,11 +102,41 @@ func (w Web) problems() []string {
 		return append(problems, "web.listen must be host:port, e.g. 127.0.0.1:8484")
 	}
 
-	if originOK && origin.Scheme != "https" && !isLoopback(host) {
+	if originOK && origin.Scheme != schemeHTTPS && !isLoopback(host) {
 		problems = append(
 			problems,
-			"web.listen is not loopback, so web.origin must be https (put a TLS proxy in front)",
+			"web.listen is not loopback, so web.origin must be https (put a TLS proxy in front or set self_signed)",
 		)
+	}
+
+	return append(problems, w.tlsProblems(origin, originOK)...)
+}
+
+func expandWebPaths(web *Web) error {
+	var err error
+
+	if web.TLSCert, err = expandHome(web.TLSCert); err != nil {
+		return err
+	}
+
+	web.TLSKey, err = expandHome(web.TLSKey)
+
+	return err
+}
+
+func (w Web) tlsProblems(origin *url.URL, originOK bool) []string {
+	var problems []string
+
+	if (w.TLSCert == "") != (w.TLSKey == "") {
+		problems = append(problems, "web.tls_cert and web.tls_key go together: set both or neither")
+	}
+
+	if w.SelfSigned && w.TLSCert != "" {
+		problems = append(problems, "web.self_signed and web.tls_cert are alternatives: set one")
+	}
+
+	if w.TLS() && originOK && origin.Scheme != schemeHTTPS {
+		problems = append(problems, "web.origin must be https when tamis serves TLS")
 	}
 
 	return problems
@@ -103,7 +148,7 @@ func (w Web) origin() (*url.URL, bool) {
 		return nil, false
 	}
 
-	return origin, origin.Scheme == "http" || origin.Scheme == "https"
+	return origin, origin.Scheme == "http" || origin.Scheme == schemeHTTPS
 }
 
 func isLoopback(host string) bool {
@@ -290,6 +335,10 @@ func Load(getenv func(string) string, path string) (*Config, error) {
 
 	cfg.State, err = expandHome(cfg.State)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := expandWebPaths(&cfg.Web); err != nil {
 		return nil, err
 	}
 

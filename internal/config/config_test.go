@@ -248,6 +248,82 @@ func TestWebInvalid(t *testing.T) {
 	}
 }
 
+func TestWebTLS(t *testing.T) {
+	t.Parallel()
+
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name, web string
+		wantTLS   bool
+		wantCert  string
+	}{
+		{"off", "enabled = true\norigin = \"http://localhost:8484\"", false, ""},
+		{
+			"self-signed",
+			"enabled = true\nself_signed = true\nlisten = \"0.0.0.0:8484\"\norigin = \"https://minipc.example.net:8484\"",
+			true,
+			"",
+		},
+		{
+			"files",
+			"enabled = true\ntls_cert = \"~/c.pem\"\ntls_key = \"/k.pem\"\norigin = \"https://minipc.example.net:8484\"",
+			true,
+			filepath.Join(home, "c.pem"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := config.Load(
+				noEnv,
+				write(t, "[account]\nhost = \"h\"\nuser = \"u\"\n[web]\n"+tt.web),
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantTLS, cfg.Web.TLS())
+			require.Equal(t, tt.wantCert, cfg.Web.TLSCert, "~/ expands")
+		})
+	}
+}
+
+func TestWebTLSInvalid(t *testing.T) {
+	t.Parallel()
+
+	const origin = "origin = \"https://minipc.example.net:8484\"\n"
+
+	tests := []struct {
+		name, web, wantErr string
+	}{
+		{"cert without key", "enabled = true\ntls_cert = \"/c.pem\"\n" + origin, "tls_key"},
+		{"key without cert", "enabled = true\ntls_key = \"/k.pem\"\n" + origin, "tls_cert"},
+		{
+			"files and self-signed",
+			"enabled = true\nself_signed = true\ntls_cert = \"/c.pem\"\ntls_key = \"/k.pem\"\n" + origin,
+			"self_signed",
+		},
+		{
+			"tls with an http origin",
+			"enabled = true\nself_signed = true\norigin = \"http://minipc.example.net:8484\"",
+			"https",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Load(
+				noEnv,
+				write(t, "[account]\nhost = \"h\"\nuser = \"u\"\n[web]\n"+tt.web),
+			)
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
 func TestWebIgnoredWhenDisabled(t *testing.T) {
 	t.Parallel()
 

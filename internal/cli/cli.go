@@ -68,7 +68,7 @@ func newRoot(env Env, version string) (*cobra.Command, *app) {
 
 	root := &cobra.Command{
 		Use:           "tamis",
-		Short:         "A second-opinion spam filter for remote mailboxes",
+		Short:         "A second-opinion spam filter and mail sorter for remote mailboxes",
 		Version:       version,
 		SilenceErrors: true,
 		SilenceUsage:  true,

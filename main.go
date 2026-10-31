@@ -1,5 +1,5 @@
-// Command tamis is a server-side spam filter that complements a mail
-// provider's own filtering by watching remote IMAP/JMAP folders.
+// Command tamis is a server-side spam filter and mail sorter that complements
+// a mail provider's own filtering by watching remote IMAP/JMAP folders.
 package main
 
 import (

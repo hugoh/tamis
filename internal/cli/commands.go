@@ -68,11 +68,12 @@ func (a *app) baseLevel() slog.Level {
 
 // loggerAt is logger with a level that may change while it runs.
 func (a *app) loggerAt(cmd *cobra.Command, level slog.Leveler) *slog.Logger {
-	if a.env.Getenv("JOURNAL_STREAM") != "" {
-		return slog.New(newJournalHandler(cmd.ErrOrStderr(), level))
+	out := cmd.ErrOrStderr()
+	if underJournal(a.env.Getenv("JOURNAL_STREAM"), out) {
+		return slog.New(newJournalHandler(out, level))
 	}
 
-	return slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level}))
+	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: level}))
 }
 
 // withStore opens the configuration and state database for the duration of body.

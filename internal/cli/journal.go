@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
 	"sync"
 )
 
@@ -30,6 +31,25 @@ func (s *prioritySink) Write(line []byte) (int, error) {
 	}
 
 	return s.out.Write(line) //nolint:wrapcheck // a failed write to stderr says enough
+}
+
+// underJournal reports whether out is the journal's stream. systemd names it
+// in $JOURNAL_STREAM, and a service that redirected its stderr elsewhere
+// still inherits the variable. Where out can't be checked, the variable
+// decides.
+func underJournal(stream string, out io.Writer) bool {
+	if stream == "" {
+		return false
+	}
+
+	file, ok := out.(*os.File)
+	if !ok {
+		return true
+	}
+
+	own, known := fileStream(file)
+
+	return !known || own == stream
 }
 
 func newJournalHandler(out io.Writer, level slog.Leveler) *journalHandler {

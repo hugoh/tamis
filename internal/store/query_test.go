@@ -605,40 +605,75 @@ func TestDecisionsKnowWhatTheyCorrected(t *testing.T) {
 		return id
 	}
 
-	// One message: judged twice, corrected, then the correction undone.
+	// One message: judged twice, corrected, then the second judgement undone
+	// (an undo marks what it reversed, then records itself).
 	first := record("<m@example>", reasonBayes)
 	second := record("<m@example>", reasonBayes)
 	correction := record("<m@example>", "correction")
 	undo := record("<m@example>", "undo")
+
+	require.NoError(t, db.MarkUndone(t.Context(), second))
+
 	other := record("<other@example>", reasonBayes)
 	noID := record("", reasonBayes)
 	noIDCorrection := record("", "correction")
 
-	corrects := func(id int64) []int64 {
+	get := func(id int64) store.Decision {
 		decision, err := db.Decision(t.Context(), id)
 		require.NoError(t, err)
 
-		return decision.Corrects
+		return decision
 	}
 
 	require.Equal(
 		t,
 		[]int64{first, second},
-		corrects(correction),
+		get(correction).Corrects,
 		"both earlier judgements, in order",
 	)
 	require.Equal(
 		t,
-		[]int64{correction},
-		corrects(undo),
-		"a chain: the undo reverses the correction",
+		[]int64{second},
+		get(undo).Corrects,
+		"an undo names what it reversed, not what was corrected first",
 	)
-	require.Empty(t, corrects(first), "a plain judgement corrects nothing")
-	require.Empty(t, corrects(other))
-	require.Empty(t, corrects(noID))
-	require.Empty(t, corrects(noIDCorrection), "without a Message-ID nothing links")
+	require.Empty(t, get(first).Corrects, "a plain judgement corrects nothing")
+	require.Empty(t, get(other).Corrects)
+	require.Empty(t, get(noID).Corrects)
+	require.Empty(t, get(noIDCorrection).Corrects, "without a Message-ID nothing links")
 
-	listed, _, err := db.QueryDecisions(t.Context(), store.DecisionQuery{ID: correction})
+	require.Equal(t, undo, get(second).UndoneBy)
+	require.Equal(
+		t,
+		correction,
+		get(second).CorrectedBy,
+		"corrected first, undone later: the two differ",
+	)
+	require.Zero(t, get(first).UndoneBy, "never undone")
+	require.Zero(t, get(undo).UndoneBy)
+
+	listed, _, err := db.QueryDecisions(t.Context(), store.DecisionQuery{ID: second})
 	require.NoError(t, err)
-	require.Equal(t, []int64{first, second}, listed[0].Corrects, "the paged query knows it too")
+	require.Equal(t, undo, listed[0].UndoneBy, "the paged query knows it too")
+}
+
+func TestUndoneWithoutAnUndoEntryHasNoLink(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+
+	id, err := db.RecordDecision(t.Context(), store.Decision{
+		At:        time.Now(),
+		MessageID: "<m@example>",
+		Verdict:   verdictSpam,
+		Reason:    reasonBayes,
+		Action:    actionJunk,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.MarkUndone(t.Context(), id))
+
+	decision, err := db.Decision(t.Context(), id)
+	require.NoError(t, err)
+	require.True(t, decision.Undone)
+	require.Zero(t, decision.UndoneBy)
 }

@@ -73,3 +73,82 @@ func TestWhitelistArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestWhitelistRemoveMatchingShowsBeforeRemoving(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	require.Zero(
+		t,
+		a.run(
+			t,
+			whitelistCmd,
+			"add",
+			"alice@example.com",
+			"bob@example.com",
+			"carol@other.net",
+		).code,
+	)
+
+	got := a.run(t, whitelistCmd, "rm", "--matching", "EXAMPLE.com")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "alice@example.com")
+	require.Contains(t, got.stdout, "bob@example.com")
+	require.NotContains(t, got.stdout, "carol@other.net")
+	require.Contains(t, got.stdout, "2 addresses match")
+	require.Contains(t, got.stdout, "--yes")
+
+	left := a.run(t, whitelistCmd, "list")
+	require.Contains(t, left.stdout, "alice@example.com", "without --yes nothing is removed")
+
+	got = a.run(t, whitelistCmd, "rm", "--matching", "example.com", "--yes")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "removed 2 addresses")
+
+	left = a.run(t, whitelistCmd, "list")
+	require.NotContains(t, left.stdout, "alice@example.com")
+	require.Contains(t, left.stdout, "carol@other.net")
+}
+
+func TestWhitelistRemoveMatchingWithNothingToRemove(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	require.Zero(t, a.run(t, whitelistCmd, "add", "alice@example.com").code)
+
+	got := a.run(t, whitelistCmd, "rm", "--matching", "zzz", "--yes")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "No addresses match")
+}
+
+func TestWhitelistRemoveMatchingOne(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	require.Zero(t, a.run(t, whitelistCmd, "add", "alice@example.com").code)
+
+	require.Contains(
+		t,
+		a.run(t, whitelistCmd, "rm", "--matching", "alice").stdout,
+		"1 address matches",
+	)
+	require.Contains(
+		t,
+		a.run(t, whitelistCmd, "rm", "--matching", "alice", "--yes").stdout,
+		"removed 1 address\n",
+	)
+}
+
+func TestWhitelistRemoveArgumentsAreExclusive(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+	require.Zero(t, a.run(t, whitelistCmd, "add", "alice@example.com").code)
+
+	got := a.run(t, whitelistCmd, "rm", "--matching", "alice", "alice@example.com", "--yes")
+	require.NotZero(t, got.code)
+	require.Contains(t, got.stderr, "either")
+
+	left := a.run(t, whitelistCmd, "list")
+	require.Contains(t, left.stdout, "alice@example.com", "nothing was removed")
+}

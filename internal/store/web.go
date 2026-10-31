@@ -17,10 +17,11 @@ type Address struct {
 
 // Addresses lists the whitelist, sorted by address.
 func (s *Store) Addresses(ctx context.Context) ([]Address, error) {
-	rows, err := s.db.QueryContext(
-		ctx,
-		"SELECT address, source, added_at FROM addresses ORDER BY address",
-	)
+	return s.readAddresses(ctx, "SELECT address, source, added_at FROM addresses ORDER BY address")
+}
+
+func (s *Store) readAddresses(ctx context.Context, query string, args ...any) ([]Address, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list whitelist: %w", err)
 	}

@@ -498,30 +498,11 @@ func (s *Store) RecordDecision(ctx context.Context, decision Decision) (int64, e
 
 // Decisions returns the most recent journal entries, newest first.
 func (s *Store) Decisions(ctx context.Context, limit int) ([]Decision, error) {
-	rows, err := s.db.QueryContext(ctx,
-		decisionColumns+" FROM decisions ORDER BY at DESC, id DESC LIMIT ?", limit)
-	if err != nil {
-		return nil, fmt.Errorf("list decisions: %w", err)
-	}
-
-	defer func() { _ = rows.Close() }()
-
-	var decisions []Decision
-
-	for rows.Next() {
-		decision, err := scanDecision(rows)
-		if err != nil {
-			return nil, err
-		}
-
-		decisions = append(decisions, decision)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list decisions: %w", err)
-	}
-
-	return decisions, nil
+	return s.queryDecisions(
+		ctx,
+		decisionColumns+" FROM decisions ORDER BY at DESC, id DESC LIMIT ?",
+		limit,
+	)
 }
 
 // PruneDecisions deletes journal entries older than before and returns how

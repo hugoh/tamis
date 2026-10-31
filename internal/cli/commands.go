@@ -21,6 +21,7 @@ import (
 	"github.com/hugoh/tamis/internal/health"
 	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/rules"
 	"github.com/hugoh/tamis/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -219,7 +220,18 @@ func (a *app) withEngine(
 
 	defer client.CloseWhenDone(ctx)()
 
-	return body(ctx, engine.New(client, database, cfg, logger))
+	eng := engine.New(client, database, cfg, logger)
+
+	if cfg.Rules.Script != "" {
+		loaded, err := rules.Load(cfg.Rules.Script)
+		if err != nil {
+			return err //nolint:wrapcheck // rules errors already name the problem
+		}
+
+		eng.SetRules(loaded)
+	}
+
+	return body(ctx, eng)
 }
 
 func (a *app) bootstrapCommand() *cobra.Command {

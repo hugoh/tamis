@@ -18,6 +18,7 @@ import (
 	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/rules"
 	"github.com/hugoh/tamis/internal/store"
 )
 
@@ -34,6 +35,9 @@ const (
 	// TrainedKeyword marks mail tamis already learnt that it moved on to a
 	// folder it scans. Senders can't set keywords, unlike a Message-ID.
 	TrainedKeyword = "$TamisTrained"
+	// SortedKeyword marks mail tamis filed by a rule. Seeing it back in a
+	// watched folder means the user moved it there, so it isn't filed again.
+	SortedKeyword = "$TamisSorted"
 )
 
 // Verdicts and reasons recorded in the journal.
@@ -45,6 +49,7 @@ const (
 	ReasonBayes        = "bayes"
 	ReasonWhitelisted  = "whitelisted"
 	ReasonCorrection   = "correction"
+	ReasonRule         = "rule"
 	ReasonTrainFolder  = "train folder"
 	ReasonProviderJunk = "provider junk"
 
@@ -94,6 +99,8 @@ type Engine struct {
 	cfg   *config.Config
 	log   *slog.Logger
 
+	rules *rules.Rules
+
 	authID      string
 	authIDKnown bool
 }
@@ -101,6 +108,12 @@ type Engine struct {
 // New returns an engine for the account behind mailbox.
 func New(mailbox Mailbox, db *store.Store, cfg *config.Config, logger *slog.Logger) *Engine {
 	return &Engine{mail: mailbox, store: db, cfg: cfg, log: logger}
+}
+
+// SetRules files good mail into the folders r picks; without it nothing is
+// filed.
+func (e *Engine) SetRules(r *rules.Rules) {
+	e.rules = r
 }
 
 // Summary counts what one pass did.
@@ -314,6 +327,10 @@ func (e *Engine) handle(
 	summary.Scanned++
 	summary.count(verdict.verdict)
 
+	if target := e.ruleTarget(ctx, folder, message, verdict); target != "" {
+		return e.fileByRule(ctx, folder, message, verdict, target)
+	}
+
 	action, applied, err := e.act(folder, message.UID, verdict.verdict)
 	if err != nil {
 		return err
@@ -329,6 +346,8 @@ func skipReason(message mail.Message, trained bool) string {
 		return "already trained"
 	case slices.Contains(message.Flags, strings.ToLower(RescuedKeyword)):
 		return "rescued by tamis"
+	case slices.Contains(message.Flags, strings.ToLower(SortedKeyword)):
+		return "sorted by tamis"
 	default:
 		return ""
 	}

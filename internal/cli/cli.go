@@ -91,6 +91,7 @@ func newRoot(env Env, version string) (*cobra.Command, *app) {
 		app.undoCommand(),
 		app.learnCommand(),
 		app.whitelistCommand(),
+		app.rulesCommand(),
 		app.webCommand(),
 		app.loginCommand(),
 		app.logoutCommand(),

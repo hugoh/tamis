@@ -74,6 +74,9 @@ learn_from_keywords = true # Junk / Not Junk buttons that disagree with tamis ar
 rescue = true              # move mail from verified whitelisted senders out of Junk
 journal_retention = "8760h" # how long decisions are kept (a year); "0s" keeps them forever
 rescue_threshold = 0       # also rescue mail scoring at or below this, e.g. 0.05; 0 is off
+
+[rules]
+script = ""                # Sieve file that files good mail into folders, e.g. "~/.config/tamis/rules.sieve"; empty is off
 ```
 
 Then:
@@ -87,6 +90,7 @@ tamis doctor      # is the filter in good shape? (--json; exits 1 on failure)
 tamis undo 42     # reverse decision 42 from the log
 tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
 tamis whitelist list   # also: add ADDRESS..., rm ADDRESS... or rm --matching TEXT
+tamis rules show       # also: check [FILE] to validate a Sieve script, test MESSAGE.eml to see where it goes
 tamis web enroll       # one-time link to enrol a passkey for the web interface
 ```
 

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hugoh/tamis/internal/rules"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -44,7 +45,16 @@ type Config struct {
 	Account Account `toml:"account"`
 	Folders Folders `toml:"folders"`
 	Policy  Policy  `toml:"policy"`
+	Rules   Rules   `toml:"rules"`
 	Web     Web     `toml:"web"`
+}
+
+// Rules is the optional filing of good mail into folders.
+type Rules struct {
+	// Script is a Sieve (RFC 5228) file whose fileinto commands pick the
+	// folder good mail moves to; "~/" expands to the home directory. Empty
+	// files nothing.
+	Script string `toml:"script"`
 }
 
 // Web is the optional web interface, served by `tamis run`.
@@ -338,7 +348,7 @@ func Load(getenv func(string) string, path string) (*Config, error) {
 		return nil, err
 	}
 
-	if err := expandWebPaths(&cfg.Web); err != nil {
+	if err := cfg.expandPaths(); err != nil {
 		return nil, err
 	}
 
@@ -514,4 +524,32 @@ func expandHome(path string) (string, error) {
 	}
 
 	return filepath.Join(home, rest), nil
+}
+
+func (c *Config) expandPaths() error {
+	if err := expandWebPaths(&c.Web); err != nil {
+		return err
+	}
+
+	return c.loadRules()
+}
+
+// loadRules expands the script path and compiles the script, so a mistake
+// stops tamis at startup and not on the first message that reaches it.
+func (c *Config) loadRules() error {
+	if c.Rules.Script == "" {
+		return nil
+	}
+
+	var err error
+
+	if c.Rules.Script, err = expandHome(c.Rules.Script); err != nil {
+		return err
+	}
+
+	if _, err := rules.Load(c.Rules.Script); err != nil {
+		return fmt.Errorf("%w: rules.script: %w", errInvalid, err)
+	}
+
+	return nil
 }

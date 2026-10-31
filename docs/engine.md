@@ -30,6 +30,7 @@ flowchart LR
 | `classify` | Turns a message into tokens and scores them (SpamBayes-style chi-square) |
 | `auth` | Decides whether the provider authenticated the `From` domain |
 | `store` | Token counts, trained messages, whitelist, folder cursors and mod-sequences, decision journal |
+| `rules` | Runs the user's Sieve script on a message and names the folder to file it in (see [rules.md](rules.md)) |
 | `engine` | Runs passes: trains, judges, files and records |
 
 ## A pass
@@ -191,9 +192,10 @@ recipient tokens; the model picks them up from new mail, or from
 | uncertain | add `$TamisUncertain` | nothing | `keyword:$TamisUncertain` |
 | rescued (in Junk) | add `$TamisRescued`, move to the inbox | nothing | `move:INBOX` |
 | good | nothing | nothing | `none` |
+| good, and a rule files it | add `$TamisSorted`, move to the rule's folder | nothing | `move:<folder>` |
 
 Every decision is journalled with its verdict, reason (`bayes`,
-`whitelisted`, `correction`, `train folder`, `provider junk`), score, planned action and
+`whitelisted`, `rule`, `correction`, `train folder`, `provider junk`), score, planned action and
 whether that action was applied. In shadow mode, the journal shows what live
 mode would have done; `tamis log` prints it.
 
@@ -369,6 +371,7 @@ learnt once.
 stateDiagram-v2
     [*] --> Inbox: delivered
     Inbox --> Junk: spam verdict (live)
+    Inbox --> Folder: good, and a rule files it (live)
     Junk --> Inbox: user moves it back
     Inbox --> Inbox: next pass sees $TamisFiled, learns good
     Inbox --> Junk: user moves missed spam
@@ -380,6 +383,9 @@ stateDiagram-v2
     TrainSpam --> Junk: trained as spam
     TrainGood --> Inbox: trained as good
 ```
+
+Mail a rule filed carries `$TamisSorted`; see [rules.md](rules.md) for why it
+isn't `$TamisFiled` and what is not undoable.
 
 ## Bootstrap
 

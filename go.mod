@@ -6,6 +6,7 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-msgauth v0.7.0
+	github.com/foxcpp/go-sieve v0.0.0-20260523221512-9ae51b269e52
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/pelletier/go-toml/v2 v2.4.3
@@ -42,4 +43,5 @@ require (
 	modernc.org/libc v1.79.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
+	rsc.io/binaryregexp v0.2.0 // indirect
 )

@@ -1,0 +1,16 @@
+{{define "result"}}<div id="result" aria-live="polite">{{if .Problem}}<div role="alert" class="alert alert-warning alert-soft my-2"><span>{{.Problem}}</span></div>{{else if .Folder}}<div role="status" class="alert alert-success alert-soft my-2"><span>Filed into <strong>{{.Folder}}</strong></span></div>{{else}}<div role="status" class="alert alert-info alert-soft my-2"><span>Stays in the inbox</span></div>{{end}}</div>{{end}}
+
+{{define "content"}}
+<h1 class="text-2xl font-semibold mb-4">Rules</h1>
+{{if .Body.Path}}<p class="mb-2 font-mono text-sm">{{.Body.Path}}
+{{if .Body.Problem}}<span class="badge badge-error badge-sm">Invalid</span>{{else}}<span class="badge badge-success badge-sm">Valid</span>{{end}}</p>
+{{if .Body.Problem}}<div role="alert" class="alert alert-error alert-soft mb-4"><span>{{.Body.Problem}}</span></div>{{end}}
+{{if .Body.Source}}<pre class="bg-base-200 rounded-box p-4 mb-6 overflow-x-auto text-sm">{{.Body.Source}}</pre>{{end}}
+<h2 class="text-lg font-semibold mb-2">Try a message</h2>
+<form hx-post="/rules/test" hx-target="#result" hx-swap="outerHTML" class="flex flex-col gap-2 max-w-3xl">
+<textarea name="message" rows="10" class="textarea w-full font-mono text-sm" placeholder="From: someone@example.org&#10;List-Id: &lt;list.example.org&gt;&#10;&#10;Body…" aria-label="Message to try"></textarea>
+<div><button class="btn btn-sm btn-primary">Try</button></div>
+</form>
+<div id="result"></div>
+{{else}}<p class="py-8 opacity-70">No rules script configured. Set <code>rules.script</code> to a Sieve file to file good mail into folders.</p>{{end}}
+{{end}}

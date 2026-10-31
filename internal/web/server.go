@@ -174,7 +174,7 @@ func (s *Server) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 func parsePages(fsys fs.FS) (map[string]*template.Template, error) {
 	pages := map[string]*template.Template{}
 
-	for _, name := range []string{"login", "enroll", pageDecisions, pageHealth, pageWhitelist, pageLogs} {
+	for _, name := range []string{"login", "enroll", pageDecisions, pageHealth, pageWhitelist, pageRules, pageLogs} {
 		page, err := template.ParseFS(fsys, "templates/layout.html", "templates/"+name+".html")
 		if err != nil {
 			return nil, fmt.Errorf("parse %s page: %w", name, err)
@@ -230,6 +230,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /auth/logout", s.logout)
 	s.mux.Handle("GET /{$}", s.requireSession(http.HandlerFunc(s.decisions)))
 	s.mux.Handle("GET /health", s.requireSession(http.HandlerFunc(s.health)))
+	s.mux.Handle("GET /rules", s.requireSession(http.HandlerFunc(s.rules)))
+	s.mux.Handle("POST /rules/test", s.requireSession(http.HandlerFunc(s.rulesTest)))
 	s.mux.Handle("GET /logs", s.requireSession(http.HandlerFunc(s.logLines)))
 	s.mux.Handle("GET /whitelist", s.requireSession(http.HandlerFunc(s.whitelist)))
 	s.mux.Handle("POST /whitelist", s.requireSession(http.HandlerFunc(s.whitelistAdd)))

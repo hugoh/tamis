@@ -158,7 +158,8 @@ providers:
 - Connection limits are undocumented: IDLE on the watched folders only, poll the rest.
 - Apple's server filter, Mail.app's local filter and SpamSieve all move mail
   too; tamis must tolerate other actors.
-- No server-side Sieve, which is part of why this project exists.
+- No server-side Sieve, which is part of why this project exists. Good mail is
+  filed by running a Sieve script client-side instead; see [rules.md](rules.md).
 
 ## Architecture
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Copy htmx and build the daisyUI/Tailwind stylesheet into internal/web/static/vendor"
+#MISE sources=[".config/mise/conf.d/web.toml", "internal/web/templates/*.html", "mise-tasks/vendor-web"]
+#MISE outputs=["internal/web/static/vendor/htmx.min.js", "internal/web/static/vendor/htmx.LICENSE", "internal/web/static/vendor/theme.css"]
 set -euo pipefail
 
 web=internal/web
@@ -32,10 +34,8 @@ for file in "$new/htmx.min.js" "$new/theme.css"; do
   [ "$(tail -c1 "$file")" = "" ] || echo >>"$file"
 done
 
-for file in htmx.min.js htmx.LICENSE theme.css; do
-  # Only touch what changed, so an unchanged file does not trigger a rebuild.
-  if ! cmp -s "$new/$file" "$dest/$file"; then
-    mkdir -p "$dest"
-    cp "$new/$file" "$dest/$file"
-  fi
-done
+# mise skips this task while its outputs are newer than its sources, so always
+# write them: an output left alone would stay older than a touched source and
+# the task would run every time.
+mkdir -p "$dest"
+cp "$new/htmx.min.js" "$new/htmx.LICENSE" "$new/theme.css" "$dest/"

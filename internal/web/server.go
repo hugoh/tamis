@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -143,7 +144,11 @@ const (
 // Serve answers requests on listener until ctx ends, then shuts down
 // gracefully. A requested shutdown is not an error.
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
-	httpServer := &http.Server{Handler: s, ReadHeaderTimeout: readHeaderTimeout}
+	httpServer := &http.Server{
+		Handler:           s,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ErrorLog:          log.New(serverErrors{s.log}, "", 0),
+	}
 	failed := make(chan error, 1)
 
 	go func() { failed <- httpServer.Serve(listener) }()
@@ -196,4 +201,22 @@ func (s *Server) bare(name, title string) http.HandlerFunc {
 	return func(resp http.ResponseWriter, _ *http.Request) {
 		s.render(resp, name, view{Title: title})
 	}
+}
+
+// serverErrors carries net/http's own error log into tamis's. A client that
+// connects and leaves before speaking TLS (a port check, a browser that
+// doesn't trust the certificate) is routine, so those lines are debug level.
+type serverErrors struct{ logger *slog.Logger }
+
+func (e serverErrors) Write(line []byte) (int, error) {
+	message := strings.TrimSpace(string(line))
+
+	level := slog.LevelWarn
+	if strings.Contains(message, "TLS handshake error") {
+		level = slog.LevelDebug
+	}
+
+	e.logger.Log(context.Background(), level, "web server", "detail", message)
+
+	return len(line), nil
 }

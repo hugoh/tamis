@@ -1,25 +1,52 @@
-{{define "addform"}}<form id="add" class="join"{{if .OOB}} hx-swap-oob="true"{{end}} hx-post="/whitelist" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar">
+{{define "addform"}}<form id="add" class="join"{{if .ResetForm}} hx-swap-oob="true"{{end}} hx-post="/whitelist" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar">
 <input class="input input-sm join-item w-72" name="address" placeholder="someone@example.org" required aria-label="Address to whitelist">
 <button class="btn btn-sm btn-primary join-item">Add</button>
 </form>{{end}}
 
 {{define "rows"}}{{range .Rows}}<tr class="hover:bg-base-300">
+<td><input type="checkbox" class="checkbox checkbox-sm" name="address" value="{{.Address}}" form="bulk" aria-label="Select {{.Address}}"></td>
 <td>{{.Address}}</td>
 <td>{{.Source}}</td>
 <td class="whitespace-nowrap">{{.Added}}</td>
-<td><form hx-post="/whitelist/remove" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar"><input type="hidden" name="address" value="{{.Address}}"><button class="btn btn-xs btn-outline">Remove</button></form></td>
 </tr>
 {{end}}{{if .MoreHref}}<tr hx-get="{{.MoreHref}}" hx-trigger="intersect once" hx-swap="outerHTML"><td colspan="4" class="text-center"><span class="loading loading-dots loading-sm"></span></td></tr>{{end}}{{end}}
+
+{{define "confirm"}}<div id="confirm">{{if .Error}}<div role="alert" class="alert alert-warning alert-soft my-2"><span>{{.Error}}</span></div>{{end}}{{if .Title}}<dialog class="modal modal-open" aria-labelledby="confirm-title">
+<div class="modal-box">
+<h3 id="confirm-title" class="text-lg font-bold">{{.Title}}</h3>
+<ul class="my-4 max-h-60 overflow-y-auto font-mono text-sm">
+{{range .Shown}}<li>{{.}}</li>
+{{end}}</ul>
+{{if .More}}<p class="text-sm opacity-70">…and {{.More}} more</p>{{end}}
+<div class="modal-action">
+<button type="button" class="btn" hx-get="/whitelist/remove/cancel" hx-target="#confirm" hx-swap="outerHTML">Cancel</button>
+<form hx-post="/whitelist/remove" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar">
+{{range .Selected}}<input type="hidden" name="address" value="{{.}}">
+{{end}}{{if .All}}<input type="hidden" name="scope" value="all"><input type="hidden" name="q" value="{{.Search}}"><input type="hidden" name="count" value="{{.Count}}">{{end}}
+<button class="btn btn-error">Remove {{.Count}}</button>
+</form>
+</div>
+</div>
+<div class="modal-backdrop"></div>
+</dialog>{{end}}</div>{{end}}
 
 {{define "results"}}<div id="results">
 <input type="hidden" form="toolbar" name="sort" value="{{.Sort}}">
 <input type="hidden" form="toolbar" name="dir" value="{{.Dir}}">
-{{if .OOB}}{{template "addform" .}}{{end}}
+{{if .ResetForm}}{{template "addform" .}}{{end}}
+{{if .ClearConfirm}}<div id="confirm" hx-swap-oob="true"></div>{{end}}
 {{if .Error}}<div role="alert" class="alert alert-error alert-soft my-2"><span>{{.Error}}</span></div>{{end}}
-<p class="text-sm opacity-70 my-2">{{.Count}}</p>
+{{if .Note}}<div role="alert" class="alert alert-success alert-soft my-2"><span>{{.Note}}</span></div>{{end}}
+<div class="flex flex-wrap items-center gap-3 my-2">
+<p class="text-sm opacity-70">{{.Count}}</p>
+<form id="bulk" class="flex flex-wrap items-center gap-2">
+<button type="button" class="btn btn-sm btn-outline btn-error" hx-post="/whitelist/remove/confirm" hx-include="#bulk, #toolbar" hx-target="#confirm" hx-swap="outerHTML">Remove selected…</button>
+{{if .RemoveAll}}<button type="button" class="btn btn-sm btn-outline" hx-post="/whitelist/remove/confirm?scope=all" hx-include="#toolbar" hx-target="#confirm" hx-swap="outerHTML">{{.RemoveAll}}</button>{{end}}
+</form>
+</div>
 {{if .Rows}}<div class="overflow-x-auto">
 <table class="table table-sm table-zebra table-pin-rows">
-<thead><tr>{{range .Columns}}<th aria-sort="{{.AriaSort}}"><a class="link link-hover" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">{{.Label}}{{if .Arrow}} {{.Arrow}}{{end}}</a></th>{{end}}<th></th></tr></thead>
+<thead><tr><th><input type="checkbox" id="select-all" class="checkbox checkbox-sm" aria-label="Select all loaded addresses"></th>{{range .Columns}}<th aria-sort="{{.AriaSort}}"><a class="link link-hover" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">{{.Label}}{{if .Arrow}} {{.Arrow}}{{end}}</a></th>{{end}}</tr></thead>
 <tbody>
 {{template "rows" .}}
 </tbody>
@@ -35,5 +62,7 @@
 <input type="search" name="q" value="{{.Body.Search}}" placeholder="Search addresses…" aria-label="Search" class="input input-sm w-72" hx-get="/whitelist" hx-trigger="input changed delay:300ms, search">
 </form>
 </div>
+<div id="confirm"></div>
 {{template "results" .Body}}
 {{end}}
+{{define "scripts"}}<script src="/static/whitelist.js"></script>{{end}}

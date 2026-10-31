@@ -313,20 +313,32 @@ func whitelistSorts() []sortChoice {
 type whitelistBody struct {
 	tableState
 
-	Rows     []addressRow
-	Count    string
-	Columns  []column
-	MoreHref string
-	// Error is why an edit failed. OOB asks for the add form to be reset, which
-	// is right after a successful add.
+	Rows      []addressRow
+	Count     string
+	Columns   []column
+	MoreHref  string
+	RemoveAll string
+	// Error is why an edit failed, and Note what it did.
 	Error string
-	OOB   bool
+	Note  string
+	// ResetForm asks for the add form to be emptied, which is right after a
+	// successful add; ClearConfirm for the removal dialog to be closed.
+	ResetForm    bool
+	ClearConfirm bool
+}
+
+// edit is the outcome of a change to the whitelist, for the page to show.
+type edit struct {
+	err          error
+	note         string
+	resetForm    bool
+	clearConfirm bool
 }
 
 func (s *Server) whitelist(resp http.ResponseWriter, req *http.Request) {
 	state := parseTableState("/whitelist", req.URL.Query(), whitelistSorts())
 
-	body, err := s.whitelistBody(req, state, nil, false)
+	body, err := s.whitelistBody(req, state, edit{})
 	if err != nil {
 		s.fail(resp, "list whitelist", err)
 
@@ -337,12 +349,12 @@ func (s *Server) whitelist(resp http.ResponseWriter, req *http.Request) {
 }
 
 // renderAddresses answers an edit with the refreshed list for the search and
-// sort the page had, and what went wrong, if anything.
-func (s *Server) renderAddresses(resp http.ResponseWriter, req *http.Request, editErr error) {
+// sort the page had.
+func (s *Server) renderAddresses(resp http.ResponseWriter, req *http.Request, change edit) {
 	state := parseTableState("/whitelist", req.Form, whitelistSorts())
 	state.Offset = 0
 
-	body, err := s.whitelistBody(req, state, editErr, editErr == nil)
+	body, err := s.whitelistBody(req, state, change)
 	if err != nil {
 		s.fail(resp, "list whitelist", err)
 
@@ -355,8 +367,7 @@ func (s *Server) renderAddresses(resp http.ResponseWriter, req *http.Request, ed
 func (s *Server) whitelistBody(
 	req *http.Request,
 	state tableState,
-	editErr error,
-	resetForm bool,
+	change edit,
 ) (whitelistBody, error) {
 	found, total, err := s.db.QueryAddresses(req.Context(), store.AddressQuery{
 		Search: state.Search,
@@ -370,16 +381,19 @@ func (s *Server) whitelistBody(
 	}
 
 	body := whitelistBody{
-		tableState: state,
-		Rows:       make([]addressRow, 0, len(found)),
-		Count:      countLabel(total, "address", "addresses", state.Search != ""),
-		Columns:    state.columns(whitelistSorts()),
-		MoreHref:   state.moreHref(len(found), total),
-		OOB:        resetForm,
+		tableState:   state,
+		Rows:         make([]addressRow, 0, len(found)),
+		Count:        countLabel(total, "address", "addresses", state.Search != ""),
+		Columns:      state.columns(whitelistSorts()),
+		MoreHref:     state.moreHref(len(found), total),
+		RemoveAll:    removeAllLabel(total, state.Search),
+		Note:         change.note,
+		ResetForm:    change.resetForm,
+		ClearConfirm: change.clearConfirm,
 	}
 
-	if editErr != nil {
-		body.Error = editErr.Error()
+	if change.err != nil {
+		body.Error = change.err.Error()
 	}
 
 	for _, address := range found {
@@ -389,4 +403,17 @@ func (s *Server) whitelistBody(
 	}
 
 	return body, nil
+}
+
+// removeAllLabel names the button that removes every address the table lists,
+// or nothing when it lists none.
+func removeAllLabel(total int, search string) string {
+	switch {
+	case total == 0:
+		return ""
+	case search == "":
+		return "Remove all " + strconv.Itoa(total) + "…"
+	default:
+		return "Remove " + strconv.Itoa(total) + " matching…"
+	}
 }

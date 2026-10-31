@@ -129,16 +129,7 @@ func (s *Server) whitelistAdd(resp http.ResponseWriter, req *http.Request) {
 		err = s.db.AddAddress(req.Context(), address, manualSource)
 	}
 
-	s.renderAddresses(resp, req, err)
-}
-
-func (s *Server) whitelistRemove(resp http.ResponseWriter, req *http.Request) {
-	address, err := store.ParseAddress(req.FormValue("address"))
-	if err == nil {
-		err = s.db.RemoveAddress(req.Context(), address)
-	}
-
-	s.renderAddresses(resp, req, err)
+	s.renderAddresses(resp, req, edit{err: err, resetForm: err == nil})
 }
 
 // learnable and undoable mirror the engine's own rules, so the page offers

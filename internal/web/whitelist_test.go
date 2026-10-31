@@ -106,7 +106,7 @@ func TestWhitelistAddResetsTheForm(t *testing.T) {
 		"a fresh form replaces the one that was typed in",
 	)
 
-	rejected := browser.form(whitelistPath, url.Values{addressKey: {"nope"}}).Body.String()
+	rejected := browser.form(whitelistPath, url.Values{addressKey: {notAnAddress}}).Body.String()
 	require.NotContains(t, rejected, "hx-swap-oob", "a mistake keeps what was typed")
 	require.Contains(t, rejected, "alert-error")
 }

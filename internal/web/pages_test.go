@@ -381,6 +381,7 @@ func TestDatabaseFailureIsA500(t *testing.T) {
 		"whitelist":        {http.MethodGet, whitelistPath},
 		"whitelist add":    {http.MethodPost, whitelistPath},
 		"whitelist remove": {http.MethodPost, removePath},
+		"whitelist review": {http.MethodPost, confirmPath + "?scope=all"},
 		"undo":             {http.MethodPost, undoPath},
 		"learn":            {http.MethodPost, "/decisions/2/learn"},
 		"enroll":           {http.MethodPost, registerPath + "/begin?token=x"},

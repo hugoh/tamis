@@ -226,7 +226,7 @@ func TestWhitelistAddRejectsGarbage(t *testing.T) {
 
 	browser := signedIn(t)
 
-	rec := browser.form(whitelistPath, url.Values{addressKey: {"nope"}})
+	rec := browser.form(whitelistPath, url.Values{addressKey: {notAnAddress}})
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `invalid address &#34;nope&#34;`)
 	require.Contains(t, rec.Body.String(), "friend@example.com", "the list is still shown")
@@ -242,8 +242,7 @@ func TestWhitelistRemove(t *testing.T) {
 	browser := signedIn(t)
 
 	page := browser.do(http.MethodGet, "/whitelist", nil).Body.String()
-	require.Contains(t, page, `hx-post="/whitelist/remove"`)
-	require.Contains(t, page, `name="address" value="friend@example.com"`)
+	require.Contains(t, page, `name="address" value="friend@example.com" form="bulk"`)
 
 	rec := browser.form(removePath, url.Values{addressKey: {"friend@example.com"}})
 	require.Equal(t, http.StatusOK, rec.Code)

@@ -179,6 +179,14 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /whitelist", s.requireSession(http.HandlerFunc(s.whitelist)))
 	s.mux.Handle("POST /whitelist", s.requireSession(http.HandlerFunc(s.whitelistAdd)))
 	s.mux.Handle("POST /whitelist/remove", s.requireSession(http.HandlerFunc(s.whitelistRemove)))
+	s.mux.Handle(
+		"POST /whitelist/remove/confirm",
+		s.requireSession(http.HandlerFunc(s.whitelistConfirm)),
+	)
+	s.mux.Handle(
+		"GET /whitelist/remove/cancel",
+		s.requireSession(http.HandlerFunc(s.whitelistCancel)),
+	)
 	s.mux.Handle("POST /decisions/{id}/undo", s.requireSession(http.HandlerFunc(s.undo)))
 	s.mux.Handle("POST /decisions/{id}/learn", s.requireSession(http.HandlerFunc(s.learn)))
 }

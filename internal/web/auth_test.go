@@ -345,7 +345,7 @@ func TestForeignOriginIsRefused(t *testing.T) {
 
 			for _, path := range []string{
 				"/auth/logout", loginPath + "/begin", registerPath + "/begin",
-				undoPath, "/decisions/1/learn", whitelistPath, removePath,
+				undoPath, "/decisions/1/learn", whitelistPath, removePath, confirmPath,
 			} {
 				rec := browser.do(http.MethodPost, path, nil, headers...)
 				require.Equal(t, http.StatusForbidden, rec.Code, path)

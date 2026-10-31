@@ -45,6 +45,7 @@ func migrations() []string {
 			token_hash TEXT PRIMARY KEY,
 			expires_at INTEGER NOT NULL
 		);`,
+		`CREATE INDEX decisions_by_at ON decisions (at, id);`,
 	}
 }
 
@@ -806,7 +807,8 @@ func adjust(
 	if delta < 0 {
 		if _, err := txn.ExecContext(
 			ctx,
-			"DELETE FROM tokens WHERE spam <= 0 AND good <= 0",
+			"DELETE FROM tokens WHERE spam <= 0 AND good <= 0 AND token IN (SELECT value FROM json_each(?))",
+			string(encoded),
 		); err != nil {
 			return fmt.Errorf("prune tokens: %w", err)
 		}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -931,4 +932,107 @@ func TestWebMethodsFailOnAClosedStore(t *testing.T) {
 			call(t)
 		})
 	}
+}
+
+func TestJournalQueriesUseIndex(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{"newest first", "SELECT * FROM decisions ORDER BY at DESC, id DESC LIMIT 10"},
+		{"prune", "DELETE FROM decisions WHERE at < 1"},
+		{"oldest", "SELECT MIN(at) FROM decisions"},
+	}
+
+	path := filepath.Join(t.TempDir(), "tamis.db")
+
+	db, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	raw, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+
+	t.Cleanup(func() { require.NoError(t, raw.Close()) })
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var plan string
+
+			rows, err := raw.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+tt.query)
+			require.NoError(t, err)
+
+			defer func() { require.NoError(t, rows.Close()) }()
+
+			var planSb970 strings.Builder
+
+			for rows.Next() {
+				var (
+					id, parent, unused int
+					detail             string
+				)
+
+				require.NoError(t, rows.Scan(&id, &parent, &unused, &detail))
+
+				planSb970.WriteString(detail + "\n")
+			}
+
+			plan += planSb970.String()
+
+			require.NoError(t, rows.Err())
+			require.NotContains(t, plan, "SCAN decisions\n", tt.query)
+			require.Contains(t, plan, "decisions_by_at")
+		})
+	}
+}
+
+func TestUntrainLeavesUnrelatedTokensAlone(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "tamis.db")
+
+	db, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, db.Close()) }()
+
+	_, err = db.Train(t.Context(), "m1", []string{"gamma"}, classify.Spam)
+	require.NoError(t, err)
+
+	raw, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, raw.Close()) }()
+
+	_, err = raw.ExecContext(
+		t.Context(),
+		"INSERT INTO tokens (token, spam, good) VALUES ('stale', 0, 0)",
+	)
+	require.NoError(t, err)
+
+	removed, err := db.Untrain(t.Context(), "m1")
+	require.NoError(t, err)
+	require.True(t, removed)
+
+	var tokens []string
+
+	rows, err := raw.QueryContext(t.Context(), "SELECT token FROM tokens ORDER BY token")
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, rows.Close()) }()
+
+	for rows.Next() {
+		var token string
+
+		require.NoError(t, rows.Scan(&token))
+
+		tokens = append(tokens, token)
+	}
+
+	require.NoError(t, rows.Err())
+	require.Equal(t, []string{"stale"}, tokens)
 }

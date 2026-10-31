@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	trainGood         = "train:good"
 	sameMessage       = "<m@example>"
 	originalSubject   = "Original message"
 	correctionSubject = "Correction of it"
@@ -32,7 +33,7 @@ func corrected(t *testing.T) *harness {
 		Subject:   correctionSubject,
 		Verdict:   engine.VerdictGood,
 		Reason:    engine.ReasonCorrection,
-		Action:    "train:good",
+		Action:    trainGood,
 		Applied:   true,
 	})
 	browser.enroll(browser.token())
@@ -136,11 +137,18 @@ func TestAnUndoSaysItUndoes(t *testing.T) {
 		MessageID: sameMessage, Subject: "undo entry",
 		Verdict: engine.VerdictGood, Reason: engine.ReasonUndo, Action: "move:INBOX", Applied: true,
 	})
+	require.NoError(t, browser.db.MarkUndone(t.Context(), 1))
 	browser.enroll(browser.token())
 
 	body := browser.do(http.MethodGet, "/", nil).Body.String()
 	require.Regexp(t, `undoes <a [^>]*href="/\?id=1"[^>]*>#1</a>`, body)
 	require.NotRegexp(t, `corrects <a`, body)
+	require.Regexp(
+		t,
+		`\(undone by <a [^>]*href="/\?id=2"[^>]*>#2</a>\)`,
+		body,
+		"and the original links forward",
+	)
 }
 
 func TestSeveralCorrectedEntriesAreAllLinked(t *testing.T) {
@@ -160,7 +168,7 @@ func TestSeveralCorrectedEntriesAreAllLinked(t *testing.T) {
 		Subject:   correctionSubject,
 		Verdict:   engine.VerdictGood,
 		Reason:    engine.ReasonCorrection,
-		Action:    "train:good",
+		Action:    trainGood,
 		Applied:   true,
 	})
 	browser.enroll(browser.token())
@@ -171,4 +179,44 @@ func TestSeveralCorrectedEntriesAreAllLinked(t *testing.T) {
 		`corrects <a [^>]*href="/\?id=1"[^>]*>#1</a>, <a [^>]*href="/\?id=2"[^>]*>#2</a>`,
 		body,
 	)
+}
+
+func TestUndoneWithoutAnUndoEntryIsPlainText(t *testing.T) {
+	t.Parallel()
+
+	browser := corrected(t)
+	require.NoError(t, browser.db.MarkUndone(t.Context(), 1))
+
+	body := browser.do(http.MethodGet, "/", nil).Body.String()
+	require.Contains(t, body, "(undone)")
+	require.NotContains(t, body, "undone by")
+}
+
+func TestCorrectedThenUndoneLinksTheUndo(t *testing.T) {
+	t.Parallel()
+
+	browser := newHarness(t)
+	browser.record(store.Decision{
+		MessageID: sameMessage, Subject: originalSubject,
+		Verdict: engine.VerdictSpam, Reason: bayes, Action: moveToJunk, Applied: true,
+	})
+	browser.record(store.Decision{
+		MessageID: sameMessage,
+		Subject:   correctionSubject,
+		Verdict:   engine.VerdictGood,
+		Reason:    engine.ReasonCorrection,
+		Action:    trainGood,
+		Applied:   true,
+	})
+	browser.record(store.Decision{
+		MessageID: sameMessage, Subject: "undo entry",
+		Verdict: engine.VerdictGood, Reason: engine.ReasonUndo, Action: "move:INBOX", Applied: true,
+	})
+	require.NoError(t, browser.db.MarkUndone(t.Context(), 1))
+	browser.enroll(browser.token())
+
+	body := browser.do(http.MethodGet, "/", nil).Body.String()
+	require.Regexp(t, `\(undone by <a [^>]*href="/\?id=3"[^>]*>#3</a>\)`, body,
+		"the undo, not the correction that came between")
+	require.Regexp(t, `undoes <a [^>]*href="/\?id=1"[^>]*>#1</a>`, body)
 }

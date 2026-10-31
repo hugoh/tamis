@@ -36,6 +36,7 @@ type decisionRow struct {
 	// Undone is set once the action was reversed; CorrectedBy is the ID of the
 	// later entry that corrected it, or 0.
 	Undone      bool
+	UndoneBy    int64
 	CorrectedBy int64
 	// Corrects are the earlier entries this one corrected or undid.
 	Corrects []int64
@@ -218,6 +219,7 @@ func decisionRowFor(decision store.Decision) decisionRow {
 		CanLearn: learnable(decision),
 
 		Undone:      decision.Undone,
+		UndoneBy:    decision.UndoneBy,
 		CorrectedBy: decision.CorrectedBy,
 		Corrects:    decision.Corrects,
 	}

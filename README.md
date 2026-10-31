@@ -233,8 +233,15 @@ shown in the browser live in memory, so a restart signs you out and clears them.
 
 The interface sends a strict Content-Security-Policy, refuses state-changing
 requests whose `Origin` is not yours, and serves its own copies of
-[htmx](https://htmx.org) and [Pico CSS](https://picocss.com): nothing is loaded
-from another site.
+[htmx](https://htmx.org) and a [daisyUI](https://daisyui.com) /
+[Tailwind](https://tailwindcss.com) stylesheet: nothing is loaded from another
+site.
+
+The decision journal and the whitelist can be large, so their tables are paged
+on the server: rows load as you scroll, columns sort when you click their
+headers, and the search box and the verdict buttons filter the whole journal,
+not just what is on screen. The address bar follows, so a view can be
+bookmarked.
 
 ## Where tamis keeps things
 
@@ -316,10 +323,14 @@ hk install
 mise run ci
 ```
 
-The web interface embeds htmx and Pico CSS from `internal/web/static/vendor`.
-Their versions are pinned in `.config/mise/conf.d/web.toml`, where Renovate
-updates them. After a bump, run `mise run vendor-web` to refresh the committed
-files; `mise run vendor-web --check` fails if they are stale.
+The web interface embeds htmx and a stylesheet from `internal/web/static/vendor`.
+The stylesheet is built by the Tailwind CLI with the daisyUI plugin, from only
+the classes in `internal/web/templates`, so it stays small. The tool versions
+are pinned in `.config/mise/conf.d/web.toml`, where Renovate updates them. The
+results are committed, so building tamis needs none of this. After a version bump
+or a change to a template's classes, run `mise run vendor-web`;
+`mise run vendor-web --check` fails if the committed files are stale, and a test
+fails if a template uses a class the stylesheet lacks.
 
 ## License
 

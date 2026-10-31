@@ -366,9 +366,15 @@ capabilities. [docs/imap.md](docs/imap.md) describes how tamis uses the server. 
 reads it from `$TAMIS_PASSWORD` or stdin.
 
 ```sh
-tamis probe --host imap.mail.me.com --user you@icloud.com          # read-only
-tamis probe --host imap.mail.me.com --user you@icloud.com --write  # also APPEND, IDLE, MOVE
+tamis probe                # read-only, for the account in your configuration
+tamis probe --write        # also APPEND, IDLE, MOVE
+tamis probe --host imap.mail.me.com --user you@icloud.com   # any other account
 ```
+
+`--host`, `--user` and `--port` default to the configured account, and its
+`password_command` applies when you probe it. The read-only report includes the
+mailbox's folder list, which is where to check the exact folder names your
+[filing rules](#filing-rules) use.
 
 Read-only mode logs in, lists capabilities and folders, and examines the
 inbox without changing anything. `--write` creates two top-level scratch

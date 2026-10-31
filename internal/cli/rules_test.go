@@ -20,7 +20,10 @@ func writeFile(t *testing.T, name, body string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), name)
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(path, []byte(body), 0o600), //nolint:gosec // a file in the test's own temp dir
+	)
 
 	return path
 }

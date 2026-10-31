@@ -25,6 +25,7 @@ const (
 	readConfigFailed = "read config"
 	onceFlag         = "--once"
 	hostFlag         = "--host"
+	plaintextFlag    = "--plaintext"
 	loginCmd         = "login"
 	logoutCmd        = "logout"
 	noPassword       = "no password"
@@ -105,16 +106,16 @@ func TestRun(t *testing.T) {
 			wantStderr: "unknown flag",
 		},
 		{
-			name:       "probe without user",
-			args:       []string{probeCmd},
-			wantCode:   2,
-			wantStderr: `"user" not set`,
+			name:       "probe without user or config",
+			args:       []string{probeCmd, hostFlag, initHost, "-c", missingConfig},
+			wantCode:   1,
+			wantStderr: "--host and --user",
 		},
 		{
-			name:       "probe without host",
-			args:       []string{probeCmd, userFlag, "me"},
-			wantCode:   2,
-			wantStderr: `"host" not set`,
+			name:       "probe without host or config",
+			args:       []string{probeCmd, userFlag, "me", "-c", missingConfig},
+			wantCode:   1,
+			wantStderr: "--host and --user",
 		},
 		{
 			name:       "probe without password",
@@ -144,7 +145,7 @@ func probeArgs(t *testing.T, srv *imaptest.Server, extra ...string) []string {
 
 	return append([]string{
 		probeCmd,
-		"--plaintext",
+		plaintextFlag,
 		"--idle-wait",
 		"5s",
 		hostFlag,

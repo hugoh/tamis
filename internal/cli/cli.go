@@ -95,7 +95,7 @@ func newRoot(env Env, version string) (*cobra.Command, *app) {
 		app.webCommand(),
 		app.loginCommand(),
 		app.logoutCommand(),
-		probeCommand(env),
+		app.probeCommand(),
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print the version",

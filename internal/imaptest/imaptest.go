@@ -45,6 +45,10 @@ type Options struct {
 	// command fail with NO. op is the IMAP command name, mailbox the folder
 	// it targets ("" when it has none).
 	Fail func(op, mailbox string) bool
+	// Drop, if set, is asked before each command like Fail; returning true
+	// closes the connection without answering, as a server that gave up on
+	// the client does.
+	Drop func(op, mailbox string) bool
 	// TLS serves implicit TLS with a throwaway certificate.
 	TLS bool
 }
@@ -109,8 +113,8 @@ func serve(tb testing.TB, listener net.Listener, options Options) {
 	mem.AddUser(user)
 
 	server := imapserver.New(&imapserver.Options{
-		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
-			sess, err := wrap(mem.NewSession(), options.Fail)
+		NewSession: func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			sess, err := wrap(mem.NewSession(), conn, options.Fail, options.Drop)
 
 			return sess, nil, err
 		},

@@ -16,6 +16,10 @@ var (
 	// errInjected is what an injected failure returns to the client.
 	errInjected = &imap.Error{Type: imap.StatusResponseTypeNo, Text: "injected failure"}
 
+	// errDropped is what the server's own session sees once it has closed the
+	// connection; the client just sees the connection end.
+	errDropped = errors.New("imaptest: connection dropped")
+
 	errUnsupported = errors.New("imaptest: session lacks NAMESPACE or MOVE support")
 )
 
@@ -32,20 +36,32 @@ type fullSession interface {
 type session struct {
 	fullSession
 
+	conn *imapserver.Conn
 	fail func(op, mailbox string) bool
+	drop func(op, mailbox string) bool
 }
 
-func wrap(inner imapserver.Session, fail func(op, mailbox string) bool) (*session, error) {
+func wrap(
+	inner imapserver.Session,
+	conn *imapserver.Conn,
+	fail, drop func(op, mailbox string) bool,
+) (*session, error) {
 	full, ok := inner.(fullSession)
 	if !ok {
 		return nil, fmt.Errorf("%w: %T", errUnsupported, inner)
 	}
 
+	never := func(string, string) bool { return false }
+
 	if fail == nil {
-		fail = func(string, string) bool { return false }
+		fail = never
 	}
 
-	return &session{fullSession: full, fail: fail}, nil
+	if drop == nil {
+		drop = never
+	}
+
+	return &session{fullSession: full, conn: conn, fail: fail, drop: drop}, nil
 }
 
 func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.SelectData, error) {
@@ -176,8 +192,14 @@ func (s *session) Move(writer *imapserver.MoveWriter, numSet imap.NumSet, dest s
 	return s.fullSession.Move(writer, numSet, dest) //nolint:wrapcheck // passthrough
 }
 
-func (s *session) check(op, mailbox string) error {
-	if s.fail(op, mailbox) {
+func (s *session) check(command, mailbox string) error {
+	if s.drop(command, mailbox) {
+		_ = s.conn.NetConn().Close()
+
+		return errDropped
+	}
+
+	if s.fail(command, mailbox) {
 		return errInjected
 	}
 

@@ -77,6 +77,8 @@ judged and in Junk; if it is gone, nothing is learnt.
 Mail already in Sent when tamis first sees the folder is left to
 `tamis bootstrap --sent`. A Sent folder that can't be scanned (say the name in
 `folders.sent` doesn't exist) is logged as a warning and doesn't fail the pass.
+A dropped connection is different: the connection is gone for the rest of the
+pass too, so it fails the pass, which is retried at the next poll.
 
 Training folders are processed in both modes. Dropping a message into one is
 an explicit request, not a judgement tamis makes on its own. The same goes for

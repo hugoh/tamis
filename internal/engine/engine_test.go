@@ -56,7 +56,14 @@ func setup(t *testing.T, mode config.Mode) *env {
 func setupWith(t *testing.T, mode config.Mode, fail func(op, mailbox string) bool) *env {
 	t.Helper()
 
-	srv := imaptest.StartWith(t, imaptest.Options{Caps: imaptest.Rev2(), Fail: fail})
+	return setupServer(t, mode, imaptest.Options{Caps: imaptest.Rev2(), Fail: fail})
+}
+
+// setupServer is setup against a server with the given faults.
+func setupServer(t *testing.T, mode config.Mode, options imaptest.Options) *env {
+	t.Helper()
+
+	srv := imaptest.StartWith(t, options)
 
 	client, err := mail.Dial(t.Context(), mail.DialConfig{
 		Addr: srv.Addr, Username: imaptest.Username, Password: imaptest.Password, Plaintext: true,

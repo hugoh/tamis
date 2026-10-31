@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"slices"
@@ -593,4 +594,18 @@ func bracket(messageID string) string {
 	}
 
 	return "<" + messageID + ">"
+}
+
+// IsConnectionError reports whether err means the connection itself failed,
+// as when the server hangs up mid-command, rather than the server answering
+// that a command failed. Nothing more can be done on such a connection.
+func IsConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var network net.Error
+
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, net.ErrClosed) || errors.As(err, &network)
 }

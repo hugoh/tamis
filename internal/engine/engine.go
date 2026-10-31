@@ -156,6 +156,10 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	}
 
 	if err := e.scan(ctx, e.cfg.Folders.Sent, e.handleSent); err != nil {
+		if mail.IsConnectionError(err) {
+			return summary, err
+		}
+
 		e.log.WarnContext(ctx, "not learning recipients from Sent", "error", err)
 	}
 

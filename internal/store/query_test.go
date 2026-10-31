@@ -458,3 +458,100 @@ func TestQueryDecisionsOrdersTiesByWhenTheyWereRecorded(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{subjectFirst, subjectSecond, subjectThird}, subjects(oldest))
 }
+
+func TestRemoveAddresses(t *testing.T) {
+	t.Parallel()
+
+	db := addressBook(t)
+
+	removed, err := db.RemoveAddresses(t.Context(), []string{
+		"ALICE@example.com", addrAlice, "bob@Other.example", "nobody@example.com",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, removed, "case does not matter, repeats and strangers do not count")
+
+	left, _, err := db.QueryAddresses(t.Context(), store.AddressQuery{})
+	require.NoError(t, err)
+	require.Equal(t, []string{addrReal, addrCarol}, addresses(left))
+
+	none, err := db.RemoveAddresses(t.Context(), nil)
+	require.NoError(t, err)
+	require.Zero(t, none)
+}
+
+func TestRemoveAddressesInBatches(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	all := make([]string, 0, 1200)
+
+	for i := range 1200 {
+		address := fmt.Sprintf("person%04d@example.org", i)
+		all = append(all, address)
+
+		require.NoError(t, db.AddAddress(t.Context(), address, "sent"))
+	}
+
+	require.NoError(t, db.AddAddress(t.Context(), addrAlice, sourceManual))
+
+	removed, err := db.RemoveAddresses(t.Context(), all)
+	require.NoError(t, err)
+	require.Equal(t, 1200, removed)
+
+	left, total, err := db.QueryAddresses(t.Context(), store.AddressQuery{})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, []string{addrAlice}, addresses(left))
+}
+
+func TestRemoveAddressesMatching(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, search string
+		removed      int
+		left         []string
+	}{
+		{"by source", "manual", 2, []string{addrBob, addrCarol}},
+		{"by address, ignoring case", "OTHER", 1, []string{addrReal, addrAlice, addrCarol}},
+		{"wildcards are literal", "%_r", 1, []string{addrAlice, addrBob, addrCarol}},
+		{"nothing matches", "zzz", 0, []string{addrReal, addrAlice, addrBob, addrCarol}},
+		{"empty matches everything", "", 4, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			db := addressBook(t)
+
+			removed, err := db.RemoveAddressesMatching(t.Context(), tt.search)
+			require.NoError(t, err)
+			require.Equal(t, tt.removed, removed)
+
+			left, _, err := db.QueryAddresses(t.Context(), store.AddressQuery{})
+			require.NoError(t, err)
+
+			if tt.left == nil {
+				require.Empty(t, left)
+
+				return
+			}
+
+			require.Equal(t, tt.left, addresses(left))
+		})
+	}
+}
+
+func TestRemovingAddressesFailsOnAClosedStore(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	require.NoError(t, db.Close())
+
+	_, err := db.RemoveAddresses(t.Context(), []string{addrAlice})
+	require.Error(t, err)
+
+	_, err = db.RemoveAddressesMatching(t.Context(), "x")
+	require.Error(t, err)
+}

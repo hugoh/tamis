@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -135,16 +136,7 @@ type AddressQuery struct {
 // QueryAddresses returns one page of the whitelist and how many entries match
 // in all.
 func (s *Store) QueryAddresses(ctx context.Context, query AddressQuery) ([]Address, int, error) {
-	var (
-		where string
-		args  []any
-	)
-
-	if query.Search != "" {
-		pattern := "%" + escapeLike(strings.ToLower(query.Search)) + "%"
-		where = ` WHERE (LOWER(address) LIKE ? ESCAPE '\' OR LOWER(source) LIKE ? ESCAPE '\')`
-		args = []any{pattern, pattern}
-	}
+	where, args := addressWhere(query.Search)
 
 	var total int
 
@@ -169,6 +161,69 @@ func (s *Store) QueryAddresses(ctx context.Context, query AddressQuery) ([]Addre
 		append(args, limit, max(query.Offset, 0))...)
 
 	return entries, total, err
+}
+
+// addressWhere is the condition that keeps whitelist entries whose address or
+// source contain search; with an empty search it keeps them all.
+func addressWhere(search string) (string, []any) {
+	if search == "" {
+		return "", nil
+	}
+
+	pattern := "%" + escapeLike(strings.ToLower(search)) + "%"
+
+	return ` WHERE (LOWER(address) LIKE ? ESCAPE '\' OR LOWER(source) LIKE ? ESCAPE '\')`,
+		[]any{pattern, pattern}
+}
+
+const (
+	deleteListed   = `DELETE FROM addresses WHERE address IN (SELECT value FROM json_each(?))`
+	deleteAll      = `DELETE FROM addresses`
+	deleteMatching = `DELETE FROM addresses
+		WHERE (LOWER(address) LIKE ? ESCAPE '\' OR LOWER(source) LIKE ? ESCAPE '\')`
+)
+
+// RemoveAddresses takes the given addresses off the whitelist, in one
+// statement, and returns how many were on it. Case does not matter.
+func (s *Store) RemoveAddresses(ctx context.Context, addresses []string) (int, error) {
+	lowered := make([]string, len(addresses))
+	for i, address := range addresses {
+		lowered[i] = strings.ToLower(address)
+	}
+
+	list, err := json.Marshal(lowered)
+	if err != nil {
+		return 0, fmt.Errorf("remove addresses: %w", err)
+	}
+
+	result, err := s.db.ExecContext(ctx, deleteListed, string(list))
+	if err != nil {
+		return 0, fmt.Errorf("remove addresses: %w", err)
+	}
+
+	count, _ := result.RowsAffected()
+
+	return int(count), nil
+}
+
+// RemoveAddressesMatching removes every entry a QueryAddresses with the same
+// search would list, and returns how many. An empty search matches them all.
+func (s *Store) RemoveAddressesMatching(ctx context.Context, search string) (int, error) {
+	statement, args := deleteAll, []any(nil)
+
+	if search != "" {
+		pattern := "%" + escapeLike(strings.ToLower(search)) + "%"
+		statement, args = deleteMatching, []any{pattern, pattern}
+	}
+
+	result, err := s.db.ExecContext(ctx, statement, args...)
+	if err != nil {
+		return 0, fmt.Errorf("remove addresses: %w", err)
+	}
+
+	count, _ := result.RowsAffected()
+
+	return int(count), nil
 }
 
 func addressSortColumn(name string) string {

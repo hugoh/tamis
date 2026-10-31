@@ -4,10 +4,11 @@ set -euo pipefail
 
 web=internal/web
 dest=$web/static/vendor
-htmx=$(mise where npm:htmx.org)/node_modules/htmx.org
-cli=$(mise where npm:@tailwindcss/cli)/node_modules
+mise=${TAMIS_MISE:-mise}
+htmx=$("$mise" where npm:htmx.org)/node_modules/htmx.org
+cli=$("$mise" where npm:@tailwindcss/cli)/node_modules
 tailwind=("$cli"/.mise/tailwindcss@*/node_modules/tailwindcss)
-daisyui=$(mise where npm:daisyui)/node_modules/daisyui
+daisyui=$("$mise" where npm:daisyui)/node_modules/daisyui
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 new=$work/new

@@ -5,3 +5,8 @@
 "npm:@tailwindcss/cli" = "4.3.3"
 "npm:daisyui" = "5.7.50"
 "npm:htmx.org" = "2.0.11"
+
+# Tasks that run where mise is not on PATH (systemd-run, cron) cannot call it by
+# name, and mise exports no variable that names itself: give the build one.
+[env]
+TAMIS_MISE = "{{ mise_bin }}"

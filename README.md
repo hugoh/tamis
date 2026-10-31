@@ -24,6 +24,49 @@ It starts in shadow mode.
 - [`docs/rules.md`](docs/rules.md): filing good mail into folders with Sieve.
 - [`docs/design.md`](docs/design.md): where it is heading.
 
+## Install
+
+### Homebrew (macOS/Linux)
+
+```sh
+brew install hugoh/tap/tamis
+```
+
+### Linux (deb/rpm)
+
+Download the `.deb` or `.rpm` from the
+[releases page](https://github.com/hugoh/tamis/releases) and install it with
+your package manager:
+
+```sh
+# Debian/Ubuntu
+sudo apt install ./tamis_*.deb
+
+# RHEL/Fedora
+sudo dnf install ./tamis_*.rpm
+```
+
+### mise
+
+```sh
+mise use -g github:hugoh/tamis
+```
+
+### From source
+
+The web interface's files are built, not committed, so use the `mise` tasks:
+
+```sh
+git clone https://github.com/hugoh/tamis
+cd tamis
+mise install
+mise run build
+```
+
+A plain `go install github.com/hugoh/tamis@latest` also works, but the binary
+has no web interface (`tamis version` shows `+noweb`); see
+[Development](#development).
+
 ## Quick start
 
 Create `~/.config/tamis/config.toml` with `tamis init`:

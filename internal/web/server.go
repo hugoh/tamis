@@ -175,8 +175,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("Cache-Control", "no-store")
 
-	if req.Method != http.MethodGet && req.Method != http.MethodHead &&
-		req.Header.Get("Origin") != s.origin {
+	if req.Method != http.MethodGet && req.Method != http.MethodHead && !s.fromOwnOrigin(req) {
 		http.Error(resp, "forbidden", http.StatusForbidden)
 
 		return
@@ -252,6 +251,20 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	}
 
 	return nil
+}
+
+// fromOwnOrigin accepts the configured Origin, or a same-origin request whose
+// Origin the browser blanked to "null" because of Referrer-Policy: no-referrer.
+// Sec-Fetch-Site is set by the browser and cannot be forged by a page.
+func (s *Server) fromOwnOrigin(req *http.Request) bool {
+	switch req.Header.Get("Origin") {
+	case s.origin:
+		return true
+	case "null":
+		return req.Header.Get("Sec-Fetch-Site") == "same-origin"
+	default:
+		return false
+	}
 }
 
 func (s *Server) routes() {

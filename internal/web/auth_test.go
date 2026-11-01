@@ -21,6 +21,7 @@ const (
 	testVersion  = "1.2.3+noweb"
 	origin       = "http://localhost:8484"
 	registerPath = "/auth/register"
+	originHeader = "Origin"
 	loginPath    = "/auth/login"
 )
 
@@ -99,7 +100,7 @@ func (h *harness) do(
 
 	req := httptest.NewRequestWithContext(h.t.Context(), method, path, bytes.NewReader(body))
 	if method == http.MethodPost {
-		req.Header.Set("Origin", origin)
+		req.Header.Set(originHeader, origin)
 	}
 
 	for i := 0; i+1 < len(headers); i += 2 {
@@ -340,8 +341,12 @@ func TestForeignOriginIsRefused(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string][]string{
-		"other origin": {"Origin", "https://evil.example"},
-		"no origin":    {"Origin", ""},
+		"other origin": {originHeader, "https://evil.example"},
+		"no origin":    {originHeader, ""},
+		"null origin from another site": {
+			originHeader, "null", "Sec-Fetch-Site", "cross-site",
+		},
+		"null origin without fetch metadata": {originHeader, "null"},
 	}
 
 	for name, headers := range tests {
@@ -389,6 +394,17 @@ func TestLogout(t *testing.T) {
 		replay.do(http.MethodGet, "/", nil).Code,
 		"the session is gone server-side",
 	)
+}
+
+func TestLogoutWithNullOriginFromSameOrigin(t *testing.T) {
+	t.Parallel()
+
+	browser := newHarness(t)
+	browser.enroll(browser.token())
+
+	rec := browser.do(http.MethodPost, "/auth/logout", nil,
+		originHeader, "null", "Sec-Fetch-Site", "same-origin")
+	require.Equal(t, http.StatusSeeOther, rec.Code)
 }
 
 func TestPasskeyNameIsBounded(t *testing.T) {

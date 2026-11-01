@@ -24,18 +24,18 @@ concurrency:
 
 jobs:
   hk:
-    uses: hugoh/go-tools/.github/workflows/go-hk.yml@ba2eb44a261dda09d56e585237d77d0c43d39ff7 # v1.29.1
+    uses: hugoh/go-tools/.github/workflows/go-hk.yml@c7955c6dad3f38438363afd70c6eab478316239c # v1.30.0
     permissions:
       contents: read
 
   goci:
-    uses: hugoh/go-tools/.github/workflows/go-ci.yml@ba2eb44a261dda09d56e585237d77d0c43d39ff7 # v1.29.1
+    uses: hugoh/go-tools/.github/workflows/go-ci.yml@c7955c6dad3f38438363afd70c6eab478316239c # v1.30.0
     permissions:
       contents: read
 
   release:
     needs: [hk, goci]
-    uses: hugoh/go-tools/.github/workflows/go-release.yml@ba2eb44a261dda09d56e585237d77d0c43d39ff7 # v1.29.1
+    uses: hugoh/go-tools/.github/workflows/go-release.yml@c7955c6dad3f38438363afd70c6eab478316239c # v1.30.0
     permissions:
       contents: write
     with:

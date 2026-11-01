@@ -47,12 +47,19 @@ nfpms:
     bindir: /usr/bin
 
 # cloudsmiths: is GoReleaser Pro only, so push through the Cloudsmith CLI.
-# Publishers see every artifact; only the .deb goes to the apt repo. armv7 is
-# skipped: it is armhf like armv6, and Cloudsmith rejects the duplicate.
+# Publishers see every artifact; each one filters for its own package type.
+# armv7 debs are skipped: they are armhf like armv6, and Cloudsmith rejects
+# the duplicate. rpm names the two arches differently, so both are pushed.
 publishers:
   - name: cloudsmith-apt
     cmd: >-
       sh -c 'case "$0" in *_armv7.deb) ;; *.deb) cloudsmith push deb hugoh/apt/any-distro/any-version "$0";; esac'
+      {{ .ArtifactPath }}
+    env:
+      - CLOUDSMITH_API_KEY={{ .Env.CLOUDSMITH_API_KEY }}
+  - name: cloudsmith-rpm
+    cmd: >-
+      sh -c 'case "$0" in *.rpm) cloudsmith push rpm hugoh/rpm/any-distro/any-version "$0";; esac'
       {{ .ArtifactPath }}
     env:
       - CLOUDSMITH_API_KEY={{ .Env.CLOUDSMITH_API_KEY }}

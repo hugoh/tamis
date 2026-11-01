@@ -46,6 +46,17 @@ nfpms:
       - rpm
     bindir: /usr/bin
 
+# cloudsmiths: is GoReleaser Pro only, so push through the Cloudsmith CLI.
+# Publishers see every artifact; only the .deb goes to the apt repo. armv7 is
+# skipped: it is armhf like armv6, and Cloudsmith rejects the duplicate.
+publishers:
+  - name: cloudsmith-apt
+    cmd: >-
+      sh -c 'case "$0" in *_armv7.deb) ;; *.deb) cloudsmith push deb hugoh/apt/any-distro/any-version "$0";; esac'
+      {{ .ArtifactPath }}
+    env:
+      - CLOUDSMITH_API_KEY={{ .Env.CLOUDSMITH_API_KEY }}
+
 brews:
   # DEPRECATED but intentional: homebrew_casks requires Gatekeeper-signed
   # binaries or macOS flags the cask as malware. brews (Formula) has no

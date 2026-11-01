@@ -24,18 +24,18 @@ concurrency:
 
 jobs:
   hk:
-    uses: hugoh/go-tools/.github/workflows/go-hk.yml@64dbb43862f6ba6a91bef606323c205fa5436663 # v1.28.1
+    uses: hugoh/go-tools/.github/workflows/go-hk.yml@ba2eb44a261dda09d56e585237d77d0c43d39ff7 # v1.29.1
     permissions:
       contents: read
 
   goci:
-    uses: hugoh/go-tools/.github/workflows/go-ci.yml@64dbb43862f6ba6a91bef606323c205fa5436663 # v1.28.1
+    uses: hugoh/go-tools/.github/workflows/go-ci.yml@ba2eb44a261dda09d56e585237d77d0c43d39ff7 # v1.29.1
     permissions:
       contents: read
 
   release:
     needs: [hk, goci]
-    uses: hugoh/go-tools/.github/workflows/go-release.yml@64dbb43862f6ba6a91bef606323c205fa5436663 # v1.28.1
+    uses: hugoh/go-tools/.github/workflows/go-release.yml@ba2eb44a261dda09d56e585237d77d0c43d39ff7 # v1.29.1
     permissions:
       contents: write
     with:
@@ -44,3 +44,4 @@ jobs:
     secrets:
       gh_token: ${{ secrets.GITHUB_TOKEN }}
       tap_github_token: ${{ secrets.TAP_GITHUB_TOKEN }}
+      cloudsmith_api_key: ${{ secrets.CLOUDSMITH_API_KEY }}

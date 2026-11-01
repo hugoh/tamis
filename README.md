@@ -34,7 +34,16 @@ brew install hugoh/tap/tamis
 
 ### Linux (deb/rpm)
 
-Download the `.deb` or `.rpm` from the
+On Debian/Ubuntu, install from the apt repository:
+
+```sh
+curl -1sLf 'https://dl.cloudsmith.io/public/hugoh/apt/setup.deb.sh' | sudo -E bash
+sudo apt install tamis
+```
+
+Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
+
+Or download the `.deb` or `.rpm` from the
 [releases page](https://github.com/hugoh/tamis/releases) and install it with
 your package manager:
 

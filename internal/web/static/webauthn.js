@@ -35,7 +35,7 @@ on("login", async () => {
 on("enroll", async () => {
   const token = new URLSearchParams(location.search).get("token") ?? "";
   const options = await (
-    await send("/auth/register/begin?token=" + encodeURIComponent(token))
+    await send(`/auth/register/begin?token=${encodeURIComponent(token)}`)
   ).json();
   const credential = await navigator.credentials.create({
     publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(
@@ -44,7 +44,7 @@ on("enroll", async () => {
   });
   const name = document.getElementById("name").value;
   await send(
-    "/auth/register/finish?name=" + encodeURIComponent(name),
+    `/auth/register/finish?name=${encodeURIComponent(name)}`,
     JSON.stringify(credential.toJSON()),
   );
 });

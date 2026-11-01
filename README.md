@@ -26,40 +26,7 @@ It starts in shadow mode.
 
 ## Install
 
-### Homebrew (macOS/Linux)
-
-```sh
-brew install hugoh/tap/tamis
-```
-
-### Linux (deb/rpm)
-
-On Debian/Ubuntu, install from the apt repository:
-
-```sh
-curl -1sLf 'https://dl.cloudsmith.io/public/hugoh/apt/setup.deb.sh' | sudo -E bash
-sudo apt install tamis
-```
-
-Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
-
-Or download the `.deb` or `.rpm` from the
-[releases page](https://github.com/hugoh/tamis/releases) and install it with
-your package manager:
-
-```sh
-# Debian/Ubuntu
-sudo apt install ./tamis_*.deb
-
-# RHEL/Fedora
-sudo dnf install ./tamis_*.rpm
-```
-
-### mise
-
-```sh
-mise use -g github:hugoh/tamis
-```
+See [INSTALL.md](INSTALL.md) for installation instructions.
 
 ### From source
 

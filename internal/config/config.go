@@ -49,6 +49,46 @@ type Config struct {
 	Policy  Policy  `toml:"policy"`
 	Rules   Rules   `toml:"rules"`
 	Web     Web     `toml:"web"`
+	Monitor Monitor `toml:"monitor"`
+}
+
+// Monitor is the optional reporting to a dead-man's-switch service such as
+// healthchecks.io, which alerts when the pings stop or say something failed.
+// The URLs are secrets: anyone who has one can fake a ping.
+type Monitor struct {
+	// PingURL is the heartbeat check: pinged after passes succeed, and told of
+	// failures. Empty turns it off.
+	PingURL string `toml:"ping_url"`
+	// QualityURL is a second check, pinged once a day with whether the
+	// filter's training and decisions look healthy. Empty turns it off.
+	QualityURL string `toml:"quality_url"`
+	// FailAfter is how many passes must fail in a row before PingURL is told
+	// of it; a rejected login is told at once. Fewer failures are left to the
+	// check's grace time, so a short outage doesn't page anyone.
+	FailAfter int `toml:"fail_after"`
+}
+
+func (m Monitor) problems() []string {
+	var problems []string
+
+	for _, field := range []struct{ key, value string }{
+		{"ping_url", m.PingURL}, {"quality_url", m.QualityURL},
+	} {
+		if field.value == "" {
+			continue
+		}
+
+		if parsed, err := url.Parse(field.value); err != nil || parsed.Host == "" ||
+			(parsed.Scheme != "https" && parsed.Scheme != "http") {
+			problems = append(problems, "monitor."+field.key+" must be an http(s) URL")
+		}
+	}
+
+	if m.FailAfter < 1 {
+		problems = append(problems, "monitor.fail_after must be at least 1")
+	}
+
+	return problems
 }
 
 // Rules is the optional filing of good mail into folders.
@@ -293,7 +333,8 @@ func defaults() Config {
 			Rescue:                true,
 			JournalRetention:      Duration{365 * 24 * time.Hour},
 		},
-		Web: Web{Listen: "127.0.0.1:8484"},
+		Web:     Web{Listen: "127.0.0.1:8484"},
+		Monitor: Monitor{FailAfter: 3}, //nolint:mnd // three passes: a few minutes of trouble
 	}
 }
 
@@ -432,6 +473,7 @@ func (c *Config) validate() error {
 
 	problems = append(problems, c.Policy.problems()...)
 	problems = append(problems, c.Web.problems()...)
+	problems = append(problems, c.Monitor.problems()...)
 
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", errInvalid, strings.Join(problems, "; "))

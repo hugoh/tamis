@@ -23,6 +23,7 @@ import (
 	"github.com/hugoh/tamis/internal/health"
 	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/monitor"
 	"github.com/hugoh/tamis/internal/retry"
 	"github.com/hugoh/tamis/internal/rules"
 	"github.com/hugoh/tamis/internal/store"
@@ -352,26 +353,22 @@ func (a *app) watch(
 
 	status := savedStatus(ctx, database, logger)
 
-	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs, debug)
+	mon, stop, err := a.serve(ctx, cfg, database, logger, status, logs, debug)
 	if err != nil {
 		return err
 	}
 
-	defer stopWeb()
+	defer stop()
 
 	var pruner journalPruner
 
-	passes := passHealth{pace: retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)}
+	passes := newPassHealth(cfg, status, mon.beat)
 
 	// Watching starts after the first good pass: a rejected login should be
 	// tried once, not once per folder.
 	var watcher *mail.Watcher
 
-	defer func() {
-		if watcher != nil {
-			watcher.Close()
-		}
-	}()
+	defer func() { closeWatcher(watcher) }()
 
 	checkRules := cfg.Rules.Script != ""
 
@@ -396,12 +393,20 @@ func (a *app) watch(
 
 		wait := passes.after(ctx, logger, err)
 
+		mon.checkQuality(ctx, database, cfg, logger)
+
 		watcher, reload = a.rest(ctx, cfg, logger, status, watcher, err, wait, hup)
 		if reload {
 			cfg, watcher = a.reload(ctx, cfg, watcher, logger)
 			checkRules = cfg.Rules.Script != ""
 			passes.pace = retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
 		}
+	}
+}
+
+func closeWatcher(watcher *mail.Watcher) {
+	if watcher != nil {
+		watcher.Close()
 	}
 }
 
@@ -425,6 +430,32 @@ type passHealth struct {
 	streak retry.Streak
 	// login says the streak began with a rejected login.
 	login bool
+	// beat hears of the passes; it is nil when monitoring is off.
+	beat      *monitor.Pinger
+	failAfter int
+	status    *live.Status
+}
+
+func newPassHealth(cfg *config.Config, status *live.Status, beat *monitor.Pinger) passHealth {
+	return passHealth{
+		pace:      retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry),
+		beat:      beat,
+		failAfter: cfg.Monitor.FailAfter,
+		status:    status,
+	}
+}
+
+// tell reports a failed pass to the monitoring service: a rejected login at
+// once, anything else once it has gone on for failAfter passes. Fewer are left
+// to the check's grace time.
+func (h *passHealth) tell(err error, failures int) {
+	switch {
+	case errors.Is(err, mail.ErrLogin):
+		h.beat.Fail("login rejected: " + err.Error())
+	case failures >= h.failAfter:
+		h.beat.Fail(fmt.Sprintf("%d passes failed in a row since %s: %v",
+			failures, h.streak.Since().Format(time.RFC3339), err))
+	}
 }
 
 // after takes the outcome of a pass and returns how long to wait before
@@ -438,6 +469,7 @@ func (h *passHealth) after(ctx context.Context, logger *slog.Logger, err error) 
 	}
 
 	failures := h.streak.Fail(time.Now())
+	h.tell(err, failures)
 
 	if errors.Is(err, mail.ErrLogin) {
 		h.login = h.login || failures == 1
@@ -469,6 +501,7 @@ func (h *passHealth) after(ctx context.Context, logger *slog.Logger, err error) 
 // recovered ends the trouble after a pass that worked, saying so if there was.
 func (h *passHealth) recovered(ctx context.Context, logger *slog.Logger) {
 	h.pace.Reset()
+	h.beat.Success(h.status.Snapshot().LastSummary)
 
 	if failures, downtime, ok := h.streak.Recover(time.Now()); ok {
 		message := "pass recovered"
@@ -480,6 +513,35 @@ func (h *passHealth) recovered(ctx context.Context, logger *slog.Logger) {
 	}
 
 	h.login = false
+}
+
+// serve starts the web interface and the monitoring, if configured; the
+// returned function stops them.
+func (a *app) serve(
+	ctx context.Context,
+	cfg *config.Config,
+	database *store.Store,
+	logger *slog.Logger,
+	status *live.Status,
+	logs *live.Ring,
+	debug *live.DebugSwitch,
+) (*monitors, func(), error) {
+	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs, debug)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mon, err := newMonitors(ctx, cfg, logger)
+	if err != nil {
+		stopWeb()
+
+		return nil, nil, err
+	}
+
+	return mon, func() {
+		mon.close()
+		stopWeb()
+	}, nil
 }
 
 // daemonLogger is the logger of `tamis run`, whose lines the web interface

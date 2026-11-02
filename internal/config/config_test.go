@@ -473,3 +473,35 @@ func TestPasswordCommandTimesOut(t *testing.T) {
 	require.ErrorContains(t, err, "timed out after 200ms")
 	require.Less(t, time.Since(start), 5*time.Second)
 }
+
+func TestMonitorDefaultsOff(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(noEnv, write(t, "[account]\nhost = \"h\"\nuser = \"u\""))
+	require.NoError(t, err)
+
+	require.Empty(t, cfg.Monitor.PingURL)
+	require.Empty(t, cfg.Monitor.QualityURL)
+	require.Equal(t, 3, cfg.Monitor.FailAfter)
+}
+
+func TestMonitorValidation(t *testing.T) {
+	t.Parallel()
+
+	const account = "[account]\nhost = \"h\"\nuser = \"u\"\n[monitor]\n"
+
+	cfg, err := config.Load(noEnv, write(t, account+
+		"ping_url = \"https://hc-ping.com/abc\"\nquality_url = \"https://hc-ping.com/def\"\nfail_after = 1"))
+	require.NoError(t, err)
+	require.Equal(t, "https://hc-ping.com/abc", cfg.Monitor.PingURL)
+	require.Equal(t, 1, cfg.Monitor.FailAfter)
+
+	for name, body := range map[string]string{
+		"monitor.ping_url":    "ping_url = \"hc-ping.com/abc\"",
+		"monitor.quality_url": "quality_url = \"ftp://hc-ping.com/abc\"",
+		"monitor.fail_after":  "fail_after = 0",
+	} {
+		_, err := config.Load(noEnv, write(t, account+body))
+		require.ErrorContains(t, err, name)
+	}
+}

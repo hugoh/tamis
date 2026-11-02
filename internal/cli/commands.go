@@ -755,7 +755,7 @@ func (a *app) writeDecisions(cmd *cobra.Command, decisions []store.Decision) err
 	rows := [][]cell{{
 		text("ID", styleBold), text("TIME", styleBold), text("VERDICT", styleBold),
 		text("REASON", styleBold), text("SCORE", styleBold), text("ACTION", styleBold),
-		text("FROM", styleBold), text("SUBJECT", styleBold),
+		text("FOLDER", styleBold), text("FROM", styleBold), text("SUBJECT", styleBold),
 	}}
 
 	for _, decision := range decisions {
@@ -769,6 +769,7 @@ func (a *app) writeDecisions(cmd *cobra.Command, decisions []store.Decision) err
 			text(decision.Reason, styleDim),
 			text(fmt.Sprintf("%.2f", decision.Score), verdict),
 			actionCell(decision),
+			text(decision.Mailbox, ""),
 			text(decision.From, ""),
 			text(decision.Subject, ""),
 		})

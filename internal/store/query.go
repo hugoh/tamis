@@ -15,6 +15,7 @@ const (
 	SortReason  = "reason"
 	SortScore   = "score"
 	SortAction  = "action"
+	SortFolder  = "folder"
 	SortFrom    = "from"
 	SortSubject = "subject"
 )
@@ -89,9 +90,10 @@ func (q DecisionQuery) where() (string, []any) {
 		conditions = append(
 			conditions,
 			`(LOWER(sender) LIKE ? ESCAPE '\' OR LOWER(subject) LIKE ? ESCAPE '\'
-			OR LOWER(reason) LIKE ? ESCAPE '\' OR LOWER(action) LIKE ? ESCAPE '\')`,
+			OR LOWER(reason) LIKE ? ESCAPE '\' OR LOWER(action) LIKE ? ESCAPE '\'
+			OR LOWER(mailbox) LIKE ? ESCAPE '\')`,
 		)
-		args = append(args, pattern, pattern, pattern, pattern)
+		args = append(args, pattern, pattern, pattern, pattern, pattern)
 	}
 
 	if len(conditions) == 0 {
@@ -257,6 +259,8 @@ func sortColumn(name string) string {
 		return "score"
 	case SortAction:
 		return "action COLLATE NOCASE"
+	case SortFolder:
+		return "mailbox COLLATE NOCASE"
 	case SortFrom:
 		return "sender COLLATE NOCASE"
 	case SortSubject:

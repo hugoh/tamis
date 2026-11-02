@@ -284,10 +284,19 @@ func (e *Engine) whitelistRecipients(ctx context.Context, addresses []string) (i
 
 // handleSent whitelists the To and Cc recipients of a message you sent, and
 // learns the message it replies to.
-func (e *Engine) handleSent(ctx context.Context, _ string, message mail.Message) error {
+func (e *Engine) handleSent(ctx context.Context, folder string, message mail.Message) error {
 	parsed, err := netmail.ReadMessage(bytes.NewReader(message.Raw))
 	if err != nil {
-		e.log.DebugContext(ctx, "unreadable sent message", "uid", message.UID, "error", err)
+		e.log.DebugContext(
+			ctx,
+			"unreadable sent message",
+			"folder",
+			folder,
+			"uid",
+			message.UID,
+			"error",
+			err,
+		)
 
 		return nil
 	}
@@ -298,7 +307,7 @@ func (e *Engine) handleSent(ctx context.Context, _ string, message mail.Message)
 		list, err := parsed.Header.AddressList(header)
 		if err != nil {
 			e.log.DebugContext(ctx, "unreadable recipients in sent message",
-				"uid", message.UID, "header", header, "error", err)
+				"folder", folder, "uid", message.UID, "header", header, "error", err)
 
 			continue
 		}
@@ -318,7 +327,16 @@ func (e *Engine) handleSent(ctx context.Context, _ string, message mail.Message)
 	}
 
 	if err := e.learnReplied(ctx, replied[0]); err != nil {
-		e.log.WarnContext(ctx, "not learning from reply", "uid", message.UID, "error", err)
+		e.log.WarnContext(
+			ctx,
+			"not learning from reply",
+			"folder",
+			folder,
+			"uid",
+			message.UID,
+			"error",
+			err,
+		)
 	}
 
 	return nil

@@ -92,9 +92,18 @@ func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, firs
 
 	pace := retry.Backoff(firstRetry, maxWatchRetry)
 
+	var streak retry.Streak
+
+	back := func() {
+		if failures, downtime, ok := streak.Recover(time.Now()); ok {
+			log.InfoContext(ctx, "imap loop recovered",
+				"mailbox", mailbox, "failures", failures, "downtime", downtime)
+		}
+	}
+
 	for {
 		started := time.Now()
-		err := w.idleOn(ctx, cfg, mailbox)
+		err := w.idleOn(ctx, cfg, mailbox, back)
 
 		var wait time.Duration
 
@@ -102,23 +111,44 @@ func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, firs
 		case ctx.Err() != nil:
 			return
 		case errors.Is(err, ErrNoIdle):
-			log.WarnContext(ctx, "server has no IDLE; not watching", "mailbox", mailbox)
+			log.WarnContext(ctx, "server has no IDLE; polling only", "mailbox", mailbox)
 
 			return
 		case errors.Is(err, ErrLogin):
 			wait = loginRetry
+			failures := streak.Fail(time.Now())
 
-			log.ErrorContext(ctx, "login rejected; trying again later",
-				"mailbox", mailbox, "err", err, "retry", wait)
+			// Reported at once, then hourly: nothing changes in between.
+			switch {
+			case failures == 1:
+				log.ErrorContext(ctx, "login rejected; trying again later",
+					"mailbox", mailbox, "err", err, "retry", wait)
+			case failures%4 == 0:
+				log.WarnContext(ctx, "login still rejected",
+					"mailbox", mailbox, "failures", failures, "since", streak.Since(), "retry", wait)
+			default:
+				log.DebugContext(ctx, "login rejected", "mailbox", mailbox, "retry", wait)
+			}
 		default:
 			if time.Since(started) >= stableAfter {
 				pace.Reset()
 			}
 
 			wait = pace.NextBackOff()
+			failures := streak.Fail(time.Now())
 
-			log.WarnContext(ctx, "watch failed; retrying",
-				"mailbox", mailbox, "err", err, "retry", wait)
+			switch {
+			case failures == 1:
+				log.WarnContext(ctx, "watch failed; retrying",
+					"mailbox", mailbox, "err", err, "retry", wait)
+			case retry.Notable(failures):
+				log.WarnContext(ctx, "watch still failing",
+					"mailbox", mailbox, "err", err, "failures", failures,
+					"since", streak.Since(), "retry", wait)
+			default:
+				log.DebugContext(ctx, "watch failed; retrying",
+					"mailbox", mailbox, "err", err, "failures", failures, "retry", wait)
+			}
 		}
 
 		select {
@@ -130,8 +160,13 @@ func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, firs
 }
 
 // idleOn IDLEs on mailbox, reporting changes, until the connection fails or
-// ctx ends.
-func (w *Watcher) idleOn(ctx context.Context, cfg DialConfig, mailbox string) error {
+// ctx ends. It calls idling once the folder is being watched.
+func (w *Watcher) idleOn(
+	ctx context.Context,
+	cfg DialConfig,
+	mailbox string,
+	idling func(),
+) error {
 	changed := make(chan string, 1)
 
 	client, err := dial(ctx, cfg, idleHandler(changed))
@@ -151,6 +186,8 @@ func (w *Watcher) idleOn(ctx context.Context, cfg DialConfig, mailbox string) er
 
 	w.idling.Add(1)
 	defer w.idling.Add(-1)
+
+	idling()
 
 	for {
 		reason, err := client.idleUntil(ctx, mailbox, changed)

@@ -324,3 +324,35 @@ func TestWatcherWithoutFoldersIsInert(t *testing.T) {
 	require.Zero(t, w.Idling())
 	w.Close()
 }
+
+func TestWatcherLogsItsRecovery(t *testing.T) {
+	t.Parallel()
+
+	var failing atomic.Bool
+
+	failing.Store(true)
+
+	srv := imaptest.StartWith(t, imaptest.Options{
+		Caps: imaptest.Rev2(),
+		Fail: func(op, _ string) bool { return failing.Load() && op == "SELECT" },
+	})
+	cfg, logs := watchConfig(srv)
+
+	w := mail.Watch(t.Context(), cfg, []string{inboxName}, watchRetry)
+	t.Cleanup(w.Close)
+
+	require.Eventually(t, func() bool {
+		return strings.Count(logs.String(), "watch ") >= 3
+	}, watchWait, watchRetry)
+
+	require.NotContains(t, logs.String(), "imap loop recovered", "still down")
+
+	failing.Store(false)
+	watchIdling(t, w, 1)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), "imap loop recovered")
+	}, watchWait, watchRetry)
+	require.Equal(t, 1, strings.Count(logs.String(), "level=WARN msg=\"watch failed"),
+		"only the first failure is a warning before the reminders")
+}

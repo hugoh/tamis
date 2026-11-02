@@ -243,7 +243,7 @@ func TestRunLoopRetriesARejectedLoginRarely(t *testing.T) {
 	})
 	require.Zero(t, got.code, "the daemon keeps going until stopped")
 	require.Contains(t, got.stderr, loginFailed)
-	require.Equal(t, 1, strings.Count(got.stderr, "pass failed"),
+	require.Equal(t, 1, strings.Count(got.stderr, "login rejected"),
 		"a rejected login isn't retried soon, or the account may lock")
 	require.Contains(t, got.stderr, "retry=15m0s")
 }

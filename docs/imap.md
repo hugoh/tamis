@@ -19,8 +19,14 @@ passing trouble heals without a restart (`tamis run --once` exits instead).
 Other failures are retried ever more slowly, with some jitter: a failed pass
 after `policy.poll_interval`, doubling up to 15 minutes; a watcher after 5
 seconds, doubling up to 10 minutes. A pass that succeeds, or a watcher
-connection that stayed up for a minute, starts the wait over. The Health page
-shows how many passes have failed in a row and when the next try is due. Between
+connection that stayed up for a minute, starts the wait over. The log says when
+trouble starts (`pass failed`, `watch failed`, `login rejected`), repeats it at
+warn level on the 2nd, 3rd, 5th, 10th and every 20th failure in a row (a rejected
+login: every 4th), and says when it ends (`pass recovered`, `login accepted
+again`, `imap loop recovered`, each with the failures and the downtime); the
+attempts in between are debug lines. The Health page shows how many passes have
+failed in a row, since when, and when the next try is due; after a recovery
+it keeps the last error, marked as recovered. Between
 a watcher's attempts the poll every `policy.poll_interval` covers the gap. A server that limits concurrent sessions may refuse the watchers; the
 polling pass still runs.
 

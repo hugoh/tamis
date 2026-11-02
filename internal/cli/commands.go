@@ -364,7 +364,7 @@ func (a *app) watch(
 
 	var pruner journalPruner
 
-	pace := retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
+	health := passHealth{pace: retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)}
 
 	// Watching starts after the first good pass: a rejected login should be
 	// tried once, not once per folder.
@@ -399,27 +399,87 @@ func (a *app) watch(
 			return nil
 		}
 
-		var (
-			reload bool
-			wait   time.Duration
-		)
+		var reload bool
 
-		switch {
-		case err == nil:
-			pace.Reset()
-		case errors.Is(err, mail.ErrLogin):
-			wait = loginRetry
-		default:
-			wait = pace.NextBackOff()
-		}
+		wait := health.after(ctx, logger, err)
 
 		watcher, reload = a.rest(ctx, cfg, logger, status, watcher, err, wait, hup)
 		if reload {
 			cfg, watcher = a.reload(ctx, cfg, watcher, logger)
 			checkRules = cfg.Rules.Script != ""
-			pace = retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
+			health.pace = retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
 		}
 	}
+}
+
+// passHealth follows how the passes are going: how long to wait after a
+// failure, and what to log as trouble starts, goes on and ends.
+type passHealth struct {
+	pace interface {
+		NextBackOff() time.Duration
+		Reset()
+	}
+	streak retry.Streak
+	// login says the streak began with a rejected login.
+	login bool
+}
+
+// after takes the outcome of a pass and returns how long to wait before
+// trying again after a failure. It logs the trouble when it starts, now and
+// then while it lasts, and when it ends.
+func (h *passHealth) after(ctx context.Context, logger *slog.Logger, err error) time.Duration {
+	now := time.Now()
+
+	if err == nil {
+		h.pace.Reset()
+
+		if failures, downtime, ok := h.streak.Recover(now); ok {
+			message := "pass recovered"
+			if h.login {
+				message = "login accepted again"
+			}
+
+			logger.InfoContext(ctx, message, "failures", failures, "downtime", downtime)
+		}
+
+		h.login = false
+
+		return 0
+	}
+
+	failures := h.streak.Fail(now)
+
+	if errors.Is(err, mail.ErrLogin) {
+		h.login = failures == 1 || h.login
+
+		// Nothing changes between attempts: report it once, then hourly.
+		switch {
+		case failures == 1:
+			logger.ErrorContext(ctx, "login rejected; check the password",
+				"err", err, "retry", loginRetry, "hint", "SIGHUP tries again at once")
+		case failures%4 == 0:
+			logger.WarnContext(ctx, "login still rejected",
+				"err", err, "failures", failures, "since", h.streak.Since(), "retry", loginRetry)
+		default:
+			logger.DebugContext(ctx, "login rejected", "err", err, "retry", loginRetry)
+		}
+
+		return loginRetry
+	}
+
+	wait := h.pace.NextBackOff()
+
+	switch {
+	case failures == 1:
+		logger.ErrorContext(ctx, "pass failed", "err", err, "retry", wait)
+	case retry.Notable(failures):
+		logger.WarnContext(ctx, "pass still failing",
+			"err", err, "failures", failures, "since", h.streak.Since(), "retry", wait)
+	default:
+		logger.DebugContext(ctx, "pass failed", "err", err, "failures", failures, "retry", wait)
+	}
+
+	return wait
 }
 
 func reloadSignal() (<-chan os.Signal, func()) {
@@ -470,7 +530,6 @@ func (a *app) rest(
 	if passErr != nil {
 		now := time.Now()
 
-		logger.ErrorContext(ctx, "pass failed", "err", passErr, "retry", failWait)
 		status.Failed(now, passErr)
 		status.RetryAt(now.Add(failWait))
 		status.Wait(live.Polling)

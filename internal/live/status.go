@@ -26,8 +26,11 @@ type Snapshot struct {
 	LastErrorAt time.Time
 	// Failures counts the passes that have failed in a row, and RetryAt is
 	// when the next try is due; both are cleared by a pass that succeeds.
-	Failures int
-	RetryAt  time.Time
+	Failures     int
+	FailingSince time.Time
+	RetryAt      time.Time
+	// RecoveredAt is when a pass last succeeded after failures.
+	RecoveredAt time.Time
 	// Waiting is Idle, Polling or Running; empty before the first pass starts.
 	Waiting string
 }
@@ -50,7 +53,12 @@ func (s *Status) PassDone(at time.Time, summary string) {
 		snap.Passes++
 		snap.LastPass = at
 		snap.LastSummary = summary
+		if snap.Failures > 0 {
+			snap.RecoveredAt = at
+		}
+
 		snap.Failures = 0
+		snap.FailingSince = time.Time{}
 		snap.RetryAt = time.Time{}
 	})
 }
@@ -60,6 +68,10 @@ func (s *Status) Failed(at time.Time, err error) {
 	s.update(func(snap *Snapshot) {
 		snap.LastError = err.Error()
 		snap.LastErrorAt = at
+		if snap.Failures == 0 {
+			snap.FailingSince = at
+		}
+
 		snap.Failures++
 	})
 }

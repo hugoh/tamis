@@ -240,6 +240,8 @@ type daemonView struct {
 	Started, LastPass, Summary, Doing string
 	Passes                            int
 	LastError                         string
+	// Recovered means the error is over: passes work again.
+	Recovered bool
 }
 
 type healthBody struct {
@@ -291,9 +293,13 @@ func (s *Server) daemon() *daemonView {
 		daemon.LastError = localTime(snap.LastErrorAt) + ": " + snap.LastError
 	}
 
-	if snap.Failures > 0 && !snap.RetryAt.IsZero() {
-		daemon.LastError += fmt.Sprintf(" (failed %d in a row; next try %s)",
-			snap.Failures, localClock(snap.RetryAt))
+	switch {
+	case snap.Failures > 0 && !snap.RetryAt.IsZero():
+		daemon.LastError += fmt.Sprintf(" (failed %d in a row since %s; next try %s)",
+			snap.Failures, localClock(snap.FailingSince), localClock(snap.RetryAt))
+	case snap.LastError != "" && !snap.RecoveredAt.IsZero():
+		daemon.LastError += " (recovered " + localClock(snap.RecoveredAt) + ")"
+		daemon.Recovered = true
 	}
 
 	return daemon

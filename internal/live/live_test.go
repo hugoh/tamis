@@ -340,3 +340,25 @@ func TestStatusCountsFailuresUntilAPassSucceeds(t *testing.T) {
 	require.Zero(t, snap.Failures)
 	require.True(t, snap.RetryAt.IsZero())
 }
+
+func TestStatusRemembersWhenFailingBeganAndRecovered(t *testing.T) {
+	t.Parallel()
+
+	status := live.NewStatus(time.Now())
+	began := time.Now()
+	recovered := began.Add(time.Hour)
+
+	status.Failed(began, errBoom)
+	status.Failed(began.Add(time.Minute), errBoom)
+	require.Equal(t, began, status.Snapshot().FailingSince)
+
+	status.PassDone(recovered, "ok")
+
+	snap := status.Snapshot()
+	require.Equal(t, recovered, snap.RecoveredAt)
+	require.True(t, snap.FailingSince.IsZero())
+	require.Equal(t, "boom", snap.LastError, "the last error stays, as history")
+
+	status.PassDone(recovered.Add(time.Minute), "ok")
+	require.Equal(t, recovered, status.Snapshot().RecoveredAt, "only a recovery moves it")
+}

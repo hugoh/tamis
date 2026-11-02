@@ -5,11 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/monitor"
 	"github.com/hugoh/tamis/internal/retry"
 	"github.com/stretchr/testify/require"
 )
@@ -95,4 +101,86 @@ func TestPassHealthReportsARejectedLoginOnceThenHourly(t *testing.T) {
 	require.Equal(t, 1, strings.Count(out.String(), "level=ERROR"))
 	require.Equal(t, 2, strings.Count(out.String(), "level=WARN"), "the 4th and 8th")
 	require.Contains(t, out.String(), "msg=\"login accepted again\" failures=8")
+}
+
+const (
+	beatPing = "/ping/key"
+	failPing = "/ping/key/fail"
+)
+
+type heard struct {
+	mu    sync.Mutex
+	paths []string
+}
+
+func (h *heard) add(path string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.paths = append(h.paths, path)
+}
+
+func (h *heard) all() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return append([]string(nil), h.paths...)
+}
+
+func monitored(t *testing.T, failAfter int) (*passHealth, *heard, *slog.Logger) {
+	t.Helper()
+
+	got := &heard{}
+	srv := httptest.NewServer(http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+		got.add(req.URL.Path)
+		resp.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	logger := slog.New(slog.DiscardHandler)
+	beat, err := monitor.New(t.Context(), srv.URL+"/ping/key", logger)
+	require.NoError(t, err)
+	t.Cleanup(beat.Close)
+
+	health, _, _ := newHealth()
+	health.beat, health.failAfter, health.status = beat, failAfter, live.NewStatus(time.Now())
+
+	return health, got, logger
+}
+
+func eventually(t *testing.T, got *heard, want []string) {
+	t.Helper()
+
+	require.Eventually(t, func() bool { return slices.Equal(got.all(), want) },
+		2*time.Second, 5*time.Millisecond, "heard %v", got.all())
+}
+
+func TestPassHealthPingsTheMonitorOnlyOnceFailuresPersist(t *testing.T) {
+	t.Parallel()
+
+	health, got, logger := monitored(t, 3)
+
+	health.after(t.Context(), logger, nil)
+	eventually(t, got, []string{beatPing})
+
+	health.after(t.Context(), logger, errDown)
+	health.after(t.Context(), logger, errDown)
+
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, []string{beatPing}, got.all(), "two failures are left to the grace time")
+
+	health.after(t.Context(), logger, errDown)
+	eventually(t, got, []string{beatPing, failPing})
+
+	health.after(t.Context(), logger, nil)
+	eventually(t, got, []string{beatPing, failPing, beatPing})
+}
+
+func TestPassHealthTellsTheMonitorOfARejectedLoginAtOnce(t *testing.T) {
+	t.Parallel()
+
+	health, got, logger := monitored(t, 3)
+
+	health.after(t.Context(), logger, fmt.Errorf("pass: %w", mail.ErrLogin))
+	eventually(t, got, []string{failPing})
 }

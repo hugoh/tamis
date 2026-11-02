@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -635,4 +638,65 @@ func TestRunSavesWhatDoctorAndStatusShow(t *testing.T) {
 	doctor := a.run(t, "doctor")
 	require.Contains(t, doctor.stdout, "Daemon")
 	require.Regexp(t, `ok\s+daemon\s+last pass`, doctor.stdout)
+}
+
+func TestMonitorShowsTheChecksToCreate(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(
+		t,
+		`poll_interval = "2m"`+"\n\n[monitor]\nping_url = \"https://hc-ping.com/abc\"",
+	)
+
+	got := a.run(t, "monitor")
+	require.Zero(t, got.code, got.stderr)
+	require.Regexp(t, `tamis heartbeat\s+2m\s+11m\s+monitor.ping_url\n`, got.stdout)
+	require.Regexp(t, `tamis quality\s+1d\s+2h\s+monitor.quality_url \(not set\)`, got.stdout)
+	require.Contains(t, got.stdout, "13m")
+	require.Contains(t, got.stdout, `"timeout":120,"grace":660`)
+	require.NotContains(t, got.stdout, "hc-ping.com/abc", "the URL is a secret")
+
+	asJSON := a.run(t, "monitor", "--json")
+	require.Zero(t, asJSON.code, asJSON.stderr)
+	require.Contains(t, asJSON.stdout, `"timeout": 120`)
+	require.Contains(t, asJSON.stdout, `"grace": 660`)
+}
+
+func TestMonitorTestPingsTheConfiguredChecks(t *testing.T) {
+	t.Parallel()
+
+	var hits atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(resp http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		resp.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	a := newAccount(t, "[monitor]\nping_url = \""+srv.URL+"/abc\"")
+
+	got := a.run(t, "monitor", "test")
+	require.Zero(t, got.code, got.stderr)
+	require.Contains(t, got.stdout, "heartbeat: ok")
+	require.NotContains(t, got.stdout, "quality")
+	require.EqualValues(t, 1, hits.Load())
+
+	none := newAccount(t, "")
+	require.Contains(t, none.run(t, "monitor", "test").stdout, "No monitor.ping_url")
+}
+
+func TestMonitorTestFailsWhenTheServiceRefuses(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(resp http.ResponseWriter, _ *http.Request) {
+		resp.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	a := newAccount(t, "[monitor]\nping_url = \""+srv.URL+"/abc\"")
+
+	got := a.run(t, "monitor", "test")
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stdout, "heartbeat: FAILED")
+	require.Contains(t, got.stdout, "HTTP 404")
 }

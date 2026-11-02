@@ -22,6 +22,7 @@ It starts in shadow mode.
 
 - [`docs/engine.md`](docs/engine.md): how mail is processed today.
 - [`docs/rules.md`](docs/rules.md): filing good mail into folders with Sieve.
+- [`docs/monitoring.md`](docs/monitoring.md): getting alerted when tamis stops working.
 - [`docs/design.md`](docs/design.md): where it is heading.
 
 ## Install
@@ -110,6 +111,7 @@ tamis bootstrap   # whitelist Sent recipients, train on Junk and old read mail
 tamis run         # judge new mail as it arrives (IDLE), or every poll_interval (--once for one pass)
 tamis log         # what it decided, and in shadow mode what it would have done
 tamis status      # mode, folders, how much it has learnt, how the daemon is doing
+tamis monitor     # the healthchecks.io checks to set up for [monitor], and when they alert
 tamis doctor      # does the config load, do the rules compile, is the daemon and the filter in good shape? (--json; exits 1 on failure)
 tamis undo 42     # reverse decision 42 from the log
 tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
@@ -330,6 +332,22 @@ Either way a dialog lists exactly what will go, and nothing is removed until you
 confirm; if the matches changed in the meantime, tamis refuses and removes
 nothing. On the command line, `tamis whitelist rm --matching TEXT` lists the
 matches and does nothing more until you repeat it with `--yes`.
+
+## Monitoring
+
+To be told when tamis stops working, point it at a dead-man's-switch service such
+as [healthchecks.io](https://healthchecks.io):
+
+```toml
+[monitor]
+ping_url = "https://hc-ping.com/your-heartbeat-uuid"   # a secret: keep the file private
+quality_url = "https://hc-ping.com/your-quality-uuid"  # optional, once a day
+fail_after = 3                                         # passes that fail in a row before telling it
+```
+
+`tamis monitor` works out the period and grace time to give the checks, and how
+soon each kind of trouble alerts; `tamis monitor test` sends a ping to see that
+the URLs work. [docs/monitoring.md](docs/monitoring.md) has the details.
 
 ## Where tamis keeps things
 

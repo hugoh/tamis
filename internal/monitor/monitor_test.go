@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const secret = "0a1b2c3d-secret"
+const checkID = "heartbeat-check"
 
 type received struct {
 	path, body string
@@ -51,7 +51,7 @@ func newService(t *testing.T, status func(n int) int) *service {
 	return svc
 }
 
-func (s *service) url() string { return s.srv.URL + "/ping/" + secret }
+func (s *service) url() string { return s.srv.URL + "/ping/" + checkID }
 
 func (s *service) got() []received {
 	s.mu.Lock()
@@ -135,8 +135,8 @@ func TestSuccessAndFailGoToTheirOwnPaths(t *testing.T) {
 	)
 
 	require.Equal(t, []received{
-		{"/ping/" + secret, "scanned 2"},
-		{"/ping/" + secret + "/fail", "3 passes failed"},
+		{"/ping/" + checkID, "scanned 2"},
+		{"/ping/" + checkID + "/fail", "3 passes failed"},
 	}, svc.got())
 }
 
@@ -211,7 +211,7 @@ func TestWrongURLIsNotRetriedAndNeverLogsTheSecret(t *testing.T) {
 		5*time.Millisecond,
 	)
 	require.Len(t, svc.got(), 1, "a 404 won't get better")
-	require.NotContains(t, logs.String(), secret)
+	require.NotContains(t, logs.String(), checkID)
 }
 
 func TestUnreachableServiceNeverLogsTheSecret(t *testing.T) {
@@ -224,7 +224,7 @@ func TestUnreachableServiceNeverLogsTheSecret(t *testing.T) {
 	pinger := start(t, target, nil)
 	err := pinger.Test(t.Context(), "x")
 	require.Error(t, err)
-	require.NotContains(t, err.Error(), secret)
+	require.NotContains(t, err.Error(), checkID)
 }
 
 func TestTestReportsWhatTheServiceSaid(t *testing.T) {

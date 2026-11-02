@@ -100,6 +100,7 @@ func TestRingKeepsTheNewestEntriesFirst(t *testing.T) {
 	t.Parallel()
 
 	ring := live.NewRing(3)
+	ring.Start()
 	logger := slog.New(ring.Handler(quiet()))
 
 	for _, msg := range []string{"m1", "m2", "m3", "m4", "m5"} {
@@ -113,6 +114,7 @@ func TestRingBeforeItFills(t *testing.T) {
 	t.Parallel()
 
 	ring := live.NewRing(5)
+	ring.Start()
 	logger := slog.New(ring.Handler(quiet()))
 
 	require.Empty(t, ring.Entries())
@@ -130,6 +132,7 @@ func TestRingRecordsAttributes(t *testing.T) {
 	t.Parallel()
 
 	ring := live.NewRing(5)
+	ring.Start()
 	logger := slog.New(ring.Handler(quiet()))
 
 	logger.Error("pass failed", "err", errBoom, "folder", "INBOX")
@@ -148,6 +151,7 @@ func TestRingPassesRecordsOnAndFollowsItsLevel(t *testing.T) {
 
 	next := slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelWarn})
 	ring := live.NewRing(5)
+	ring.Start()
 	logger := slog.New(ring.Handler(next))
 
 	logger.Info("quiet")
@@ -180,6 +184,7 @@ func TestRingIsSafeForConcurrentUse(t *testing.T) {
 	t.Parallel()
 
 	ring := live.NewRing(10)
+	ring.Start()
 	logger := slog.New(ring.Handler(quiet()))
 
 	var wg sync.WaitGroup
@@ -293,4 +298,24 @@ func TestDebugSwitchIsSafeForConcurrentUse(t *testing.T) {
 	}
 
 	group.Wait()
+}
+
+func TestRingExistsOnlyWhileDebugIsOn(t *testing.T) {
+	t.Parallel()
+
+	ring := live.NewRing(5)
+	debug := live.NewDebugSwitch(slog.LevelInfo, time.Hour)
+	debug.Capture(ring)
+
+	logger := slog.New(ring.Handler(slog.NewTextHandler(new(bytes.Buffer), &slog.HandlerOptions{Level: debug.Level()})))
+
+	logger.Warn("before")
+	require.Empty(t, ring.Entries(), "nothing is kept while debug is off")
+
+	debug.On()
+	logger.Debug("during")
+	require.Equal(t, []string{"during"}, texts(ring.Entries()))
+
+	debug.Off()
+	require.Empty(t, ring.Entries(), "turning debug off frees what was kept")
 }

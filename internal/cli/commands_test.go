@@ -147,7 +147,7 @@ func TestBootstrapRunLogStatus(t *testing.T) {
 		"Congratulations winner, claim your lottery prize.",
 	)
 
-	got = a.run(t, runCmd, onceFlag)
+	got = a.run(t, "--verbose", runCmd, onceFlag)
 	require.Zero(t, got.code, got.stderr)
 	require.Contains(t, got.stderr, "verdict=spam")
 
@@ -207,7 +207,7 @@ func TestRunLoopStopsOnCancel(t *testing.T) {
 	got := a.runContext(ctx, t, runCmd)
 	require.Zero(t, got.code, got.stderr)
 	require.Less(t, time.Since(start), time.Minute)
-	require.Contains(t, got.stderr, "pass complete")
+	require.Contains(t, got.stderr, "imap loop started")
 }
 
 func TestRunLoopWakesOnNewMail(t *testing.T) {
@@ -222,7 +222,7 @@ func TestRunLoopWakesOnNewMail(t *testing.T) {
 		a.add(t, "INBOX", nil, time.Now(), "Lunch", "Are we still on for lunch?")
 	})
 
-	got := a.runContext(ctx, t, runCmd)
+	got := a.runContext(ctx, t, "--verbose", runCmd)
 	require.Zero(t, got.code, got.stderr)
 	require.Equal(t, 2, strings.Count(got.stderr, "pass complete"),
 		"new mail should start a pass long before poll_interval")
@@ -576,7 +576,7 @@ func TestBootstrapRefresh(t *testing.T) {
 	require.NotContains(t, got.stdout, "Watching", "refreshing doesn't move the watch position")
 	require.NotContains(t, got.stdout, "Whitelisted", "or touch the whitelist")
 
-	got = a.run(t, runCmd, onceFlag)
+	got = a.run(t, "--verbose", runCmd, onceFlag)
 	require.Zero(t, got.code, got.stderr)
 	require.Contains(
 		t,

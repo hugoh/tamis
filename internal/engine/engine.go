@@ -206,7 +206,7 @@ func (e *Engine) scan(ctx context.Context, folder string, handle handler) error 
 	}
 
 	if !ok || cursor.UIDValidity != state.UIDValidity {
-		e.log.InfoContext(ctx, "starting folder from current mail", "folder", folder)
+		e.log.DebugContext(ctx, "starting folder from current mail", "folder", folder)
 
 		return e.startAtCurrent(ctx, folder, state)
 	}
@@ -540,7 +540,7 @@ func (e *Engine) record(
 	action string,
 	applied bool,
 ) error {
-	e.log.InfoContext(ctx, "decision",
+	e.log.DebugContext(ctx, "decision",
 		"folder", folder, "uid", message.UID, "from", message.From, "subject", message.Subject,
 		"verdict", verdict.verdict, "reason", verdict.reason, "score", verdict.score,
 		"action", action, "applied", applied)

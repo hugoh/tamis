@@ -253,7 +253,7 @@ func (a *app) startWeb(
 		}
 	}()
 
-	logger.InfoContext(ctx, "web interface listening", listening...)
+	logger.InfoContext(ctx, "web interface up", listening...)
 
 	return func() {
 		cancel()

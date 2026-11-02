@@ -339,9 +339,13 @@ func (a *app) watch(
 	database *store.Store,
 	once bool,
 ) error {
+	// The ring holds nothing, and costs nothing, until debug logging is on.
 	logs := live.NewRing(logRingSize)
 	debug := live.NewDebugSwitch(a.baseLevel(), debugSpan)
+	debug.Capture(logs)
+
 	logger := slog.New(logs.Handler(a.loggerAt(cmd, debug.Level()).Handler()))
+	logger.InfoContext(ctx, "tamis starting", "version", a.version)
 	status := live.NewStatus(time.Now())
 
 	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs, debug)
@@ -419,7 +423,7 @@ func (a *app) reload(
 		return cfg, watcher
 	}
 
-	logger.InfoContext(ctx, "SIGHUP: configuration and rules reloaded")
+	logger.DebugContext(ctx, "SIGHUP: configuration and rules reloaded")
 
 	if watcher != nil {
 		watcher.Close()
@@ -457,6 +461,7 @@ func (a *app) rest(
 
 	if watcher == nil {
 		watcher = a.startWatcher(ctx, cfg, logger)
+		logger.InfoContext(ctx, "imap loop started", "folders", cfg.Folders.Watch)
 	}
 
 	return watcher, waitForNextPass(ctx, cfg, watcher, status, hup)
@@ -491,7 +496,7 @@ func (a *app) pass(
 			}
 
 			status.PassDone(time.Now(), summaryText(summary))
-			logger.InfoContext(ctx, "pass complete", "mode", cfg.Policy.Mode,
+			logger.DebugContext(ctx, "pass complete", "mode", cfg.Policy.Mode,
 				"scanned", summary.Scanned, "spam", summary.Spam, "uncertain", summary.Uncertain,
 				"good", summary.Good, "corrected", summary.Corrected, "trained", summary.Trained,
 				"rescued", summary.Rescued)

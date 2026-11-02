@@ -17,6 +17,7 @@ type DebugSwitch struct {
 	span  time.Duration
 	timer *time.Timer
 	until time.Time
+	ring  *Ring
 }
 
 // NewDebugSwitch starts at base and, when turned on, stays on for span.
@@ -25,6 +26,23 @@ func NewDebugSwitch(base slog.Level, span time.Duration) *DebugSwitch {
 	debug.level.Set(base)
 
 	return debug
+}
+
+// Capture ties the ring to the switch: the ring is allocated while debug is
+// on and freed when it goes off. Under --verbose, where debug never goes off,
+// it starts at once.
+func (d *DebugSwitch) Capture(ring *Ring) {
+	if d == nil {
+		return
+	}
+
+	d.mu.Lock()
+	d.ring = ring
+	d.mu.Unlock()
+
+	if d.Locked() {
+		ring.Start()
+	}
 }
 
 // Level is what the log handlers consult.
@@ -60,6 +78,7 @@ func (d *DebugSwitch) On() {
 		d.timer.Stop()
 	}
 
+	d.ring.Start()
 	d.level.Set(slog.LevelDebug)
 	d.until = time.Now().Add(d.span)
 	d.timer = time.AfterFunc(d.span, d.Off)
@@ -80,6 +99,7 @@ func (d *DebugSwitch) Off() {
 	}
 
 	d.level.Set(d.base)
+	d.ring.Stop()
 	d.until = time.Time{}
 }
 

@@ -88,6 +88,7 @@ func newRoot(env Env, version string) (*cobra.Command, *app) {
 		app.logCommand(),
 		app.statusCommand(),
 		app.doctorCommand(),
+		app.monitorCommand(),
 		app.undoCommand(),
 		app.learnCommand(),
 		app.whitelistCommand(),

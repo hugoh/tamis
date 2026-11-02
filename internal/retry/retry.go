@@ -57,6 +57,11 @@ func (s *Streak) Fail(now time.Time) int {
 	return s.failures
 }
 
+// Failures is how many failures there have been in a row.
+func (s *Streak) Failures() int {
+	return s.failures
+}
+
 // Since is when the current streak began; it is zero when there is none.
 func (s *Streak) Since() time.Time {
 	if s.failures == 0 {

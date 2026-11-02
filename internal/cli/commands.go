@@ -423,7 +423,7 @@ func (a *app) reload(
 		return cfg, watcher
 	}
 
-	logger.DebugContext(ctx, "SIGHUP: configuration and rules reloaded")
+	logger.InfoContext(ctx, "SIGHUP: configuration and rules reloaded")
 
 	if watcher != nil {
 		watcher.Close()

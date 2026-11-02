@@ -42,8 +42,8 @@ hears of new mail or changed flags in a watched folder, or after
 `policy.poll_interval` if none does. Each watched folder has its own long-lived
 IDLE connection, kept across passes, so a junk mark set in another client is
 learnt straight away and a quiet mailbox costs no logins. A folder whose
-connection fails is retried; one whose server can't IDLE is given up on, and the
-poll covers it. Everything else (training folders, Sent, Junk, including marks
+connection fails is retried with a growing wait; one whose server can't IDLE is
+given up on, and the poll covers it. Everything else (training folders, Sent, Junk, including marks
 set in Junk) is still only looked at on a pass. [imap.md](imap.md) lists the
 commands behind each step.
 
@@ -78,7 +78,10 @@ Mail already in Sent when tamis first sees the folder is left to
 `tamis bootstrap --sent`. A Sent folder that can't be scanned (say the name in
 `folders.sent` doesn't exist) is logged as a warning and doesn't fail the pass.
 A dropped connection is different: the connection is gone for the rest of the
-pass too, so it fails the pass, which is retried at the next poll.
+pass too, so it fails the pass, which is retried after a wait that grows from
+the poll interval while passes keep failing. How the passes are going is saved
+in the state database for `tamis status` and `tamis doctor` to show; see
+[imap.md](imap.md).
 
 Training folders are processed in both modes. Dropping a message into one is
 an explicit request, not a judgement tamis makes on its own. The same goes for

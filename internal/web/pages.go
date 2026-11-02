@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -239,6 +240,8 @@ type daemonView struct {
 	Started, LastPass, Summary, Doing string
 	Passes                            int
 	LastError                         string
+	// Recovered means the error is over: passes work again.
+	Recovered bool
 }
 
 type healthBody struct {
@@ -288,6 +291,15 @@ func (s *Server) daemon() *daemonView {
 
 	if snap.LastError != "" {
 		daemon.LastError = localTime(snap.LastErrorAt) + ": " + snap.LastError
+	}
+
+	switch {
+	case snap.Failures > 0 && !snap.RetryAt.IsZero():
+		daemon.LastError += fmt.Sprintf(" (failed %d in a row since %s; next try %s)",
+			snap.Failures, localClock(snap.FailingSince), localClock(snap.RetryAt))
+	case snap.LastError != "" && !snap.RecoveredAt.IsZero():
+		daemon.LastError += " (recovered " + localClock(snap.RecoveredAt) + ")"
+		daemon.Recovered = true
 	}
 
 	return daemon

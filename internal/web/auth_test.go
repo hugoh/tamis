@@ -56,6 +56,7 @@ func newHarnessWith(t *testing.T, cfg *config.Config, tweaks ...func(*web.Option
 	actions := &fakeActions{}
 	status := live.NewStatus(time.Now())
 	logs := live.NewRing(50)
+	logs.Start()
 
 	options := web.Options{Run: actions.run, Status: status, Logs: logs, Version: testVersion}
 	for _, tweak := range tweaks {

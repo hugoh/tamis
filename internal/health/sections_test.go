@@ -60,7 +60,7 @@ func TestChecksAreGroupedIntoSectionsInOrder(t *testing.T) {
 	}
 
 	require.Equal(t, []string{
-		health.SectionConfig, health.SectionRules, health.SectionTraining,
+		health.SectionConfig, health.SectionRules, health.SectionDaemon, health.SectionTraining,
 		health.SectionDecisions, health.SectionWeb,
 	}, seen)
 }

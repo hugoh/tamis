@@ -29,6 +29,9 @@ func passwordEnv() map[string]string {
 	return map[string]string{passwordKey: imaptest.Password}
 }
 
+// rejectedPassword is one the test server refuses.
+const rejectedPassword = "not the password"
+
 func newAccount(t *testing.T, policy string) *account {
 	t.Helper()
 
@@ -147,7 +150,7 @@ func TestBootstrapRunLogStatus(t *testing.T) {
 		"Congratulations winner, claim your lottery prize.",
 	)
 
-	got = a.run(t, runCmd, onceFlag)
+	got = a.run(t, "--verbose", runCmd, onceFlag)
 	require.Zero(t, got.code, got.stderr)
 	require.Contains(t, got.stderr, "verdict=spam")
 
@@ -207,7 +210,7 @@ func TestRunLoopStopsOnCancel(t *testing.T) {
 	got := a.runContext(ctx, t, runCmd)
 	require.Zero(t, got.code, got.stderr)
 	require.Less(t, time.Since(start), time.Minute)
-	require.Contains(t, got.stderr, "pass complete")
+	require.Contains(t, got.stderr, "imap loop started")
 }
 
 func TestRunLoopWakesOnNewMail(t *testing.T) {
@@ -222,28 +225,44 @@ func TestRunLoopWakesOnNewMail(t *testing.T) {
 		a.add(t, "INBOX", nil, time.Now(), "Lunch", "Are we still on for lunch?")
 	})
 
-	got := a.runContext(ctx, t, runCmd)
+	got := a.runContext(ctx, t, "--verbose", runCmd)
 	require.Zero(t, got.code, got.stderr)
 	require.Equal(t, 2, strings.Count(got.stderr, "pass complete"),
 		"new mail should start a pass long before poll_interval")
 }
 
-func TestRunLoopStopsOnRejectedLogin(t *testing.T) {
+func TestRunLoopRetriesARejectedLoginRarely(t *testing.T) {
 	t.Parallel()
 
 	a := newAccount(t, `poll_interval = "50ms"`)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	got := execute(ctx, t, invocation{
 		args: []string{runCmd, configFlag, a.config},
-		env:  map[string]string{passwordKey: "wrong"},
+		env:  map[string]string{passwordKey: rejectedPassword},
 		srv:  a.srv,
 	})
-	require.Equal(t, 1, got.code, "retrying a rejected login risks locking the account")
+	require.Zero(t, got.code, "the daemon keeps going until stopped")
 	require.Contains(t, got.stderr, loginFailed)
-	require.NoError(t, ctx.Err(), "the daemon should exit on its own")
+	require.Equal(t, 1, strings.Count(got.stderr, "login rejected"),
+		"a rejected login isn't retried soon, or the account may lock")
+	require.Contains(t, got.stderr, "retry=15m0s")
+}
+
+func TestRunOnceStopsOnRejectedLogin(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	got := execute(t.Context(), t, invocation{
+		args: []string{runCmd, onceFlag, configFlag, a.config},
+		env:  map[string]string{passwordKey: rejectedPassword},
+		srv:  a.srv,
+	})
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stderr, loginFailed)
 }
 
 func TestCommandErrors(t *testing.T) {
@@ -576,7 +595,7 @@ func TestBootstrapRefresh(t *testing.T) {
 	require.NotContains(t, got.stdout, "Watching", "refreshing doesn't move the watch position")
 	require.NotContains(t, got.stdout, "Whitelisted", "or touch the whitelist")
 
-	got = a.run(t, runCmd, onceFlag)
+	got = a.run(t, "--verbose", runCmd, onceFlag)
 	require.Zero(t, got.code, got.stderr)
 	require.Contains(
 		t,
@@ -599,4 +618,21 @@ func TestRunLoopKeepsItsIdleConnectionBetweenPasses(t *testing.T) {
 	require.GreaterOrEqual(t, strings.Count(got.stderr, "pass complete"), 3)
 	require.Equal(t, 1, strings.Count(got.stderr, "msg=idle mailbox=INBOX"),
 		"polling passes shouldn't restart IDLE")
+}
+
+func TestRunSavesWhatDoctorAndStatusShow(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	got := a.run(t, runCmd, onceFlag)
+	require.Zero(t, got.code, got.stderr)
+
+	status := a.run(t, "status")
+	require.Zero(t, status.code, status.stderr)
+	require.Regexp(t, `Daemon:\s+last pass .* ago: scanned`, status.stdout)
+
+	doctor := a.run(t, "doctor")
+	require.Contains(t, doctor.stdout, "Daemon")
+	require.Regexp(t, `ok\s+daemon\s+last pass`, doctor.stdout)
 }

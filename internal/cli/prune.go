@@ -48,7 +48,7 @@ func (p *journalPruner) prune(
 		"decisions", pruned)
 
 	if pruned > 0 {
-		logger.InfoContext(ctx, "journal pruned", "decisions", pruned)
+		logger.DebugContext(ctx, "journal pruned", "decisions", pruned)
 	}
 
 	return nil

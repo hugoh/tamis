@@ -20,8 +20,10 @@ import (
 	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
+	"github.com/hugoh/tamis/internal/health"
 	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/retry"
 	"github.com/hugoh/tamis/internal/rules"
 	"github.com/hugoh/tamis/internal/store"
 	"github.com/spf13/cobra"
@@ -34,8 +36,14 @@ const (
 	defaultLogLimit   = 20
 	passTimeout       = 10 * time.Minute
 	// newMailSettle lets a burst of arrivals land before the next pass.
-	newMailSettle    = time.Second
-	watchRetry       = time.Minute
+	newMailSettle = time.Second
+	watchRetry    = 5 * time.Second
+	// maxPassRetry caps the wait after failed passes, which grows from
+	// poll_interval while they keep failing.
+	maxPassRetry = 15 * time.Minute
+	// loginRetry is the wait after a rejected login: long enough not to
+	// lock the account, short enough to recover from a provider's blip.
+	loginRetry       = 15 * time.Minute
 	bootstrapTimeout = time.Hour
 	tablePadding     = 2
 	stateDirMode     = 0o700
@@ -339,10 +347,10 @@ func (a *app) watch(
 	database *store.Store,
 	once bool,
 ) error {
-	logs := live.NewRing(logRingSize)
-	debug := live.NewDebugSwitch(a.baseLevel(), debugSpan)
-	logger := slog.New(logs.Handler(a.loggerAt(cmd, debug.Level()).Handler()))
-	status := live.NewStatus(time.Now())
+	logger, logs, debug := a.daemonLogger(cmd)
+	logger.InfoContext(ctx, "tamis starting", "version", a.version)
+
+	status := savedStatus(ctx, database, logger)
 
 	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs, debug)
 	if err != nil {
@@ -352,6 +360,8 @@ func (a *app) watch(
 	defer stopWeb()
 
 	var pruner journalPruner
+
+	passes := passHealth{pace: retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)}
 
 	// Watching starts after the first good pass: a rejected login should be
 	// tried once, not once per folder.
@@ -369,16 +379,12 @@ func (a *app) watch(
 	defer stopHup()
 
 	for {
-		if err := pruner.prune(
-			ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
-		); err != nil {
-			logger.ErrorContext(ctx, "journal pruning failed", "err", err)
-		}
+		pruneJournal(ctx, &pruner, database, cfg, logger)
 
 		status.Wait(live.Running)
 
 		err := a.pass(ctx, cfg, database, logger, status, &checkRules)
-		if once || errors.Is(err, mail.ErrLogin) {
+		if once {
 			return err
 		}
 
@@ -388,12 +394,117 @@ func (a *app) watch(
 
 		var reload bool
 
-		watcher, reload = a.rest(ctx, cfg, logger, status, watcher, err, hup)
+		wait := passes.after(ctx, logger, err)
+
+		watcher, reload = a.rest(ctx, cfg, logger, status, watcher, err, wait, hup)
 		if reload {
 			cfg, watcher = a.reload(ctx, cfg, watcher, logger)
 			checkRules = cfg.Rules.Script != ""
+			passes.pace = retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
 		}
 	}
+}
+
+func pruneJournal(
+	ctx context.Context,
+	pruner *journalPruner,
+	database *store.Store,
+	cfg *config.Config,
+	logger *slog.Logger,
+) {
+	err := pruner.prune(ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "journal pruning failed", "err", err)
+	}
+}
+
+// passHealth follows how the passes are going: how long to wait after a
+// failure, and what to log as trouble starts, goes on and ends.
+type passHealth struct {
+	pace   *retry.Pace
+	streak retry.Streak
+	// login says the streak began with a rejected login.
+	login bool
+}
+
+// after takes the outcome of a pass and returns how long to wait before
+// trying again after a failure. It logs the trouble when it starts, now and
+// then while it lasts, and when it ends.
+func (h *passHealth) after(ctx context.Context, logger *slog.Logger, err error) time.Duration {
+	if err == nil {
+		h.recovered(ctx, logger)
+
+		return 0
+	}
+
+	failures := h.streak.Fail(time.Now())
+
+	if errors.Is(err, mail.ErrLogin) {
+		h.login = h.login || failures == 1
+
+		message := "login still rejected"
+		if failures == 1 {
+			message = "login rejected; check the password"
+		}
+
+		logger.Log(ctx, retry.RejectedLevel(failures), message, "err", err, "failures", failures,
+			"since", h.streak.Since(), "retry", loginRetry, "hint", "SIGHUP tries again at once")
+
+		return loginRetry
+	}
+
+	wait := h.pace.NextBackOff()
+
+	message := "pass still failing"
+	if failures == 1 {
+		message = "pass failed"
+	}
+
+	logger.Log(ctx, retry.Level(failures, slog.LevelError), message, "err", err,
+		"failures", failures, "since", h.streak.Since(), "retry", wait)
+
+	return wait
+}
+
+// recovered ends the trouble after a pass that worked, saying so if there was.
+func (h *passHealth) recovered(ctx context.Context, logger *slog.Logger) {
+	h.pace.Reset()
+
+	if failures, downtime, ok := h.streak.Recover(time.Now()); ok {
+		message := "pass recovered"
+		if h.login {
+			message = "login accepted again"
+		}
+
+		logger.InfoContext(ctx, message, "failures", failures, "downtime", downtime)
+	}
+
+	h.login = false
+}
+
+// daemonLogger is the logger of `tamis run`, whose lines the web interface
+// can show and whose level it can raise to debug for a while. The ring holds
+// nothing, and costs nothing, until debug logging is on.
+func (a *app) daemonLogger(cmd *cobra.Command) (*slog.Logger, *live.Ring, *live.DebugSwitch) {
+	logs := live.NewRing(logRingSize)
+	debug := live.NewDebugSwitch(a.baseLevel(), debugSpan)
+	debug.Capture(logs)
+
+	return slog.New(logs.Handler(a.loggerAt(cmd, debug.Level()).Handler())), logs, debug
+}
+
+// savedStatus is the daemon's live status, kept in the state database too so
+// that `tamis status` and `tamis doctor` can show it.
+func savedStatus(ctx context.Context, database *store.Store, logger *slog.Logger) *live.Status {
+	status := live.NewStatus(time.Now())
+	status.Persist(func(snap live.Snapshot) {
+		if err := database.SetSetting(ctx, live.SettingKey, snap.Encode()); err != nil {
+			logger.DebugContext(ctx, "could not save the daemon status", "err", err)
+		}
+	})
+	status.Save(time.Now())
+
+	return status
 }
 
 func reloadSignal() (<-chan os.Signal, func()) {
@@ -438,16 +549,24 @@ func (a *app) rest(
 	status *live.Status,
 	watcher *mail.Watcher,
 	passErr error,
+	failWait time.Duration,
 	hup <-chan os.Signal,
 ) (*mail.Watcher, bool) {
 	if passErr != nil {
-		logger.ErrorContext(ctx, "pass failed", "err", passErr)
-		status.Failed(time.Now(), passErr)
+		now := time.Now()
+
+		status.Failed(now, passErr)
+
+		if errors.Is(passErr, mail.ErrLogin) {
+			status.LoginRejected()
+		}
+
+		status.RetryAt(now.Add(failWait))
 		status.Wait(live.Polling)
 
 		select {
 		case <-ctx.Done():
-		case <-time.After(cfg.Policy.PollInterval.Duration):
+		case <-time.After(failWait):
 		case <-hup:
 			return watcher, true
 		}
@@ -457,6 +576,7 @@ func (a *app) rest(
 
 	if watcher == nil {
 		watcher = a.startWatcher(ctx, cfg, logger)
+		logger.InfoContext(ctx, "imap loop started", "folders", cfg.Folders.Watch)
 	}
 
 	return watcher, waitForNextPass(ctx, cfg, watcher, status, hup)
@@ -491,7 +611,7 @@ func (a *app) pass(
 			}
 
 			status.PassDone(time.Now(), summaryText(summary))
-			logger.InfoContext(ctx, "pass complete", "mode", cfg.Policy.Mode,
+			logger.DebugContext(ctx, "pass complete", "mode", cfg.Policy.Mode,
 				"scanned", summary.Scanned, "spam", summary.Spam, "uncertain", summary.Uncertain,
 				"good", summary.Good, "corrected", summary.Corrected, "trained", summary.Trained,
 				"rescued", summary.Rescued)
@@ -764,6 +884,7 @@ func (a *app) statusCommand() *cobra.Command {
 						"Auth server id:\t%s\n",
 						authServerIDLine(ctx, cfg, database),
 					)
+					_, _ = fmt.Fprintf(table, "Daemon:\t%s\n", daemonLine(ctx, cfg, database))
 					_, _ = fmt.Fprintf(table, "State:\t%s\n", cfg.State)
 
 					if err := table.Flush(); err != nil {
@@ -775,6 +896,21 @@ func (a *app) statusCommand() *cobra.Command {
 			)
 		},
 	}
+}
+
+// daemonLine says how `tamis run` last reported itself to be doing.
+func daemonLine(ctx context.Context, cfg *config.Config, database *store.Store) string {
+	info, err := health.LoadDaemon(ctx, database, cfg.Policy.PollInterval.Duration)
+	if err != nil {
+		return "unknown: " + err.Error()
+	}
+
+	status, detail := info.Describe(time.Now())
+	if status == health.StatusWarn || status == health.StatusFail {
+		return strings.ToUpper(string(status)) + ": " + detail
+	}
+
+	return detail
 }
 
 // authServerIDLine says which authserv-id tamis pins Authentication-Results to,

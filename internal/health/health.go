@@ -42,12 +42,14 @@ const (
 	NamePasskeys    = "web passkeys"
 	NameConfig      = "config file"
 	NameRules       = "filing rules"
+	NameDaemon      = "daemon"
 )
 
 // Sections group the checks in a report, in this order.
 const (
 	SectionConfig    = "Configuration"
 	SectionRules     = "Rules"
+	SectionDaemon    = "Daemon"
 	SectionTraining  = "Training"
 	SectionDecisions = "Decisions"
 	SectionWeb       = "Web interface"
@@ -57,6 +59,7 @@ var sections = map[string]string{ //nolint:gochecknoglobals // constant lookup
 	NameConfig:      SectionConfig,
 	NameAuthID:      SectionConfig,
 	NameRules:       SectionRules,
+	NameDaemon:      SectionDaemon,
 	NameBalance:     SectionTraining,
 	NameUncertain:   SectionDecisions,
 	NameCorrections: SectionDecisions,
@@ -104,6 +107,7 @@ type Input struct {
 	Web       Web
 	Config    ConfigInfo
 	Rules     RulesInfo
+	Daemon    DaemonInfo
 	Now       time.Time
 }
 
@@ -147,6 +151,7 @@ func Run(input Input) *Report {
 		configFile(input.Config),
 		authID(input.Auth),
 		filingRules(input.Rules),
+		daemon(input.Daemon, input.Now),
 		balance(input.Stats),
 		uncertainRate(judged),
 		correctionRate(judged),

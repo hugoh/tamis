@@ -6,7 +6,7 @@
 <div class="stat"><div class="stat-title">Passes</div><div class="stat-value text-xl">{{.Passes}}</div></div>
 <div class="stat"><div class="stat-title">Last pass</div><div class="stat-value text-xl">{{.LastPass}}</div><div class="stat-desc">{{.Summary}}</div></div>
 </div>
-{{if .LastError}}<div role="alert" class="alert alert-error alert-soft mb-4"><span><strong>Last error</strong> {{.LastError}}</span></div>{{end}}
+{{if .LastError}}<div role="alert" class="alert {{if .Recovered}}alert-success{{else}}alert-error{{end}} alert-soft mb-4"><span><strong>Last error</strong> {{.LastError}}</span></div>{{end}}
 <h2 class="text-lg font-semibold mb-2">Checks</h2>
 {{end}}<div class="overflow-x-auto">
 <table class="table table-sm">

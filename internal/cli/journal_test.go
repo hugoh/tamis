@@ -36,7 +36,7 @@ func TestLogsCarryJournalPrioritiesUnderSystemd(t *testing.T) {
 
 		warned = warned || (strings.HasPrefix(line, "<4>") && strings.Contains(line, "target=Nope"))
 		informed = informed ||
-			(strings.HasPrefix(line, "<6>") && strings.Contains(line, "pass complete"))
+			(strings.HasPrefix(line, "<6>") && strings.Contains(line, "tamis starting"))
 	}
 
 	require.True(t, warned, "a warning is priority 4:\n%s", got.stderr)

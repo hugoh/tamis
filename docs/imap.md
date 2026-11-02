@@ -13,10 +13,29 @@ exchange; credentials and message contents are never logged.
 | Watcher, one per watched folder | As long as the server keeps it, started after the first good pass | `SELECT` the folder, then `IDLE` |
 
 A connection is TLS to `account.host` (port 993 by default) followed by `LOGIN`.
-A rejected login ends the daemon, and a watcher that is refused gives up rather
-than retry, so a wrong password isn't tried repeatedly. A watcher whose connection
-fails is retried after a minute; the poll every `policy.poll_interval` covers the
-gap. A server that limits concurrent sessions may refuse the watchers; the
+A rejected login is retried only every 15 minutes, by the pass and by each
+watcher alike, so a wrong password doesn't lock the account yet a provider's
+passing trouble heals without a restart (`tamis run --once` exits instead).
+Other failures are retried ever more slowly, with some jitter: a failed pass
+after `policy.poll_interval`, doubling up to 15 minutes; a watcher after 5
+seconds, doubling up to 10 minutes. A pass that succeeds, or a watcher
+connection that stayed up for a minute, starts the wait over. The log says when
+trouble starts (`pass failed`, `watch failed`, `login rejected`), repeats it at
+warn level on the 2nd, 3rd, 5th, 10th and every 20th failure in a row (a rejected
+login: every 4th), and says when it ends (`pass recovered`, `login accepted
+again`, `imap loop recovered`, each with the failures and the downtime); the
+attempts in between are debug lines. The Health page shows how many passes have
+failed in a row, since when, and when the next try is due; after a recovery
+it keeps the last error, marked as recovered.
+
+The daemon saves that state in the state database (the `daemon_status` setting)
+after every pass, failure and retry time, so the commands that run in another
+process show it too. `tamis status` has a `Daemon:` line, and `tamis doctor` a
+Daemon section: ok while passes succeed (with the last pass and any recent
+recovery), WARN while they fail or when nothing has been heard for longer than
+the daemon is due to report (a back-off wait counts as due), and FAIL, so
+`doctor` exits 1, while the login is rejected. Between
+a watcher's attempts the poll every `policy.poll_interval` covers the gap. A server that limits concurrent sessions may refuse the watchers; the
 polling pass still runs.
 
 ## Capabilities

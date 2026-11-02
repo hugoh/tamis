@@ -148,7 +148,7 @@ func TestRunServesTheWebInterface(t *testing.T) {
 
 	got := a.run(t, runCmd, onceFlag)
 	require.Zero(t, got.code, got.stderr)
-	require.Contains(t, got.stderr, "web interface listening")
+	require.Contains(t, got.stderr, "web interface up")
 }
 
 func TestRunWithoutWebStaysQuiet(t *testing.T) {
@@ -232,7 +232,7 @@ func TestRunServesTLSWithASelfSignedCertificate(t *testing.T) {
 
 	got := a.run(t, runCmd, onceFlag)
 	require.Zero(t, got.code, got.stderr)
-	require.Contains(t, got.stderr, "web interface listening")
+	require.Contains(t, got.stderr, "web interface up")
 	require.Contains(t, got.stderr, "fingerprint=")
 	require.FileExists(t, filepath.Join(a.stateDir(), "web-cert.pem"))
 	require.FileExists(t, filepath.Join(a.stateDir(), "web-key.pem"))

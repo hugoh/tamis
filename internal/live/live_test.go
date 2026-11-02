@@ -100,6 +100,7 @@ func TestRingKeepsTheNewestEntriesFirst(t *testing.T) {
 	t.Parallel()
 
 	ring := live.NewRing(3)
+	ring.Start()
 	logger := slog.New(ring.Handler(quiet()))
 
 	for _, msg := range []string{"m1", "m2", "m3", "m4", "m5"} {
@@ -113,6 +114,7 @@ func TestRingBeforeItFills(t *testing.T) {
 	t.Parallel()
 
 	ring := live.NewRing(5)
+	ring.Start()
 	logger := slog.New(ring.Handler(quiet()))
 
 	require.Empty(t, ring.Entries())
@@ -130,6 +132,7 @@ func TestRingRecordsAttributes(t *testing.T) {
 	t.Parallel()
 
 	ring := live.NewRing(5)
+	ring.Start()
 	logger := slog.New(ring.Handler(quiet()))
 
 	logger.Error("pass failed", "err", errBoom, "folder", "INBOX")
@@ -148,6 +151,7 @@ func TestRingPassesRecordsOnAndFollowsItsLevel(t *testing.T) {
 
 	next := slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelWarn})
 	ring := live.NewRing(5)
+	ring.Start()
 	logger := slog.New(ring.Handler(next))
 
 	logger.Info("quiet")
@@ -180,6 +184,7 @@ func TestRingIsSafeForConcurrentUse(t *testing.T) {
 	t.Parallel()
 
 	ring := live.NewRing(10)
+	ring.Start()
 	logger := slog.New(ring.Handler(quiet()))
 
 	var wg sync.WaitGroup
@@ -293,4 +298,100 @@ func TestDebugSwitchIsSafeForConcurrentUse(t *testing.T) {
 	}
 
 	group.Wait()
+}
+
+func TestRingExistsOnlyWhileDebugIsOn(t *testing.T) {
+	t.Parallel()
+
+	ring := live.NewRing(5)
+	debug := live.NewDebugSwitch(slog.LevelInfo, time.Hour)
+	debug.Capture(ring)
+
+	logger := slog.New(
+		ring.Handler(
+			slog.NewTextHandler(new(bytes.Buffer), &slog.HandlerOptions{Level: debug.Level()}),
+		),
+	)
+
+	logger.Warn("before")
+	require.Empty(t, ring.Entries(), "nothing is kept while debug is off")
+
+	debug.On()
+	logger.Debug("during")
+	require.Equal(t, []string{"during"}, texts(ring.Entries()))
+
+	debug.Off()
+	require.Empty(t, ring.Entries(), "turning debug off frees what was kept")
+}
+
+func TestStatusCountsFailuresUntilAPassSucceeds(t *testing.T) {
+	t.Parallel()
+
+	status := live.NewStatus(time.Now())
+	retryAt := time.Now().Add(time.Minute)
+
+	status.Failed(time.Now(), errBoom)
+	status.Failed(time.Now(), errBoom)
+	status.RetryAt(retryAt)
+
+	snap := status.Snapshot()
+	require.Equal(t, 2, snap.Failures)
+	require.Equal(t, retryAt, snap.RetryAt)
+
+	status.PassDone(time.Now(), "ok")
+
+	snap = status.Snapshot()
+	require.Zero(t, snap.Failures)
+	require.True(t, snap.RetryAt.IsZero())
+}
+
+func TestStatusRemembersWhenFailingBeganAndRecovered(t *testing.T) {
+	t.Parallel()
+
+	status := live.NewStatus(time.Now())
+	began := time.Now()
+	recovered := began.Add(time.Hour)
+
+	status.Failed(began, errBoom)
+	status.Failed(began.Add(time.Minute), errBoom)
+	require.Equal(t, began, status.Snapshot().FailingSince)
+
+	status.PassDone(recovered, "ok")
+
+	snap := status.Snapshot()
+	require.Equal(t, recovered, snap.RecoveredAt)
+	require.True(t, snap.FailingSince.IsZero())
+	require.Equal(t, "boom", snap.LastError, "the last error stays, as history")
+
+	status.PassDone(recovered.Add(time.Minute), "ok")
+	require.Equal(t, recovered, status.Snapshot().RecoveredAt, "only a recovery moves it")
+}
+
+func TestStatusSavesWhatOtherProcessesRead(t *testing.T) {
+	t.Parallel()
+
+	var saved []live.Snapshot
+
+	status := live.NewStatus(time.Now())
+	status.Persist(func(snap live.Snapshot) { saved = append(saved, snap) })
+
+	at := time.Now()
+
+	status.Save(at)
+	status.Wait(live.Running)
+	status.Failed(at, errBoom)
+	status.LoginRejected()
+	status.PassDone(at, "ok")
+
+	require.Len(t, saved, 4, "waiting is not worth saving")
+	require.True(t, saved[2].Rejected)
+	require.False(t, saved[3].Rejected, "a good pass clears it")
+
+	back, err := live.Decode(saved[2].Encode())
+	require.NoError(t, err)
+	require.Equal(t, saved[2].Failures, back.Failures)
+	require.True(t, saved[2].Updated.Equal(back.Updated))
+
+	_, err = live.Decode("not json")
+	require.Error(t, err)
 }

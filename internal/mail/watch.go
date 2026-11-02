@@ -11,6 +11,19 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/hugoh/tamis/internal/retry"
+)
+
+const (
+	// maxWatchRetry caps the wait between reconnection attempts.
+	maxWatchRetry = 10 * time.Minute
+	// loginRetry is the wait after a rejected login: long, so a wrong
+	// password isn't tried often enough to lock the account, yet a provider's
+	// passing trouble still heals without a restart.
+	loginRetry = 15 * time.Minute
+	// stableAfter is how long a connection must have stayed up for the
+	// next failure to be retried quickly again.
+	stableAfter = time.Minute
 )
 
 var errConnectionClosed = errors.New("connection closed")
@@ -26,15 +39,21 @@ type Watcher struct {
 }
 
 // Watch starts watching mailboxes until ctx ends or Close is called. A folder
-// whose connection fails is retried after retry; one that can't IDLE or
-// can't log in is given up on, since retrying won't help. Callers that also
-// poll lose nothing by a folder dropping out.
-func Watch(ctx context.Context, cfg DialConfig, mailboxes []string, retry time.Duration) *Watcher {
+// whose connection fails is retried after about firstRetry, then ever more
+// slowly while it keeps failing; one whose login is rejected is retried
+// rarely; one that can't IDLE is given up on, since retrying won't help.
+// Callers that also poll lose nothing by a folder dropping out.
+func Watch(
+	ctx context.Context,
+	cfg DialConfig,
+	mailboxes []string,
+	firstRetry time.Duration,
+) *Watcher {
 	ctx, cancel := context.WithCancel(ctx)
 	watcher := &Watcher{changed: make(chan string, 1), cancel: cancel}
 
 	for _, mailbox := range mailboxes {
-		watcher.group.Go(func() { watcher.keep(ctx, cfg, mailbox, retry) })
+		watcher.group.Go(func() { watcher.keep(ctx, cfg, mailbox, firstRetry) })
 	}
 
 	return watcher
@@ -64,42 +83,99 @@ func (w *Watcher) notify(reason string) {
 	}
 }
 
-func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, retry time.Duration) {
+func (w *Watcher) keep(
+	ctx context.Context,
+	cfg DialConfig,
+	mailbox string,
+	firstRetry time.Duration,
+) {
 	log := cfg.Logger
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
 
+	trouble := &trouble{log: log, mailbox: mailbox, pace: retry.Backoff(firstRetry, maxWatchRetry)}
+
 	for {
-		err := w.idleOn(ctx, cfg, mailbox)
+		started := time.Now()
+		err := w.idleOn(ctx, cfg, mailbox, func() { trouble.over(ctx) })
 
 		switch {
 		case ctx.Err() != nil:
 			return
 		case errors.Is(err, ErrNoIdle):
-			log.WarnContext(ctx, "server has no IDLE; not watching", "mailbox", mailbox)
-
-			return
-		case errors.Is(err, ErrLogin):
-			log.ErrorContext(ctx, "login rejected; not watching", "mailbox", mailbox, "err", err)
+			log.WarnContext(ctx, "server has no IDLE; polling only", "mailbox", mailbox)
 
 			return
 		}
-
-		log.WarnContext(ctx, "watch failed; retrying",
-			"mailbox", mailbox, "err", err, "retry", retry)
 
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(retry):
+		case <-time.After(trouble.begin(ctx, err, time.Since(started))):
 		}
 	}
 }
 
+// trouble follows how one folder's watching is going, to pace the retries
+// and to log when trouble starts, goes on and ends.
+type trouble struct {
+	log     *slog.Logger
+	mailbox string
+	pace    *retry.Pace
+	streak  retry.Streak
+}
+
+// begin takes the error that ended a connection that stayed up for the given
+// time, logs it as it deserves and returns how long to wait before dialling.
+func (t *trouble) begin(ctx context.Context, err error, stayedUp time.Duration) time.Duration {
+	failures := t.streak.Fail(time.Now())
+
+	if errors.Is(err, ErrLogin) {
+		message := "login still rejected"
+		if failures == 1 {
+			message = "login rejected; trying again later"
+		}
+
+		t.log.Log(ctx, retry.RejectedLevel(failures), message, "mailbox", t.mailbox,
+			"err", err, "failures", failures, "since", t.streak.Since(), "retry", loginRetry)
+
+		return loginRetry
+	}
+
+	if stayedUp >= stableAfter {
+		t.pace.Reset()
+	}
+
+	wait := t.pace.NextBackOff()
+
+	message := "watch still failing"
+	if failures == 1 {
+		message = "watch failed; retrying"
+	}
+
+	t.log.Log(ctx, retry.Level(failures, slog.LevelWarn), message, "mailbox", t.mailbox,
+		"err", err, "failures", failures, "since", t.streak.Since(), "retry", wait)
+
+	return wait
+}
+
+// over logs the end of trouble, if there was any.
+func (t *trouble) over(ctx context.Context) {
+	if failures, downtime, ok := t.streak.Recover(time.Now()); ok {
+		t.log.InfoContext(ctx, "imap loop recovered",
+			"mailbox", t.mailbox, "failures", failures, "downtime", downtime)
+	}
+}
+
 // idleOn IDLEs on mailbox, reporting changes, until the connection fails or
-// ctx ends.
-func (w *Watcher) idleOn(ctx context.Context, cfg DialConfig, mailbox string) error {
+// ctx ends. It calls idling once the folder is being watched.
+func (w *Watcher) idleOn(
+	ctx context.Context,
+	cfg DialConfig,
+	mailbox string,
+	idling func(),
+) error {
 	changed := make(chan string, 1)
 
 	client, err := dial(ctx, cfg, idleHandler(changed))
@@ -119,6 +195,8 @@ func (w *Watcher) idleOn(ctx context.Context, cfg DialConfig, mailbox string) er
 
 	w.idling.Add(1)
 	defer w.idling.Add(-1)
+
+	idling()
 
 	for {
 		reason, err := client.idleUntil(ctx, mailbox, changed)

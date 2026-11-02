@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log/slog"
 	"net"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,7 @@ import (
 
 const (
 	watchWait  = 5 * time.Second
+	opSelect   = "SELECT"
 	watchRetry = 10 * time.Millisecond
 	work       = "Work"
 )
@@ -173,7 +175,7 @@ func TestWatcherReconnectsAfterAFailure(t *testing.T) {
 
 	srv := imaptest.StartWith(t, imaptest.Options{
 		Caps: imaptest.Rev2(),
-		Fail: func(op, _ string) bool { return failing.Load() && op == "SELECT" },
+		Fail: func(op, _ string) bool { return failing.Load() && op == opSelect },
 	})
 	client := connect(t, srv)
 	cfg, logs := watchConfig(srv)
@@ -190,6 +192,53 @@ func TestWatcherReconnectsAfterAFailure(t *testing.T) {
 
 	seed(t, client, inboxName, raw("a@x", "b@y", "after the outage"))
 	hears(t, w)
+}
+
+func TestWatcherBacksOffWhileFailing(t *testing.T) {
+	t.Parallel()
+
+	srv := imaptest.StartWith(t, imaptest.Options{
+		Caps: imaptest.Rev2(),
+		Fail: func(op, _ string) bool { return op == opSelect },
+	})
+	cfg, logs := watchConfig(srv)
+
+	w := mail.Watch(t.Context(), cfg, []string{inboxName}, watchRetry)
+	t.Cleanup(w.Close)
+
+	retries := regexp.MustCompile(`retry=(\S+)`)
+
+	require.Eventually(t, func() bool {
+		return len(retries.FindAllString(logs.String(), -1)) >= 5
+	}, watchWait, watchRetry)
+
+	found := retries.FindAllStringSubmatch(logs.String(), -1)
+	first, err := time.ParseDuration(found[0][1])
+	require.NoError(t, err)
+
+	last, err := time.ParseDuration(found[len(found)-1][1])
+	require.NoError(t, err)
+	require.Greater(t, last, 2*first, "each failure waits longer than the one before")
+}
+
+func TestWatcherRetriesARejectedLoginOnlyRarely(t *testing.T) {
+	t.Parallel()
+
+	cfg, logs := watchConfig(imaptest.Start(t, imaptest.Rev2()))
+	cfg.Password = "wrong"
+
+	w := mail.Watch(t.Context(), cfg, []string{inboxName}, watchRetry)
+	t.Cleanup(w.Close)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), "login rejected")
+	}, watchWait, watchRetry)
+
+	time.Sleep(20 * watchRetry)
+
+	require.Equal(t, 1, strings.Count(logs.String(), "login rejected"),
+		"a wrong password isn't tried again soon")
+	require.Zero(t, w.Idling())
 }
 
 func TestWatcherGivesUp(t *testing.T) {
@@ -220,18 +269,6 @@ func TestWatcherGivesUp(t *testing.T) {
 				}
 			},
 			want: "no IDLE",
-		},
-		{
-			name: "rejected login",
-			start: func(t *testing.T) mail.DialConfig {
-				t.Helper()
-
-				cfg := dialConfig(imaptest.Start(t, imaptest.Rev2()))
-				cfg.Password = "wrong"
-
-				return cfg
-			},
-			want: "login rejected",
 		},
 	}
 
@@ -287,4 +324,36 @@ func TestWatcherWithoutFoldersIsInert(t *testing.T) {
 	w := mail.Watch(t.Context(), mail.DialConfig{}, nil, time.Hour)
 	require.Zero(t, w.Idling())
 	w.Close()
+}
+
+func TestWatcherLogsItsRecovery(t *testing.T) {
+	t.Parallel()
+
+	var failing atomic.Bool
+
+	failing.Store(true)
+
+	srv := imaptest.StartWith(t, imaptest.Options{
+		Caps: imaptest.Rev2(),
+		Fail: func(op, _ string) bool { return failing.Load() && op == opSelect },
+	})
+	cfg, logs := watchConfig(srv)
+
+	w := mail.Watch(t.Context(), cfg, []string{inboxName}, watchRetry)
+	t.Cleanup(w.Close)
+
+	require.Eventually(t, func() bool {
+		return strings.Count(logs.String(), "watch ") >= 3
+	}, watchWait, watchRetry)
+
+	require.NotContains(t, logs.String(), "imap loop recovered", "still down")
+
+	failing.Store(false)
+	watchIdling(t, w, 1)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), "imap loop recovered")
+	}, watchWait, watchRetry)
+	require.Equal(t, 1, strings.Count(logs.String(), "level=WARN msg=\"watch failed"),
+		"only the first failure is a warning before the reminders")
 }

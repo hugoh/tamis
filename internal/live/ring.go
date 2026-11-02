@@ -17,17 +17,46 @@ type Entry struct {
 	Text string
 }
 
-// Ring keeps the most recent log entries. A nil *Ring has none.
+// Ring keeps the most recent log entries. A nil *Ring has none. It records
+// nothing, and holds no memory, until Start is called.
 type Ring struct {
 	mu      sync.Mutex
+	size    int
 	entries []Entry
 	next    int
 	full    bool
 }
 
-// NewRing keeps up to size entries.
+// NewRing makes an idle ring that will keep up to size entries once started.
 func NewRing(size int) *Ring {
-	return &Ring{entries: make([]Entry, size)}
+	return &Ring{size: size}
+}
+
+// Start allocates the ring and begins keeping entries. Starting a running
+// ring keeps what it has.
+func (r *Ring) Start() {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.entries == nil {
+		r.entries = make([]Entry, r.size)
+	}
+}
+
+// Stop drops every entry and frees the ring until it is started again.
+func (r *Ring) Stop() {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.entries, r.next, r.full = nil, 0, false
 }
 
 // Entries returns what the ring holds, newest first.
@@ -65,6 +94,10 @@ func (r *Ring) Handler(next slog.Handler) slog.Handler {
 func (r *Ring) add(entry Entry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if len(r.entries) == 0 {
+		return
+	}
 
 	r.entries[r.next] = entry
 

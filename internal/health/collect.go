@@ -29,6 +29,11 @@ func Collect(ctx context.Context, database *store.Store, cfg *config.Config) (*R
 		return nil, err //nolint:wrapcheck // store errors carry their context
 	}
 
+	daemon, err := LoadDaemon(ctx, database, cfg.Policy.PollInterval.Duration)
+	if err != nil {
+		return nil, err
+	}
+
 	web, err := collectWeb(ctx, database, cfg.Web)
 	if err != nil {
 		return nil, err
@@ -40,6 +45,7 @@ func Collect(ctx context.Context, database *store.Store, cfg *config.Config) (*R
 		Retention: cfg.Policy.JournalRetention.Duration,
 		Auth:      pin,
 		Web:       web,
+		Daemon:    daemon,
 		Config:    configInfo(cfg),
 		Rules:     rulesInfo(cfg.Rules),
 		Now:       time.Now(),

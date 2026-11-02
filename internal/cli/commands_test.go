@@ -616,3 +616,20 @@ func TestRunLoopKeepsItsIdleConnectionBetweenPasses(t *testing.T) {
 	require.Equal(t, 1, strings.Count(got.stderr, "msg=idle mailbox=INBOX"),
 		"polling passes shouldn't restart IDLE")
 }
+
+func TestRunSavesWhatDoctorAndStatusShow(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	got := a.run(t, runCmd, onceFlag)
+	require.Zero(t, got.code, got.stderr)
+
+	status := a.run(t, "status")
+	require.Zero(t, status.code, status.stderr)
+	require.Regexp(t, `Daemon:\s+last pass .* ago: scanned`, status.stdout)
+
+	doctor := a.run(t, "doctor")
+	require.Contains(t, doctor.stdout, "Daemon")
+	require.Regexp(t, `ok\s+daemon\s+last pass`, doctor.stdout)
+}

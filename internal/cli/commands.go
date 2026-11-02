@@ -20,6 +20,7 @@ import (
 	"github.com/hugoh/tamis/internal/classify"
 	"github.com/hugoh/tamis/internal/config"
 	"github.com/hugoh/tamis/internal/engine"
+	"github.com/hugoh/tamis/internal/health"
 	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/mail"
 	"github.com/hugoh/tamis/internal/retry"
@@ -354,6 +355,12 @@ func (a *app) watch(
 	logger := slog.New(logs.Handler(a.loggerAt(cmd, debug.Level()).Handler()))
 	logger.InfoContext(ctx, "tamis starting", "version", a.version)
 	status := live.NewStatus(time.Now())
+	status.Persist(func(snap live.Snapshot) {
+		if err := database.SetSetting(ctx, live.SettingKey, snap.Encode()); err != nil {
+			logger.DebugContext(ctx, "could not save the daemon status", "err", err)
+		}
+	})
+	status.Save(time.Now())
 
 	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs, debug)
 	if err != nil {
@@ -364,7 +371,7 @@ func (a *app) watch(
 
 	var pruner journalPruner
 
-	health := passHealth{pace: retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)}
+	passes := passHealth{pace: retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)}
 
 	// Watching starts after the first good pass: a rejected login should be
 	// tried once, not once per folder.
@@ -401,13 +408,13 @@ func (a *app) watch(
 
 		var reload bool
 
-		wait := health.after(ctx, logger, err)
+		wait := passes.after(ctx, logger, err)
 
 		watcher, reload = a.rest(ctx, cfg, logger, status, watcher, err, wait, hup)
 		if reload {
 			cfg, watcher = a.reload(ctx, cfg, watcher, logger)
 			checkRules = cfg.Rules.Script != ""
-			health.pace = retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
+			passes.pace = retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
 		}
 	}
 }
@@ -531,6 +538,11 @@ func (a *app) rest(
 		now := time.Now()
 
 		status.Failed(now, passErr)
+
+		if errors.Is(passErr, mail.ErrLogin) {
+			status.LoginRejected()
+		}
+
 		status.RetryAt(now.Add(failWait))
 		status.Wait(live.Polling)
 
@@ -854,6 +866,7 @@ func (a *app) statusCommand() *cobra.Command {
 						"Auth server id:\t%s\n",
 						authServerIDLine(ctx, cfg, database),
 					)
+					_, _ = fmt.Fprintf(table, "Daemon:\t%s\n", daemonLine(ctx, cfg, database))
 					_, _ = fmt.Fprintf(table, "State:\t%s\n", cfg.State)
 
 					if err := table.Flush(); err != nil {
@@ -865,6 +878,21 @@ func (a *app) statusCommand() *cobra.Command {
 			)
 		},
 	}
+}
+
+// daemonLine says how `tamis run` last reported itself to be doing.
+func daemonLine(ctx context.Context, cfg *config.Config, database *store.Store) string {
+	info, err := health.LoadDaemon(ctx, database, cfg.Policy.PollInterval.Duration)
+	if err != nil {
+		return "unknown: " + err.Error()
+	}
+
+	status, detail := info.Describe(time.Now())
+	if status == health.StatusWarn || status == health.StatusFail {
+		return strings.ToUpper(string(status)) + ": " + detail
+	}
+
+	return detail
 }
 
 // authServerIDLine says which authserv-id tamis pins Authentication-Results to,

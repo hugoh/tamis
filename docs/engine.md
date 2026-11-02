@@ -79,7 +79,9 @@ Mail already in Sent when tamis first sees the folder is left to
 `folders.sent` doesn't exist) is logged as a warning and doesn't fail the pass.
 A dropped connection is different: the connection is gone for the rest of the
 pass too, so it fails the pass, which is retried after a wait that grows from
-the poll interval while passes keep failing.
+the poll interval while passes keep failing. How the passes are going is saved
+in the state database for `tamis status` and `tamis doctor` to show; see
+[imap.md](imap.md).
 
 Training folders are processed in both modes. Dropping a message into one is
 an explicit request, not a judgement tamis makes on its own. The same goes for

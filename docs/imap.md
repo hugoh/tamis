@@ -26,7 +26,15 @@ login: every 4th), and says when it ends (`pass recovered`, `login accepted
 again`, `imap loop recovered`, each with the failures and the downtime); the
 attempts in between are debug lines. The Health page shows how many passes have
 failed in a row, since when, and when the next try is due; after a recovery
-it keeps the last error, marked as recovered. Between
+it keeps the last error, marked as recovered.
+
+The daemon saves that state in the state database (the `daemon_status` setting)
+after every pass, failure and retry time, so the commands that run in another
+process show it too. `tamis status` has a `Daemon:` line, and `tamis doctor` a
+Daemon section: ok while passes succeed (with the last pass and any recent
+recovery), WARN while they fail or when nothing has been heard for longer than
+the daemon is due to report (a back-off wait counts as due), and FAIL, so
+`doctor` exits 1, while the login is rejected. Between
 a watcher's attempts the poll every `policy.poll_interval` covers the gap. A server that limits concurrent sessions may refuse the watchers; the
 polling pass still runs.
 

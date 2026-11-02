@@ -362,3 +362,32 @@ func TestStatusRemembersWhenFailingBeganAndRecovered(t *testing.T) {
 	status.PassDone(recovered.Add(time.Minute), "ok")
 	require.Equal(t, recovered, status.Snapshot().RecoveredAt, "only a recovery moves it")
 }
+
+func TestStatusSavesWhatOtherProcessesRead(t *testing.T) {
+	t.Parallel()
+
+	var saved []live.Snapshot
+
+	status := live.NewStatus(time.Now())
+	status.Persist(func(snap live.Snapshot) { saved = append(saved, snap) })
+
+	at := time.Now()
+
+	status.Save(at)
+	status.Wait(live.Running)
+	status.Failed(at, errBoom)
+	status.LoginRejected()
+	status.PassDone(at, "ok")
+
+	require.Len(t, saved, 4, "waiting is not worth saving")
+	require.True(t, saved[2].Rejected)
+	require.False(t, saved[3].Rejected, "a good pass clears it")
+
+	back, err := live.Decode(saved[2].Encode())
+	require.NoError(t, err)
+	require.Equal(t, saved[2].Failures, back.Failures)
+	require.True(t, saved[2].Updated.Equal(back.Updated))
+
+	_, err = live.Decode("not json")
+	require.Error(t, err)
+}

@@ -30,10 +30,10 @@ type view struct {
 }
 
 type decisionRow struct {
-	ID                           int64
-	When, Verdict, Reason, Score string
-	Action, From, Subject        string
-	CanUndo, CanLearn            bool
+	ID                            int64
+	When, Verdict, Reason, Score  string
+	Action, Folder, From, Subject string
+	CanUndo, CanLearn             bool
 	// Undone is set once the action was reversed; CorrectedBy is the ID of the
 	// later entry that corrected it, or 0.
 	Undone      bool
@@ -80,6 +80,7 @@ func decisionSorts() []sortChoice {
 		{store.SortReason, "Reason", true},
 		{store.SortScore, "Score", false},
 		{store.SortAction, "Action", true},
+		{store.SortFolder, "Folder", true},
 		{store.SortFrom, "From", true},
 		{store.SortSubject, "Subject", true},
 	}
@@ -214,6 +215,7 @@ func decisionRowFor(decision store.Decision) decisionRow {
 		Reason:   decision.Reason,
 		Score:    strconv.FormatFloat(decision.Score, 'f', 2, 64),
 		Action:   actionLabel(decision),
+		Folder:   decision.Mailbox,
 		From:     decision.From,
 		Subject:  decision.Subject,
 		CanUndo:  undoable(decision),

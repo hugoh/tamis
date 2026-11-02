@@ -30,6 +30,7 @@ const (
 	subjectReLunch = "Re: Lunch"
 	subjectDigest  = "Weekly digest"
 	subjectPrize   = "Prize_claim"
+	folderJunk     = "Junk"
 )
 
 // journal records five decisions, one minute apart, oldest first.
@@ -233,7 +234,7 @@ func TestQueryDecisionsHasEverySortKey(t *testing.T) {
 
 	for _, sort := range []string{
 		store.SortTime, store.SortID, store.SortVerdict, store.SortReason,
-		store.SortScore, store.SortAction, store.SortFrom, store.SortSubject,
+		store.SortScore, store.SortAction, store.SortFolder, store.SortFrom, store.SortSubject,
 	} {
 		for _, asc := range []bool{true, false} {
 			got, _, err := db.QueryDecisions(t.Context(), store.DecisionQuery{Sort: sort, Asc: asc})
@@ -676,4 +677,42 @@ func TestUndoneWithoutAnUndoEntryHasNoLink(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, decision.Undone)
 	require.Zero(t, decision.UndoneBy)
+}
+
+func TestQueryDecisionsByFolder(t *testing.T) {
+	t.Parallel()
+
+	db := open(t)
+	at := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+
+	for i, folder := range []string{"INBOX", "foo", folderJunk} {
+		_, err := db.RecordDecision(t.Context(), store.Decision{
+			At:      at.Add(time.Duration(i) * time.Minute),
+			Mailbox: folder,
+			UID:     uint32(i + 1),
+			Subject: folder + " mail",
+			Verdict: verdictGood,
+			Reason:  reasonBayes,
+			Action:  actionNone,
+		})
+		require.NoError(t, err)
+	}
+
+	sorted, _, err := db.QueryDecisions(t.Context(),
+		store.DecisionQuery{Sort: store.SortFolder, Asc: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{"foo", "INBOX", "Junk"}, mailboxes(sorted))
+
+	found, _, err := db.QueryDecisions(t.Context(), store.DecisionQuery{Search: "junk"})
+	require.NoError(t, err)
+	require.Equal(t, []string{folderJunk}, mailboxes(found))
+}
+
+func mailboxes(decisions []store.Decision) []string {
+	out := make([]string, len(decisions))
+	for i, decision := range decisions {
+		out[i] = decision.Mailbox
+	}
+
+	return out
 }

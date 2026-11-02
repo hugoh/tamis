@@ -11,6 +11,20 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+
+	"github.com/hugoh/tamis/internal/retry"
+)
+
+const (
+	// maxWatchRetry caps the wait between reconnection attempts.
+	maxWatchRetry = 10 * time.Minute
+	// loginRetry is the wait after a rejected login: long, so a wrong
+	// password isn't tried often enough to lock the account, yet a provider's
+	// passing trouble still heals without a restart.
+	loginRetry = 15 * time.Minute
+	// stableAfter is how long a connection must have stayed up for the
+	// next failure to be retried quickly again.
+	stableAfter = time.Minute
 )
 
 var errConnectionClosed = errors.New("connection closed")
@@ -26,15 +40,21 @@ type Watcher struct {
 }
 
 // Watch starts watching mailboxes until ctx ends or Close is called. A folder
-// whose connection fails is retried after retry; one that can't IDLE or
-// can't log in is given up on, since retrying won't help. Callers that also
-// poll lose nothing by a folder dropping out.
-func Watch(ctx context.Context, cfg DialConfig, mailboxes []string, retry time.Duration) *Watcher {
+// whose connection fails is retried after about firstRetry, then ever more
+// slowly while it keeps failing; one whose login is rejected is retried
+// rarely; one that can't IDLE is given up on, since retrying won't help.
+// Callers that also poll lose nothing by a folder dropping out.
+func Watch(
+	ctx context.Context,
+	cfg DialConfig,
+	mailboxes []string,
+	firstRetry time.Duration,
+) *Watcher {
 	ctx, cancel := context.WithCancel(ctx)
 	watcher := &Watcher{changed: make(chan string, 1), cancel: cancel}
 
 	for _, mailbox := range mailboxes {
-		watcher.group.Go(func() { watcher.keep(ctx, cfg, mailbox, retry) })
+		watcher.group.Go(func() { watcher.keep(ctx, cfg, mailbox, firstRetry) })
 	}
 
 	return watcher
@@ -64,14 +84,19 @@ func (w *Watcher) notify(reason string) {
 	}
 }
 
-func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, retry time.Duration) {
+func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, firstRetry time.Duration) {
 	log := cfg.Logger
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
 
+	pace := retry.Backoff(firstRetry, maxWatchRetry)
+
 	for {
+		started := time.Now()
 		err := w.idleOn(ctx, cfg, mailbox)
+
+		var wait time.Duration
 
 		switch {
 		case ctx.Err() != nil:
@@ -81,18 +106,25 @@ func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, retr
 
 			return
 		case errors.Is(err, ErrLogin):
-			log.ErrorContext(ctx, "login rejected; not watching", "mailbox", mailbox, "err", err)
+			wait = loginRetry
 
-			return
+			log.ErrorContext(ctx, "login rejected; trying again later",
+				"mailbox", mailbox, "err", err, "retry", wait)
+		default:
+			if time.Since(started) >= stableAfter {
+				pace.Reset()
+			}
+
+			wait = pace.NextBackOff()
+
+			log.WarnContext(ctx, "watch failed; retrying",
+				"mailbox", mailbox, "err", err, "retry", wait)
 		}
-
-		log.WarnContext(ctx, "watch failed; retrying",
-			"mailbox", mailbox, "err", err, "retry", retry)
 
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(retry):
+		case <-time.After(wait):
 		}
 	}
 }

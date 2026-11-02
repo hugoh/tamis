@@ -24,6 +24,10 @@ type Snapshot struct {
 	LastSummary string
 	LastError   string
 	LastErrorAt time.Time
+	// Failures counts the passes that have failed in a row, and RetryAt is
+	// when the next try is due; both are cleared by a pass that succeeds.
+	Failures int
+	RetryAt  time.Time
 	// Waiting is Idle, Polling or Running; empty before the first pass starts.
 	Waiting string
 }
@@ -46,6 +50,8 @@ func (s *Status) PassDone(at time.Time, summary string) {
 		snap.Passes++
 		snap.LastPass = at
 		snap.LastSummary = summary
+		snap.Failures = 0
+		snap.RetryAt = time.Time{}
 	})
 }
 
@@ -54,7 +60,13 @@ func (s *Status) Failed(at time.Time, err error) {
 	s.update(func(snap *Snapshot) {
 		snap.LastError = err.Error()
 		snap.LastErrorAt = at
+		snap.Failures++
 	})
+}
+
+// RetryAt records when the next try after a failure is due.
+func (s *Status) RetryAt(at time.Time) {
+	s.update(func(snap *Snapshot) { snap.RetryAt = at })
 }
 
 // Wait records what the daemon is doing now: Idle, Polling or Running.

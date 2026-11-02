@@ -13,10 +13,15 @@ exchange; credentials and message contents are never logged.
 | Watcher, one per watched folder | As long as the server keeps it, started after the first good pass | `SELECT` the folder, then `IDLE` |
 
 A connection is TLS to `account.host` (port 993 by default) followed by `LOGIN`.
-A rejected login ends the daemon, and a watcher that is refused gives up rather
-than retry, so a wrong password isn't tried repeatedly. A watcher whose connection
-fails is retried after a minute; the poll every `policy.poll_interval` covers the
-gap. A server that limits concurrent sessions may refuse the watchers; the
+A rejected login is retried only every 15 minutes, by the pass and by each
+watcher alike, so a wrong password doesn't lock the account yet a provider's
+passing trouble heals without a restart (`tamis run --once` exits instead).
+Other failures are retried ever more slowly, with some jitter: a failed pass
+after `policy.poll_interval`, doubling up to 15 minutes; a watcher after 5
+seconds, doubling up to 10 minutes. A pass that succeeds, or a watcher
+connection that stayed up for a minute, starts the wait over. The Health page
+shows how many passes have failed in a row and when the next try is due. Between
+a watcher's attempts the poll every `policy.poll_interval` covers the gap. A server that limits concurrent sessions may refuse the watchers; the
 polling pass still runs.
 
 ## Capabilities

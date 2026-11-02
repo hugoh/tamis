@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -288,6 +289,11 @@ func (s *Server) daemon() *daemonView {
 
 	if snap.LastError != "" {
 		daemon.LastError = localTime(snap.LastErrorAt) + ": " + snap.LastError
+	}
+
+	if snap.Failures > 0 && !snap.RetryAt.IsZero() {
+		daemon.LastError += fmt.Sprintf(" (failed %d in a row; next try %s)",
+			snap.Failures, localClock(snap.RetryAt))
 	}
 
 	return daemon

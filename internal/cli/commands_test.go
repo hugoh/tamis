@@ -228,12 +228,12 @@ func TestRunLoopWakesOnNewMail(t *testing.T) {
 		"new mail should start a pass long before poll_interval")
 }
 
-func TestRunLoopStopsOnRejectedLogin(t *testing.T) {
+func TestRunLoopRetriesARejectedLoginRarely(t *testing.T) {
 	t.Parallel()
 
 	a := newAccount(t, `poll_interval = "50ms"`)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	got := execute(ctx, t, invocation{
@@ -241,9 +241,25 @@ func TestRunLoopStopsOnRejectedLogin(t *testing.T) {
 		env:  map[string]string{passwordKey: "wrong"},
 		srv:  a.srv,
 	})
-	require.Equal(t, 1, got.code, "retrying a rejected login risks locking the account")
+	require.Zero(t, got.code, "the daemon keeps going until stopped")
 	require.Contains(t, got.stderr, loginFailed)
-	require.NoError(t, ctx.Err(), "the daemon should exit on its own")
+	require.Equal(t, 1, strings.Count(got.stderr, "pass failed"),
+		"a rejected login isn't retried soon, or the account may lock")
+	require.Contains(t, got.stderr, "retry=15m0s")
+}
+
+func TestRunOnceStopsOnRejectedLogin(t *testing.T) {
+	t.Parallel()
+
+	a := newAccount(t, "")
+
+	got := execute(t.Context(), t, invocation{
+		args: []string{runCmd, onceFlag, configFlag, a.config},
+		env:  map[string]string{passwordKey: "wrong"},
+		srv:  a.srv,
+	})
+	require.Equal(t, 1, got.code)
+	require.Contains(t, got.stderr, loginFailed)
 }
 
 func TestCommandErrors(t *testing.T) {

@@ -319,3 +319,24 @@ func TestRingExistsOnlyWhileDebugIsOn(t *testing.T) {
 	debug.Off()
 	require.Empty(t, ring.Entries(), "turning debug off frees what was kept")
 }
+
+func TestStatusCountsFailuresUntilAPassSucceeds(t *testing.T) {
+	t.Parallel()
+
+	status := live.NewStatus(time.Now())
+	retryAt := time.Now().Add(time.Minute)
+
+	status.Failed(time.Now(), errBoom)
+	status.Failed(time.Now(), errBoom)
+	status.RetryAt(retryAt)
+
+	snap := status.Snapshot()
+	require.Equal(t, 2, snap.Failures)
+	require.Equal(t, retryAt, snap.RetryAt)
+
+	status.PassDone(time.Now(), "ok")
+
+	snap = status.Snapshot()
+	require.Zero(t, snap.Failures)
+	require.True(t, snap.RetryAt.IsZero())
+}

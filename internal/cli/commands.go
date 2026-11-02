@@ -22,6 +22,7 @@ import (
 	"github.com/hugoh/tamis/internal/engine"
 	"github.com/hugoh/tamis/internal/live"
 	"github.com/hugoh/tamis/internal/mail"
+	"github.com/hugoh/tamis/internal/retry"
 	"github.com/hugoh/tamis/internal/rules"
 	"github.com/hugoh/tamis/internal/store"
 	"github.com/spf13/cobra"
@@ -34,8 +35,14 @@ const (
 	defaultLogLimit   = 20
 	passTimeout       = 10 * time.Minute
 	// newMailSettle lets a burst of arrivals land before the next pass.
-	newMailSettle    = time.Second
-	watchRetry       = time.Minute
+	newMailSettle = time.Second
+	watchRetry    = 5 * time.Second
+	// maxPassRetry caps the wait after failed passes, which grows from
+	// poll_interval while they keep failing.
+	maxPassRetry = 15 * time.Minute
+	// loginRetry is the wait after a rejected login: long enough not to
+	// lock the account, short enough to recover from a provider's blip.
+	loginRetry       = 15 * time.Minute
 	bootstrapTimeout = time.Hour
 	tablePadding     = 2
 	stateDirMode     = 0o700
@@ -357,6 +364,8 @@ func (a *app) watch(
 
 	var pruner journalPruner
 
+	pace := retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
+
 	// Watching starts after the first good pass: a rejected login should be
 	// tried once, not once per folder.
 	var watcher *mail.Watcher
@@ -382,7 +391,7 @@ func (a *app) watch(
 		status.Wait(live.Running)
 
 		err := a.pass(ctx, cfg, database, logger, status, &checkRules)
-		if once || errors.Is(err, mail.ErrLogin) {
+		if once {
 			return err
 		}
 
@@ -390,12 +399,25 @@ func (a *app) watch(
 			return nil
 		}
 
-		var reload bool
+		var (
+			reload bool
+			wait   time.Duration
+		)
 
-		watcher, reload = a.rest(ctx, cfg, logger, status, watcher, err, hup)
+		switch {
+		case err == nil:
+			pace.Reset()
+		case errors.Is(err, mail.ErrLogin):
+			wait = loginRetry
+		default:
+			wait = pace.NextBackOff()
+		}
+
+		watcher, reload = a.rest(ctx, cfg, logger, status, watcher, err, wait, hup)
 		if reload {
 			cfg, watcher = a.reload(ctx, cfg, watcher, logger)
 			checkRules = cfg.Rules.Script != ""
+			pace = retry.Backoff(cfg.Policy.PollInterval.Duration, maxPassRetry)
 		}
 	}
 }
@@ -442,16 +464,20 @@ func (a *app) rest(
 	status *live.Status,
 	watcher *mail.Watcher,
 	passErr error,
+	failWait time.Duration,
 	hup <-chan os.Signal,
 ) (*mail.Watcher, bool) {
 	if passErr != nil {
-		logger.ErrorContext(ctx, "pass failed", "err", passErr)
-		status.Failed(time.Now(), passErr)
+		now := time.Now()
+
+		logger.ErrorContext(ctx, "pass failed", "err", passErr, "retry", failWait)
+		status.Failed(now, passErr)
+		status.RetryAt(now.Add(failWait))
 		status.Wait(live.Polling)
 
 		select {
 		case <-ctx.Done():
-		case <-time.After(cfg.Policy.PollInterval.Duration):
+		case <-time.After(failWait):
 		case <-hup:
 			return watcher, true
 		}

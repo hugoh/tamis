@@ -3,6 +3,7 @@ module github.com/hugoh/tamis
 go 1.27.0
 
 require (
+	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-msgauth v0.7.0

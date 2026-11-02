@@ -307,7 +307,11 @@ func TestRingExistsOnlyWhileDebugIsOn(t *testing.T) {
 	debug := live.NewDebugSwitch(slog.LevelInfo, time.Hour)
 	debug.Capture(ring)
 
-	logger := slog.New(ring.Handler(slog.NewTextHandler(new(bytes.Buffer), &slog.HandlerOptions{Level: debug.Level()})))
+	logger := slog.New(
+		ring.Handler(
+			slog.NewTextHandler(new(bytes.Buffer), &slog.HandlerOptions{Level: debug.Level()}),
+		),
+	)
 
 	logger.Warn("before")
 	require.Empty(t, ring.Entries(), "nothing is kept while debug is off")

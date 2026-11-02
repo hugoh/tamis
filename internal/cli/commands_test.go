@@ -29,6 +29,9 @@ func passwordEnv() map[string]string {
 	return map[string]string{passwordKey: imaptest.Password}
 }
 
+// rejectedPassword is one the test server refuses.
+const rejectedPassword = "not the password"
+
 func newAccount(t *testing.T, policy string) *account {
 	t.Helper()
 
@@ -238,7 +241,7 @@ func TestRunLoopRetriesARejectedLoginRarely(t *testing.T) {
 
 	got := execute(ctx, t, invocation{
 		args: []string{runCmd, configFlag, a.config},
-		env:  map[string]string{passwordKey: "wrong"},
+		env:  map[string]string{passwordKey: rejectedPassword},
 		srv:  a.srv,
 	})
 	require.Zero(t, got.code, "the daemon keeps going until stopped")
@@ -255,7 +258,7 @@ func TestRunOnceStopsOnRejectedLogin(t *testing.T) {
 
 	got := execute(t.Context(), t, invocation{
 		args: []string{runCmd, onceFlag, configFlag, a.config},
-		env:  map[string]string{passwordKey: "wrong"},
+		env:  map[string]string{passwordKey: rejectedPassword},
 		srv:  a.srv,
 	})
 	require.Equal(t, 1, got.code)

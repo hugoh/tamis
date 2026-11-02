@@ -1,12 +1,12 @@
 package retry_test
 
 import (
+	"log/slog"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/hugoh/tamis/internal/retry"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBackoffGrowsToItsLimitAndResets(t *testing.T) {
@@ -68,4 +68,16 @@ func TestNotableFailuresThinOut(t *testing.T) {
 	}
 
 	require.Equal(t, []int{1, 2, 3, 5, 10, 20, 40}, got)
+}
+
+func TestLevelsThinOut(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, slog.LevelError, retry.Level(1, slog.LevelError))
+	require.Equal(t, slog.LevelWarn, retry.Level(2, slog.LevelError))
+	require.Equal(t, slog.LevelDebug, retry.Level(4, slog.LevelError))
+
+	require.Equal(t, slog.LevelError, retry.RejectedLevel(1))
+	require.Equal(t, slog.LevelDebug, retry.RejectedLevel(3))
+	require.Equal(t, slog.LevelWarn, retry.RejectedLevel(4))
 }

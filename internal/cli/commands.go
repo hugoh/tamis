@@ -347,20 +347,10 @@ func (a *app) watch(
 	database *store.Store,
 	once bool,
 ) error {
-	// The ring holds nothing, and costs nothing, until debug logging is on.
-	logs := live.NewRing(logRingSize)
-	debug := live.NewDebugSwitch(a.baseLevel(), debugSpan)
-	debug.Capture(logs)
-
-	logger := slog.New(logs.Handler(a.loggerAt(cmd, debug.Level()).Handler()))
+	logger, logs, debug := a.daemonLogger(cmd)
 	logger.InfoContext(ctx, "tamis starting", "version", a.version)
-	status := live.NewStatus(time.Now())
-	status.Persist(func(snap live.Snapshot) {
-		if err := database.SetSetting(ctx, live.SettingKey, snap.Encode()); err != nil {
-			logger.DebugContext(ctx, "could not save the daemon status", "err", err)
-		}
-	})
-	status.Save(time.Now())
+
+	status := savedStatus(ctx, database, logger)
 
 	stopWeb, err := a.startWeb(ctx, cfg, database, logger, status, logs, debug)
 	if err != nil {
@@ -389,11 +379,7 @@ func (a *app) watch(
 	defer stopHup()
 
 	for {
-		if err := pruner.prune(
-			ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger,
-		); err != nil {
-			logger.ErrorContext(ctx, "journal pruning failed", "err", err)
-		}
+		pruneJournal(ctx, &pruner, database, cfg, logger)
 
 		status.Wait(live.Running)
 
@@ -419,13 +405,23 @@ func (a *app) watch(
 	}
 }
 
+func pruneJournal(
+	ctx context.Context,
+	pruner *journalPruner,
+	database *store.Store,
+	cfg *config.Config,
+	logger *slog.Logger,
+) {
+	err := pruner.prune(ctx, database, cfg.Policy.JournalRetention.Duration, time.Now(), logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "journal pruning failed", "err", err)
+	}
+}
+
 // passHealth follows how the passes are going: how long to wait after a
 // failure, and what to log as trouble starts, goes on and ends.
 type passHealth struct {
-	pace interface {
-		NextBackOff() time.Duration
-		Reset()
-	}
+	pace   *retry.Pace
 	streak retry.Streak
 	// login says the streak began with a rejected login.
 	login bool
@@ -435,58 +431,80 @@ type passHealth struct {
 // trying again after a failure. It logs the trouble when it starts, now and
 // then while it lasts, and when it ends.
 func (h *passHealth) after(ctx context.Context, logger *slog.Logger, err error) time.Duration {
-	now := time.Now()
-
 	if err == nil {
-		h.pace.Reset()
-
-		if failures, downtime, ok := h.streak.Recover(now); ok {
-			message := "pass recovered"
-			if h.login {
-				message = "login accepted again"
-			}
-
-			logger.InfoContext(ctx, message, "failures", failures, "downtime", downtime)
-		}
-
-		h.login = false
+		h.recovered(ctx, logger)
 
 		return 0
 	}
 
-	failures := h.streak.Fail(now)
+	failures := h.streak.Fail(time.Now())
 
 	if errors.Is(err, mail.ErrLogin) {
-		h.login = failures == 1 || h.login
+		h.login = h.login || failures == 1
 
-		// Nothing changes between attempts: report it once, then hourly.
-		switch {
-		case failures == 1:
-			logger.ErrorContext(ctx, "login rejected; check the password",
-				"err", err, "retry", loginRetry, "hint", "SIGHUP tries again at once")
-		case failures%4 == 0:
-			logger.WarnContext(ctx, "login still rejected",
-				"err", err, "failures", failures, "since", h.streak.Since(), "retry", loginRetry)
-		default:
-			logger.DebugContext(ctx, "login rejected", "err", err, "retry", loginRetry)
+		message := "login still rejected"
+		if failures == 1 {
+			message = "login rejected; check the password"
 		}
+
+		logger.Log(ctx, retry.RejectedLevel(failures), message, "err", err, "failures", failures,
+			"since", h.streak.Since(), "retry", loginRetry, "hint", "SIGHUP tries again at once")
 
 		return loginRetry
 	}
 
 	wait := h.pace.NextBackOff()
 
-	switch {
-	case failures == 1:
-		logger.ErrorContext(ctx, "pass failed", "err", err, "retry", wait)
-	case retry.Notable(failures):
-		logger.WarnContext(ctx, "pass still failing",
-			"err", err, "failures", failures, "since", h.streak.Since(), "retry", wait)
-	default:
-		logger.DebugContext(ctx, "pass failed", "err", err, "failures", failures, "retry", wait)
+	message := "pass still failing"
+	if failures == 1 {
+		message = "pass failed"
 	}
 
+	logger.Log(ctx, retry.Level(failures, slog.LevelError), message, "err", err,
+		"failures", failures, "since", h.streak.Since(), "retry", wait)
+
 	return wait
+}
+
+// recovered ends the trouble after a pass that worked, saying so if there was.
+func (h *passHealth) recovered(ctx context.Context, logger *slog.Logger) {
+	h.pace.Reset()
+
+	if failures, downtime, ok := h.streak.Recover(time.Now()); ok {
+		message := "pass recovered"
+		if h.login {
+			message = "login accepted again"
+		}
+
+		logger.InfoContext(ctx, message, "failures", failures, "downtime", downtime)
+	}
+
+	h.login = false
+}
+
+// daemonLogger is the logger of `tamis run`, whose lines the web interface
+// can show and whose level it can raise to debug for a while. The ring holds
+// nothing, and costs nothing, until debug logging is on.
+func (a *app) daemonLogger(cmd *cobra.Command) (*slog.Logger, *live.Ring, *live.DebugSwitch) {
+	logs := live.NewRing(logRingSize)
+	debug := live.NewDebugSwitch(a.baseLevel(), debugSpan)
+	debug.Capture(logs)
+
+	return slog.New(logs.Handler(a.loggerAt(cmd, debug.Level()).Handler())), logs, debug
+}
+
+// savedStatus is the daemon's live status, kept in the state database too so
+// that `tamis status` and `tamis doctor` can show it.
+func savedStatus(ctx context.Context, database *store.Store, logger *slog.Logger) *live.Status {
+	status := live.NewStatus(time.Now())
+	status.Persist(func(snap live.Snapshot) {
+		if err := database.SetSetting(ctx, live.SettingKey, snap.Encode()); err != nil {
+			logger.DebugContext(ctx, "could not save the daemon status", "err", err)
+		}
+	})
+	status.Save(time.Now())
+
+	return status
 }
 
 func reloadSignal() (<-chan os.Signal, func()) {

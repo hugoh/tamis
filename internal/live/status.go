@@ -22,19 +22,19 @@ const (
 type Snapshot struct {
 	Started     time.Time `json:"started"`
 	Passes      int       `json:"passes"`
-	LastPass    time.Time `json:"last_pass"`
-	LastSummary string    `json:"last_summary"`
-	LastError   string    `json:"last_error"`
-	LastErrorAt time.Time `json:"last_error_at"`
+	LastPass    time.Time `json:"lastPass"`
+	LastSummary string    `json:"lastSummary"`
+	LastError   string    `json:"lastError"`
+	LastErrorAt time.Time `json:"lastErrorAt"`
 	// Failures counts the passes that have failed in a row, and RetryAt is
 	// when the next try is due; both are cleared by a pass that succeeds.
 	Failures     int       `json:"failures"`
-	FailingSince time.Time `json:"failing_since"`
-	RetryAt      time.Time `json:"retry_at"`
+	FailingSince time.Time `json:"failingSince"`
+	RetryAt      time.Time `json:"retryAt"`
 	// Rejected means the failures began with a rejected login.
 	Rejected bool `json:"rejected"`
 	// RecoveredAt is when a pass last succeeded after failures.
-	RecoveredAt time.Time `json:"recovered_at"`
+	RecoveredAt time.Time `json:"recoveredAt"`
 	// Updated is when the daemon last saved this, so that a reader can tell
 	// a daemon that has stopped from one that is merely quiet.
 	Updated time.Time `json:"updated"`
@@ -99,37 +99,37 @@ func (s *Status) Save(at time.Time) {
 }
 
 // PassDone records a successful pass.
-func (s *Status) PassDone(at time.Time, summary string) {
+func (s *Status) PassDone(when time.Time, summary string) {
 	s.update(func(snap *Snapshot) {
 		snap.Passes++
-		snap.LastPass = at
+		snap.LastPass = when
 		snap.LastSummary = summary
 
 		if snap.Failures > 0 {
-			snap.RecoveredAt = at
+			snap.RecoveredAt = when
 		}
 
 		snap.Failures = 0
 		snap.FailingSince = time.Time{}
 		snap.RetryAt = time.Time{}
 		snap.Rejected = false
-		snap.Updated = at
+		snap.Updated = when
 	}, true)
 }
 
 // Failed records a failure of a pass or of waiting for the next one.
-func (s *Status) Failed(at time.Time, err error) {
+func (s *Status) Failed(when time.Time, err error) {
 	s.update(func(snap *Snapshot) {
 		snap.LastError = err.Error()
-		snap.LastErrorAt = at
+		snap.LastErrorAt = when
 
 		if snap.Failures == 0 {
-			snap.FailingSince = at
+			snap.FailingSince = when
 			snap.Rejected = false
 		}
 
 		snap.Failures++
-		snap.Updated = at
+		snap.Updated = when
 	}, true)
 }
 

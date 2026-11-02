@@ -3,6 +3,8 @@
 package retry
 
 import (
+	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
@@ -11,21 +13,29 @@ import (
 const (
 	multiplier = 2
 	jitter     = 0.2
+	// reminderEvery spaces the reminders once a streak is long.
+	reminderEvery = 20
+	// rejectionEvery spaces the reminders of a rejected login: with the
+	// usual 15 minutes between tries, it is hourly.
+	rejectionEvery = 4
 )
+
+// Pace is a sequence of delays; see Backoff.
+type Pace = backoff.ExponentialBackOff
 
 // Backoff returns a sequence of delays that starts near first, doubles on each
 // call to NextBackOff up to about limit, and varies by 20% so that several
 // connections don't retry in step. It never gives up; Reset starts it over
 // after a success. The limit is raised to first when smaller.
-func Backoff(first, limit time.Duration) *backoff.ExponentialBackOff {
-	bo := backoff.NewExponentialBackOff()
-	bo.InitialInterval = first
-	bo.Multiplier = multiplier
-	bo.RandomizationFactor = jitter
-	bo.MaxInterval = max(first, limit)
-	bo.Reset()
+func Backoff(first, limit time.Duration) *Pace {
+	pace := backoff.NewExponentialBackOff()
+	pace.InitialInterval = first
+	pace.Multiplier = multiplier
+	pace.RandomizationFactor = jitter
+	pace.MaxInterval = max(first, limit)
+	pace.Reset()
 
-	return bo
+	return pace
 }
 
 // Streak counts consecutive failures of one thing, for logging the start of
@@ -73,10 +83,32 @@ func (s *Streak) Recover(now time.Time) (int, time.Duration, bool) {
 // debug: the first few, then ever more rarely, so that a long outage leaves a
 // handful of lines.
 func Notable(failures int) bool {
-	switch failures {
-	case 1, 2, 3, 5, 10:
-		return true
-	}
+	return slices.Contains([]int{1, 2, 3, 5, 10}, failures) ||
+		failures > 0 && failures%reminderEvery == 0
+}
 
-	return failures > 0 && failures%20 == 0
+// Level is how loudly to log the nth failure in a row: first for the first,
+// a warning for the notable ones after it, debug for the rest.
+func Level(failures int, first slog.Level) slog.Level {
+	switch {
+	case failures == 1:
+		return first
+	case Notable(failures):
+		return slog.LevelWarn
+	default:
+		return slog.LevelDebug
+	}
+}
+
+// RejectedLevel is how loudly to log the nth rejected login in a row. Nothing
+// changes between attempts, so it is an error once, then a warning now and then.
+func RejectedLevel(failures int) slog.Level {
+	switch {
+	case failures == 1:
+		return slog.LevelError
+	case failures%rejectionEvery == 0:
+		return slog.LevelWarn
+	default:
+		return slog.LevelDebug
+	}
 }

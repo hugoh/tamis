@@ -4,10 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/hugoh/tamis/internal/health"
 	"github.com/hugoh/tamis/internal/live"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDaemonCheck(t *testing.T) {

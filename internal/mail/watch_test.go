@@ -18,6 +18,7 @@ import (
 
 const (
 	watchWait  = 5 * time.Second
+	opSelect   = "SELECT"
 	watchRetry = 10 * time.Millisecond
 	work       = "Work"
 )
@@ -174,7 +175,7 @@ func TestWatcherReconnectsAfterAFailure(t *testing.T) {
 
 	srv := imaptest.StartWith(t, imaptest.Options{
 		Caps: imaptest.Rev2(),
-		Fail: func(op, _ string) bool { return failing.Load() && op == "SELECT" },
+		Fail: func(op, _ string) bool { return failing.Load() && op == opSelect },
 	})
 	client := connect(t, srv)
 	cfg, logs := watchConfig(srv)
@@ -198,7 +199,7 @@ func TestWatcherBacksOffWhileFailing(t *testing.T) {
 
 	srv := imaptest.StartWith(t, imaptest.Options{
 		Caps: imaptest.Rev2(),
-		Fail: func(op, _ string) bool { return op == "SELECT" },
+		Fail: func(op, _ string) bool { return op == opSelect },
 	})
 	cfg, logs := watchConfig(srv)
 
@@ -334,7 +335,7 @@ func TestWatcherLogsItsRecovery(t *testing.T) {
 
 	srv := imaptest.StartWith(t, imaptest.Options{
 		Caps: imaptest.Rev2(),
-		Fail: func(op, _ string) bool { return failing.Load() && op == "SELECT" },
+		Fail: func(op, _ string) bool { return failing.Load() && op == opSelect },
 	})
 	cfg, logs := watchConfig(srv)
 

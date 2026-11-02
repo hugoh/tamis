@@ -24,7 +24,11 @@ type DaemonInfo struct {
 
 // LoadDaemon reads what the daemon saved in the state database. A record
 // that can't be read counts as none.
-func LoadDaemon(ctx context.Context, database *store.Store, poll time.Duration) (DaemonInfo, error) {
+func LoadDaemon(
+	ctx context.Context,
+	database *store.Store,
+	poll time.Duration,
+) (DaemonInfo, error) {
 	info := DaemonInfo{Poll: poll}
 
 	text, found, err := database.Setting(ctx, live.SettingKey)
@@ -65,16 +69,19 @@ func daemon(info DaemonInfo, now time.Time) Check {
 	case now.After(due.Add(quietGrace)):
 		return newCheck(NameDaemon, StatusWarn, fmt.Sprintf(
 			"last heard from %s ago (%s); is 'tamis run' going?",
-			elapsed(now.Sub(snap.Updated)), snap.Updated.Local().Format(time.DateTime)))
+			elapsed(now.Sub(snap.Updated)), stamp(snap.Updated),
+		))
 	case snap.Rejected:
 		return newCheck(NameDaemon, StatusFail, fmt.Sprintf(
 			"the server rejects the login, since %s (%d tries); check the password, "+
 				"next try %s",
-			clock(snap.FailingSince), snap.Failures, clock(snap.RetryAt)))
+			clock(snap.FailingSince), snap.Failures, clock(snap.RetryAt),
+		))
 	case snap.Failures > 0:
 		return newCheck(NameDaemon, StatusWarn, fmt.Sprintf(
 			"%d passes failed in a row since %s: %s; next try %s",
-			snap.Failures, clock(snap.FailingSince), snap.LastError, clock(snap.RetryAt)))
+			snap.Failures, clock(snap.FailingSince), snap.LastError, clock(snap.RetryAt),
+		))
 	case snap.Passes == 0:
 		return newCheck(NameDaemon, StatusOK, "running since "+clock(snap.Started)+", no pass yet")
 	}
@@ -91,12 +98,16 @@ func daemon(info DaemonInfo, now time.Time) Check {
 	return newCheck(NameDaemon, StatusOK, detail.String())
 }
 
+func stamp(at time.Time) string {
+	return at.Local().Format(time.DateTime) //nolint:gosmopolitan // a local CLI shows local time
+}
+
 func clock(at time.Time) string {
 	if at.IsZero() {
 		return "?"
 	}
 
-	return at.Local().Format(time.TimeOnly)
+	return at.Local().Format(time.TimeOnly) //nolint:gosmopolitan // a local CLI shows local time
 }
 
 func elapsed(span time.Duration) time.Duration {

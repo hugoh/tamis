@@ -442,7 +442,7 @@ func TestLogsPageWhenEmpty(t *testing.T) {
 	t.Parallel()
 
 	rec := signedIn(t).do(http.MethodGet, "/logs", nil)
-	require.Contains(t, rec.Body.String(), "No log lines yet")
+	require.Contains(t, rec.Body.String(), "kept only while debug logging is on")
 }
 
 func TestLogsNeedLogin(t *testing.T) {

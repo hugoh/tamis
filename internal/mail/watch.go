@@ -11,7 +11,6 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
-
 	"github.com/hugoh/tamis/internal/retry"
 )
 
@@ -84,28 +83,22 @@ func (w *Watcher) notify(reason string) {
 	}
 }
 
-func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, firstRetry time.Duration) {
+func (w *Watcher) keep(
+	ctx context.Context,
+	cfg DialConfig,
+	mailbox string,
+	firstRetry time.Duration,
+) {
 	log := cfg.Logger
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
 
-	pace := retry.Backoff(firstRetry, maxWatchRetry)
-
-	var streak retry.Streak
-
-	back := func() {
-		if failures, downtime, ok := streak.Recover(time.Now()); ok {
-			log.InfoContext(ctx, "imap loop recovered",
-				"mailbox", mailbox, "failures", failures, "downtime", downtime)
-		}
-	}
+	trouble := &trouble{log: log, mailbox: mailbox, pace: retry.Backoff(firstRetry, maxWatchRetry)}
 
 	for {
 		started := time.Now()
-		err := w.idleOn(ctx, cfg, mailbox, back)
-
-		var wait time.Duration
+		err := w.idleOn(ctx, cfg, mailbox, func() { trouble.over(ctx) })
 
 		switch {
 		case ctx.Err() != nil:
@@ -114,48 +107,64 @@ func (w *Watcher) keep(ctx context.Context, cfg DialConfig, mailbox string, firs
 			log.WarnContext(ctx, "server has no IDLE; polling only", "mailbox", mailbox)
 
 			return
-		case errors.Is(err, ErrLogin):
-			wait = loginRetry
-			failures := streak.Fail(time.Now())
-
-			// Reported at once, then hourly: nothing changes in between.
-			switch {
-			case failures == 1:
-				log.ErrorContext(ctx, "login rejected; trying again later",
-					"mailbox", mailbox, "err", err, "retry", wait)
-			case failures%4 == 0:
-				log.WarnContext(ctx, "login still rejected",
-					"mailbox", mailbox, "failures", failures, "since", streak.Since(), "retry", wait)
-			default:
-				log.DebugContext(ctx, "login rejected", "mailbox", mailbox, "retry", wait)
-			}
-		default:
-			if time.Since(started) >= stableAfter {
-				pace.Reset()
-			}
-
-			wait = pace.NextBackOff()
-			failures := streak.Fail(time.Now())
-
-			switch {
-			case failures == 1:
-				log.WarnContext(ctx, "watch failed; retrying",
-					"mailbox", mailbox, "err", err, "retry", wait)
-			case retry.Notable(failures):
-				log.WarnContext(ctx, "watch still failing",
-					"mailbox", mailbox, "err", err, "failures", failures,
-					"since", streak.Since(), "retry", wait)
-			default:
-				log.DebugContext(ctx, "watch failed; retrying",
-					"mailbox", mailbox, "err", err, "failures", failures, "retry", wait)
-			}
 		}
 
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(wait):
+		case <-time.After(trouble.begin(ctx, err, time.Since(started))):
 		}
+	}
+}
+
+// trouble follows how one folder's watching is going, to pace the retries
+// and to log when trouble starts, goes on and ends.
+type trouble struct {
+	log     *slog.Logger
+	mailbox string
+	pace    *retry.Pace
+	streak  retry.Streak
+}
+
+// begin takes the error that ended a connection that stayed up for the given
+// time, logs it as it deserves and returns how long to wait before dialling.
+func (t *trouble) begin(ctx context.Context, err error, stayedUp time.Duration) time.Duration {
+	failures := t.streak.Fail(time.Now())
+
+	if errors.Is(err, ErrLogin) {
+		message := "login still rejected"
+		if failures == 1 {
+			message = "login rejected; trying again later"
+		}
+
+		t.log.Log(ctx, retry.RejectedLevel(failures), message, "mailbox", t.mailbox,
+			"err", err, "failures", failures, "since", t.streak.Since(), "retry", loginRetry)
+
+		return loginRetry
+	}
+
+	if stayedUp >= stableAfter {
+		t.pace.Reset()
+	}
+
+	wait := t.pace.NextBackOff()
+
+	message := "watch still failing"
+	if failures == 1 {
+		message = "watch failed; retrying"
+	}
+
+	t.log.Log(ctx, retry.Level(failures, slog.LevelWarn), message, "mailbox", t.mailbox,
+		"err", err, "failures", failures, "since", t.streak.Since(), "retry", wait)
+
+	return wait
+}
+
+// over logs the end of trouble, if there was any.
+func (t *trouble) over(ctx context.Context) {
+	if failures, downtime, ok := t.streak.Recover(time.Now()); ok {
+		t.log.InfoContext(ctx, "imap loop recovered",
+			"mailbox", t.mailbox, "failures", failures, "downtime", downtime)
 	}
 }
 

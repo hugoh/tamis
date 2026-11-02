@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/hugoh/tamis/internal/mail"
 	"github.com/hugoh/tamis/internal/retry"
+	"github.com/stretchr/testify/require"
 )
+
+const warnPass = "WARN pass"
 
 var errDown = errors.New("connection refused")
 
@@ -51,10 +52,10 @@ func TestPassHealthLogsTheStartRemindersAndTheEnd(t *testing.T) {
 
 	require.Equal(t, []string{
 		"ERROR pass", // the first failure
-		"WARN pass",  // 2nd: still failing
-		"WARN pass",  // 3rd
+		warnPass,     // 2nd: still failing
+		warnPass,     // 3rd
 		"DEBUG pass", // 4th: routine
-		"WARN pass",  // 5th
+		warnPass,     // 5th
 		"DEBUG pass", // 6th
 		"INFO pass",  // recovered
 	}, levelsOf(out.String()))

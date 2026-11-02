@@ -11,14 +11,14 @@ brew install hugoh/tap/tamis
 ## Debian/Ubuntu (apt)
 
 ```sh
-curl -1sLf 'https://dl.cloudsmith.io/public/hugoh/apt/setup.deb.sh' | sudo -E bash
+curl -1sLf 'https://dl.cloudsmith.io/public/hugoh/tamis/setup.deb.sh' | sudo -E bash
 sudo apt install tamis
 ```
 
 ## RHEL/Fedora (dnf)
 
 ```sh
-curl -1sLf 'https://dl.cloudsmith.io/public/hugoh/rpm/setup.rpm.sh' | sudo -E bash
+curl -1sLf 'https://dl.cloudsmith.io/public/hugoh/tamis/setup.rpm.sh' | sudo -E bash
 sudo dnf install tamis
 ```
 

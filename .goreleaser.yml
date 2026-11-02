@@ -53,13 +53,13 @@ nfpms:
 publishers:
   - name: cloudsmith-apt
     cmd: >-
-      sh -c 'case "$0" in *_armv7.deb) ;; *.deb) cloudsmith push deb hugoh/apt/any-distro/any-version "$0";; esac'
+      sh -c 'case "$0" in *_armv7.deb) ;; *.deb) cloudsmith push deb hugoh/tamis/any-distro/any-version "$0";; esac'
       {{ .ArtifactPath }}
     env:
       - CLOUDSMITH_API_KEY={{ .Env.CLOUDSMITH_API_KEY }}
   - name: cloudsmith-rpm
     cmd: >-
-      sh -c 'case "$0" in *.rpm) cloudsmith push rpm hugoh/rpm/any-distro/any-version "$0";; esac'
+      sh -c 'case "$0" in *.rpm) cloudsmith push rpm hugoh/tamis/any-distro/any-version "$0";; esac'
       {{ .ArtifactPath }}
     env:
       - CLOUDSMITH_API_KEY={{ .Env.CLOUDSMITH_API_KEY }}

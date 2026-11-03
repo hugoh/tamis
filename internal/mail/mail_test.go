@@ -227,6 +227,98 @@ func TestRecipients(t *testing.T) {
 	)
 }
 
+// fallbackCaps is a server with UIDPLUS but no MOVE, like iCloud.
+func fallbackCaps() imap.CapSet {
+	return imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapUIDPlus: {}}
+}
+
+func uidsIn(t *testing.T, client *mail.Client, mailbox string) []uint32 {
+	t.Helper()
+
+	uids, err := client.UIDsAfter(mailbox, 0)
+	require.NoError(t, err)
+
+	return uids
+}
+
+// TestMoveFallbackRetriedAfterDrop drops the connection at each step of a
+// COPY-based move and checks that moving again on a new connection leaves
+// the message once in Junk and nowhere else.
+func TestMoveFallbackRetriedAfterDrop(t *testing.T) {
+	t.Parallel()
+
+	for _, step := range []string{"COPY", "STORE", "EXPUNGE"} {
+		t.Run("drop at "+step, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				armed   atomic.Bool
+				dropped atomic.Bool
+			)
+
+			srv := imaptest.StartWith(t, imaptest.Options{
+				Caps: fallbackCaps(),
+				Drop: func(op, _ string) bool {
+					return armed.Load() && op == step && dropped.CompareAndSwap(false, true)
+				},
+			})
+
+			client := connect(t, srv)
+			uids := seed(t, client, "INBOX", raw("a@x", "b@y", "m1"), raw("a@x", "b@y", "m2"))
+
+			armed.Store(true)
+			require.Error(t, client.Move("INBOX", uids[:1], "Junk"))
+			require.True(t, dropped.Load(), "the server dropped the connection at %s", step)
+
+			retry := connect(t, srv)
+			require.NoError(t, retry.Move("INBOX", uids[:1], "Junk"))
+
+			require.Equal(t, uids[1:], uidsIn(t, retry, "INBOX"))
+			require.Len(t, uidsIn(t, retry, "Junk"), 1, "the message is in Junk once")
+		})
+	}
+}
+
+func TestMoveFallbackAfterTheMoveFinished(t *testing.T) {
+	t.Parallel()
+
+	client := connect(t, imaptest.Start(t, fallbackCaps()))
+	uids := seed(t, client, "INBOX", raw("a@x", "b@y", "m1"))
+
+	require.NoError(t, client.Move("INBOX", uids, "Junk"))
+	require.NoError(t, client.Move("INBOX", uids, "Junk"), "UIDs already gone count as moved")
+
+	require.Empty(t, uidsIn(t, client, "INBOX"))
+	require.Len(t, uidsIn(t, client, "Junk"), 1)
+}
+
+// A message that merely reuses a Message-ID is not the copy of another: only
+// the same size too is.
+func TestMoveFallbackKeepsAMessageThatReusesAnID(t *testing.T) {
+	t.Parallel()
+
+	client := connect(t, imaptest.Start(t, fallbackCaps()))
+
+	original := raw("a@x", "b@y", "dup")
+	reused := append(raw("c@x", "d@y", "dup"), []byte("a different, longer body\r\n")...)
+
+	seed(t, client, "Junk", original)
+	uids := seed(t, client, "INBOX", reused)
+
+	require.NoError(t, client.Move("INBOX", uids, "Junk"))
+
+	require.Empty(t, uidsIn(t, client, "INBOX"))
+	require.Len(t, uidsIn(t, client, "Junk"), 2, "neither message is lost")
+}
+
+func TestMoveNothing(t *testing.T) {
+	t.Parallel()
+
+	client := connect(t, imaptest.Start(t, fallbackCaps()))
+
+	require.NoError(t, client.Move("INBOX", nil, "Junk"))
+}
+
 func TestMove(t *testing.T) {
 	t.Parallel()
 

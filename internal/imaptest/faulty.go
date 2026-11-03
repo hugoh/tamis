@@ -192,6 +192,22 @@ func (s *session) Move(writer *imapserver.MoveWriter, numSet imap.NumSet, dest s
 	return s.fullSession.Move(writer, numSet, dest) //nolint:wrapcheck // passthrough
 }
 
+func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) {
+	if err := s.check("COPY", dest); err != nil {
+		return nil, err
+	}
+
+	return s.fullSession.Copy(numSet, dest) //nolint:wrapcheck // passthrough
+}
+
+func (s *session) Expunge(writer *imapserver.ExpungeWriter, uids *imap.UIDSet) error {
+	if err := s.check("EXPUNGE", ""); err != nil {
+		return err
+	}
+
+	return s.fullSession.Expunge(writer, uids) //nolint:wrapcheck // passthrough
+}
+
 func (s *session) check(command, mailbox string) error {
 	if s.drop(command, mailbox) {
 		_ = s.conn.NetConn().Close()

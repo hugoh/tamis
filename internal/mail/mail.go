@@ -366,14 +366,27 @@ func (c *Client) Recipients(mailbox string, uids []uint32) ([]string, error) {
 // Move moves messages to dest, natively with MOVE or with COPY, STORE
 // \Deleted and UID EXPUNGE. It refuses servers that offer neither MOVE nor
 // UIDPLUS.
+//
+// Move can be repeated after a failure at any point. UIDs that are already
+// gone count as moved, and without MOVE a message already copied to dest is
+// not copied again, so a connection that dropped between the COPY and the
+// EXPUNGE costs nothing but the retry.
 func (c *Client) Move(mailbox string, uids []uint32, dest string) error {
 	caps := c.imap.Caps()
 	if !caps.Has(imap.CapMove) && !caps.Has(imap.CapUIDPlus) {
 		return ErrUnsafeMove
 	}
 
+	if len(uids) == 0 {
+		return nil
+	}
+
 	if err := c.selectMailbox(mailbox); err != nil {
 		return err
+	}
+
+	if !caps.Has(imap.CapMove) {
+		return c.copyDelete(mailbox, uids, dest)
 	}
 
 	if _, err := c.imap.Move(uidSet(uids), dest).Wait(); err != nil {
@@ -383,6 +396,114 @@ func (c *Client) Move(mailbox string, uids []uint32, dest string) error {
 	c.log.Debug("move", "mailbox", mailbox, "dest", dest, "messages", len(uids))
 
 	return nil
+}
+
+// held is a message as far as telling it apart from its copy: the same
+// Message-ID and size mean the same message.
+type held struct {
+	uid       uint32
+	messageID string
+	size      int64
+}
+
+// copyDelete is Move for servers without MOVE. The source is only expunged
+// once every message is in dest, found there already or copied now.
+func (c *Client) copyDelete(mailbox string, uids []uint32, dest string) error {
+	messages, err := c.identify(mailbox, uids)
+	if err != nil {
+		return err
+	}
+
+	// None left: an earlier attempt finished the move.
+	if len(messages) == 0 {
+		return nil
+	}
+
+	var gone, toCopy []uint32
+
+	for _, message := range messages {
+		gone = append(gone, message.uid)
+
+		copied, err := c.hasCopy(dest, message)
+		if err != nil {
+			return err
+		}
+
+		if !copied {
+			toCopy = append(toCopy, message.uid)
+		}
+	}
+
+	if err := c.selectMailbox(mailbox); err != nil {
+		return err
+	}
+
+	if len(toCopy) > 0 {
+		if _, err := c.imap.Copy(uidSet(toCopy), dest).Wait(); err != nil {
+			return fmt.Errorf("copy from %s to %s: %w", mailbox, dest, err)
+		}
+	}
+
+	deleted := &imap.StoreFlags{
+		Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagDeleted},
+	}
+	if err := c.imap.Store(uidSet(gone), deleted, nil).Close(); err != nil {
+		return fmt.Errorf("delete from %s after copying to %s: %w", mailbox, dest, err)
+	}
+
+	if err := c.imap.UIDExpunge(uidSet(gone)).Close(); err != nil {
+		return fmt.Errorf("expunge from %s after copying to %s: %w", mailbox, dest, err)
+	}
+
+	c.log.Debug("move", "mailbox", mailbox, "dest", dest, "messages", len(gone),
+		"copied", len(toCopy))
+
+	return nil
+}
+
+// identify fetches what tells the given messages apart. UIDs the folder no
+// longer holds are left out.
+func (c *Client) identify(mailbox string, uids []uint32) ([]held, error) {
+	buffers, err := c.fetch(mailbox, uids,
+		&imap.FetchOptions{UID: true, Envelope: true, RFC822Size: true})
+	if err != nil {
+		return nil, err
+	}
+
+	messages := make([]held, 0, len(buffers))
+
+	for _, buffer := range buffers {
+		message := held{uid: uint32(buffer.UID), size: buffer.RFC822Size}
+		if buffer.Envelope != nil {
+			message.messageID = bracket(buffer.Envelope.MessageID)
+		}
+
+		messages = append(messages, message)
+	}
+
+	return messages, nil
+}
+
+// hasCopy reports whether dest holds a message with the same Message-ID and
+// size. COPY keeps a message's bytes, so a different size means a different
+// message that reuses an ID, which must not be taken for the copy. A message
+// that can't be told apart this way counts as not copied.
+func (c *Client) hasCopy(dest string, message held) (bool, error) {
+	if message.messageID == "" || message.size <= 0 {
+		return false, nil
+	}
+
+	// LARGER and SMALLER are exclusive bounds.
+	found, err := c.search(dest, &imap.SearchCriteria{
+		Header:  []imap.SearchCriteriaHeaderField{{Key: "Message-ID", Value: message.messageID}},
+		Larger:  message.size - 1,
+		Smaller: message.size + 1,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return len(found) > 0, nil
 }
 
 // AddKeyword sets a flag or keyword on the given messages.

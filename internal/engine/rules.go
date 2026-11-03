@@ -92,7 +92,9 @@ func (e *Engine) fileByRule(
 	}
 
 	if err := e.mail.Move(folder, uids, target); err != nil {
-		// Left in place with the keyword, the message would never be filed.
+		// Take the keyword back off. If the connection is gone and this fails
+		// too, the journal has no move for the message, so the next pass
+		// files it anyway.
 		if undo := e.mail.RemoveKeyword(folder, uids, SortedKeyword); undo != nil {
 			err = errors.Join(err, undo)
 		}

@@ -36,7 +36,9 @@ const (
 	// folder it scans. Senders can't set keywords, unlike a Message-ID.
 	TrainedKeyword = "$TamisTrained"
 	// SortedKeyword marks mail tamis filed by a rule. Seeing it back in a
-	// watched folder means the user moved it there, so it isn't filed again.
+	// watched folder means the user moved it there, so it isn't filed again,
+	// provided the journal shows tamis filed it: a move that failed leaves
+	// the keyword behind, and that message is filed on the next pass.
 	SortedKeyword = "$TamisSorted"
 )
 
@@ -305,7 +307,12 @@ func (e *Engine) handle(
 		return fmt.Errorf("check training: %w", err)
 	}
 
-	if why := skipReason(message, trained); why != "" {
+	sorted, err := e.sortedByTamis(ctx, message)
+	if err != nil {
+		return err
+	}
+
+	if why := skipReason(message, trained, sorted); why != "" {
 		e.log.DebugContext(ctx, "skipping", "folder", folder, "uid", message.UID, "why", why)
 
 		return nil
@@ -350,14 +357,33 @@ func (e *Engine) handle(
 	return e.record(ctx, folder, message, verdict, action, applied)
 }
 
+// sortedByTamis reports whether the message was filed by a rule and then put
+// back by the user, which is when it must be left where it is. The keyword
+// alone doesn't say so: it is set before the move, and a move cut short by a
+// dropped connection leaves it on a message that was never filed. So the
+// journal has to show the move too. Without a Message-ID there is nothing to
+// look up, and the keyword is trusted.
+func (e *Engine) sortedByTamis(ctx context.Context, message mail.Message) (bool, error) {
+	if !slices.Contains(message.Flags, strings.ToLower(SortedKeyword)) {
+		return false, nil
+	}
+
+	if message.MessageID == "" {
+		return true, nil
+	}
+
+	return e.movedByTamis(ctx, message, VerdictGood)
+}
+
 // skipReason says why a message needs no judging, or is empty if it does.
-func skipReason(message mail.Message, trained bool) string {
+// sorted is whether sortedByTamis found it filed by a rule.
+func skipReason(message mail.Message, trained, sorted bool) string {
 	switch {
 	case trained && slices.Contains(message.Flags, strings.ToLower(TrainedKeyword)):
 		return "already trained"
 	case slices.Contains(message.Flags, strings.ToLower(RescuedKeyword)):
 		return "rescued by tamis"
-	case slices.Contains(message.Flags, strings.ToLower(SortedKeyword)):
+	case sorted:
 		return "sorted by tamis"
 	default:
 		return ""

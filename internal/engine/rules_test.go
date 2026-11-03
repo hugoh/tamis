@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/hugoh/tamis/internal/config"
@@ -117,17 +118,55 @@ func TestRulesLeaveSortedMailAlone(t *testing.T) {
 	t.Parallel()
 
 	e := setup(t, config.ModeLive)
+	e.cfg.Rules.CreateFolders = true
 	e.trainModel(t)
 	e.withRules(t, listsRule)
 	e.run(t)
 
 	e.append(t, inbox, e.fromList())
-	e.markFrom(t, inbox, "g@good.example", engine.SortedKeyword)
+	e.run(t)
+	require.Len(t, e.messages(t, listsFolder), 1)
+
+	// The user drags it back; the keyword goes with it.
+	moved := e.messages(t, listsFolder)
+	require.NoError(t, e.client.Move(listsFolder, []uint32{moved[0].UID}, inbox))
 
 	summary := e.run(t)
 
 	require.Equal(t, engine.Summary{}, summary)
 	require.Len(t, e.messages(t, inbox), 1, "dragged back by the user, not refiled")
+	require.Empty(t, e.messages(t, listsFolder))
+}
+
+// A move cut short by a dropped connection leaves the keyword on a message
+// that was never filed. The journal has no move for it, so it is filed on the
+// next pass instead of being left behind for good.
+func TestRulesFileMailWhoseMoveFailed(t *testing.T) {
+	t.Parallel()
+
+	var failing atomic.Bool
+
+	e := setupWith(t, config.ModeLive, dropAfterFlag(&failing))
+	e.cfg.Rules.CreateFolders = true
+	e.trainModel(t)
+	e.withRules(t, listsRule)
+	e.run(t)
+	e.append(t, inbox, e.fromList())
+
+	failing.Store(true)
+
+	_, err := e.engine.RunOnce(t.Context())
+	require.ErrorContains(t, err, "file by rule")
+
+	left := e.messages(t, inbox)
+	require.Len(t, left, 1)
+	require.Contains(t, left[0].Flags, "$tamissorted", "the undo failed too")
+
+	failing.Store(false)
+
+	require.Equal(t, engine.Summary{Scanned: 1, Good: 1}, e.run(t))
+	require.Empty(t, e.messages(t, inbox))
+	require.Len(t, e.messages(t, listsFolder), 1)
 }
 
 func TestRulesNeedAnExistingFolder(t *testing.T) {

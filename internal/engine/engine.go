@@ -300,19 +300,12 @@ func (e *Engine) handle(
 	message mail.Message,
 	summary *Summary,
 ) error {
-	key := trainingKey(message)
-
-	_, trained, err := e.store.Trained(ctx, key)
-	if err != nil {
-		return fmt.Errorf("check training: %w", err)
-	}
-
-	sorted, err := e.sortedByTamis(ctx, message)
+	why, err := e.whySkip(ctx, message)
 	if err != nil {
 		return err
 	}
 
-	if why := skipReason(message, trained, sorted); why != "" {
+	if why != "" {
 		e.log.DebugContext(ctx, "skipping", "folder", folder, "uid", message.UID, "why", why)
 
 		return nil
@@ -323,18 +316,9 @@ func (e *Engine) handle(
 		return err
 	}
 
-	if slices.Contains(message.Flags, strings.ToLower(FiledKeyword)) {
-		filed, err := e.movedByTamis(ctx, message, VerdictSpam)
-		if err != nil {
-			return err
-		}
-
-		if filed {
-			summary.Scanned++
-			summary.Corrected++
-
-			return e.learnGood(ctx, folder, message, tokens, ReasonCorrection)
-		}
+	corrected, err := e.learnCorrection(ctx, folder, message, tokens, summary)
+	if err != nil || corrected {
+		return err
 	}
 
 	verdict, err := e.judge(ctx, message, tokens, model)
@@ -355,6 +339,45 @@ func (e *Engine) handle(
 	}
 
 	return e.record(ctx, folder, message, verdict, action, applied)
+}
+
+// whySkip says why a message needs no judging, or is empty if it does.
+func (e *Engine) whySkip(ctx context.Context, message mail.Message) (string, error) {
+	_, trained, err := e.store.Trained(ctx, trainingKey(message))
+	if err != nil {
+		return "", fmt.Errorf("check training: %w", err)
+	}
+
+	sorted, err := e.sortedByTamis(ctx, message)
+	if err != nil {
+		return "", err
+	}
+
+	return skipReason(message, trained, sorted), nil
+}
+
+// learnCorrection learns from a message the user moved out of Junk, which
+// tamis put there as spam. It reports whether the message was one.
+func (e *Engine) learnCorrection(
+	ctx context.Context,
+	folder string,
+	message mail.Message,
+	tokens []string,
+	summary *Summary,
+) (bool, error) {
+	if !slices.Contains(message.Flags, strings.ToLower(FiledKeyword)) {
+		return false, nil
+	}
+
+	filed, err := e.movedByTamis(ctx, message, VerdictSpam)
+	if err != nil || !filed {
+		return false, err
+	}
+
+	summary.Scanned++
+	summary.Corrected++
+
+	return true, e.learnGood(ctx, folder, message, tokens, ReasonCorrection)
 }
 
 // sortedByTamis reports whether the message was filed by a rule and then put

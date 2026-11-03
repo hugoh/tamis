@@ -81,7 +81,10 @@ func TestState(t *testing.T) {
 	require.Equal(t, uids[0]+1, after.UIDNext)
 }
 
-const inboxName = "INBOX"
+const (
+	inboxName = "INBOX"
+	opStore   = "STORE"
+)
 
 func TestMessages(t *testing.T) {
 	t.Parallel()
@@ -247,7 +250,7 @@ func uidsIn(t *testing.T, client *mail.Client, mailbox string) []uint32 {
 func TestMoveFallbackRetriedAfterDrop(t *testing.T) {
 	t.Parallel()
 
-	for _, step := range []string{"COPY", "STORE", "EXPUNGE"} {
+	for _, step := range []string{"COPY", opStore, "EXPUNGE"} {
 		t.Run("drop at "+step, func(t *testing.T) {
 			t.Parallel()
 
@@ -487,11 +490,11 @@ func TestServerFailures(t *testing.T) {
 			t.Helper()
 			require.Error(t, client.Move("INBOX", uids, "Junk"))
 		}},
-		{"STORE", func(t *testing.T, client *mail.Client, uids []uint32) {
+		{opStore, func(t *testing.T, client *mail.Client, uids []uint32) {
 			t.Helper()
 			require.Error(t, client.AddKeyword("INBOX", uids, "$X"))
 		}},
-		{"STORE", func(t *testing.T, client *mail.Client, uids []uint32) {
+		{opStore, func(t *testing.T, client *mail.Client, uids []uint32) {
 			t.Helper()
 			require.Error(t, client.RemoveKeyword("INBOX", uids, "$X"))
 		}},

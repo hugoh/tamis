@@ -20,7 +20,7 @@ use rusqlite::{
 use thiserror::Error;
 
 pub use addresses::{Address, AddressQuery, AddressSort, parse_address};
-pub use decisions::{Decision, DecisionQuery, DecisionSort, Stats};
+pub use decisions::{Decision, DecisionQuery, DecisionSort, PendingMove, Stats};
 pub use web::Passkey;
 
 use crate::classify::{Label, Model};
@@ -622,6 +622,33 @@ mod tests {
         assert!(matches!(store.mark_undone(id), Err(Error::AlreadyUndone(got)) if got == id));
         assert!(matches!(store.mark_undone(id + 1), Err(Error::NotFound(_))));
         assert!(matches!(store.decision(id + 1), Err(Error::NotFound(_))));
+    }
+
+    #[test]
+    fn a_pending_move_is_confirmed_or_dropped() {
+        let (_dir, store) = open();
+        let moved = store
+            .record_pending_move(&decision("<a>", "bayes", 10), "Junk", "$TamisFiled")
+            .unwrap();
+        let refused = store
+            .record_pending_move(&decision("<b>", "bayes", 20), "Junk", "$TamisFiled")
+            .unwrap();
+
+        assert!(!store.decision(moved).unwrap().applied);
+        let pending = store.pending_moves().unwrap();
+        assert_eq!(
+            pending.iter().map(|p| p.decision_id).collect::<Vec<_>>(),
+            [moved, refused]
+        );
+        assert_eq!(pending[0].dest, "Junk");
+        assert_eq!(pending[0].message_id, "<a>");
+
+        store.confirm_move(moved).unwrap();
+        store.drop_move(refused).unwrap();
+
+        assert!(store.decision(moved).unwrap().applied);
+        assert!(matches!(store.decision(refused), Err(Error::NotFound(_))));
+        assert!(store.pending_moves().unwrap().is_empty());
     }
 
     #[test]

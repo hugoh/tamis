@@ -36,6 +36,17 @@ pub struct Decision {
     pub corrects: Vec<i64>,
 }
 
+/// A move tamis meant to make and may have made: the connection dropped, or
+/// the pass was cut off, before it knew.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingMove {
+    pub decision_id: i64,
+    pub source: String,
+    pub dest: String,
+    pub message_id: String,
+    pub keyword: String,
+}
+
 /// Summarises what the store has learnt.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Stats {
@@ -258,6 +269,101 @@ impl Store {
             ],
         )?;
         Ok(conn.last_insert_rowid())
+    }
+
+    /// Journals a move that is about to happen, as not yet applied, together
+    /// with where to look for the message if the outcome is lost. Returns the
+    /// decision's ID.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn record_pending_move(
+        &self,
+        decision: &Decision,
+        dest: &str,
+        keyword: &str,
+    ) -> Result<i64> {
+        self.in_tx(|tx| {
+            tx.execute(
+                "INSERT INTO decisions
+                 (at, mailbox, uid, message_id, sender, subject, score, verdict, reason, action, applied)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                params![
+                    decision.at.as_second(),
+                    decision.mailbox,
+                    decision.uid,
+                    decision.message_id,
+                    decision.from,
+                    decision.subject,
+                    decision.score,
+                    decision.verdict.as_str(),
+                    decision.reason.as_str(),
+                    decision.action.to_string(),
+                ],
+            )?;
+            let id = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO pending_moves (decision_id, source, dest, message_id, keyword)
+                 VALUES (?, ?, ?, ?, ?)",
+                params![id, decision.mailbox, dest, decision.message_id, keyword],
+            )?;
+            Ok(id)
+        })
+    }
+
+    /// The moves whose outcome is not known, oldest first.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn pending_moves(&self) -> Result<Vec<PendingMove>> {
+        let conn = self.conn();
+        let mut statement = conn.prepare(
+            "SELECT decision_id, source, dest, message_id, keyword
+             FROM pending_moves ORDER BY decision_id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(PendingMove {
+                decision_id: row.get(0)?,
+                source: row.get(1)?,
+                dest: row.get(2)?,
+                message_id: row.get(3)?,
+                keyword: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Marks a pending move as made.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn confirm_move(&self, decision_id: i64) -> Result<()> {
+        self.in_tx(|tx| {
+            tx.execute(
+                "UPDATE decisions SET applied = 1 WHERE id = ?",
+                [decision_id],
+            )?;
+            tx.execute(
+                "DELETE FROM pending_moves WHERE decision_id = ?",
+                [decision_id],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Forgets a pending move that did not happen, and its decision.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn drop_move(&self, decision_id: i64) -> Result<()> {
+        self.in_tx(|tx| {
+            tx.execute("DELETE FROM decisions WHERE id = ?", [decision_id])?;
+            tx.execute(
+                "DELETE FROM pending_moves WHERE decision_id = ?",
+                [decision_id],
+            )?;
+            Ok(())
+        })
     }
 
     /// The most recent journal entries, newest first.

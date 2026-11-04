@@ -10,6 +10,7 @@ mod filing;
 mod junk;
 mod keywords;
 mod learn;
+mod pending;
 mod rescue;
 mod train;
 mod undo;
@@ -82,6 +83,8 @@ impl<M: Mailbox> Engine<M> {
     /// which kind.
     pub async fn run_once(&mut self) -> Result<Summary> {
         let mut summary = Summary::default();
+
+        self.resolve_pending_moves().await?;
 
         for folder in self.train_folders() {
             self.train(&folder, &mut summary).await?;
@@ -234,8 +237,7 @@ impl<M: Mailbox> Engine<M> {
             return self.file_by_rule(folder, message, verdict, &target).await;
         }
 
-        let (action, applied) = self.act(folder, message.uid, verdict.verdict).await?;
-        self.record(folder, message, &verdict, &action, applied)
+        self.act(folder, message, &verdict).await
     }
 
     /// Says why a message needs no judging, or `None` if it does.
@@ -346,24 +348,24 @@ impl<M: Mailbox> Engine<M> {
         }))
     }
 
-    /// Files a message according to its verdict; in shadow mode it only
-    /// reports what it would have done.
-    async fn act(&mut self, folder: &str, uid: u32, verdict: Verdict) -> Result<(Action, bool)> {
+    /// Files a message according to its verdict and journals it; in shadow
+    /// mode it only reports what it would have done.
+    async fn act(&mut self, folder: &str, message: &Message, verdict: &Judgement) -> Result<()> {
         let live = self.cfg.policy.mode == Mode::Live;
-        let uids = [uid];
+        let uids = [message.uid];
 
-        match verdict {
+        match verdict.verdict {
             Verdict::Spam => {
                 let junk = self.cfg.folders.junk.clone();
-                let action = Action::Move(junk.clone());
                 if !live {
-                    return Ok((action, false));
+                    return self.record(folder, message, verdict, &Action::Move(junk), false);
                 }
 
                 self.mail
                     .add_keyword(folder, &uids, keyword::FILED)
                     .await
                     .context("file spam")?;
+                let intent = self.intend_move(folder, message, verdict, &junk, keyword::FILED)?;
                 if let Err(err) = self.mail.move_messages(folder, &uids, &junk).await {
                     // Left in place with the keyword, the next pass would
                     // mistake the message for one the user moved back out of
@@ -375,22 +377,22 @@ impl<M: Mailbox> Engine<M> {
                     {
                         tracing::debug!(%undo, "could not clear the filed keyword");
                     }
+                    self.withdraw_move(intent, &err);
                     return Err(err).context("file spam");
                 }
-                Ok((action, true))
+                self.settle_move(intent, folder, message, verdict, &junk)
             }
             Verdict::Uncertain => {
                 let action = Action::Keyword(keyword::UNCERTAIN.to_owned());
-                if !live {
-                    return Ok((action, false));
+                if live {
+                    self.mail
+                        .add_keyword(folder, &uids, keyword::UNCERTAIN)
+                        .await
+                        .context("flag uncertain")?;
                 }
-                self.mail
-                    .add_keyword(folder, &uids, keyword::UNCERTAIN)
-                    .await
-                    .context("flag uncertain")?;
-                Ok((action, true))
+                self.record(folder, message, verdict, &action, live)
             }
-            Verdict::Good => Ok((Action::None, false)),
+            Verdict::Good => self.record(folder, message, verdict, &Action::None, false),
         }
     }
 
@@ -448,6 +450,29 @@ impl<M: Mailbox> Engine<M> {
         self.record(folder, message, &judgement, &Action::TrainSpam, true)
     }
 
+    fn entry(
+        folder: &str,
+        message: &Message,
+        verdict: &Judgement,
+        action: &Action,
+        applied: bool,
+    ) -> Decision {
+        Decision {
+            at: Timestamp::now(),
+            mailbox: folder.to_owned(),
+            uid: message.uid,
+            message_id: message.message_id.clone(),
+            from: message.from.clone(),
+            subject: message.subject.clone(),
+            score: verdict.score,
+            verdict: verdict.verdict,
+            reason: verdict.reason,
+            action: action.clone(),
+            applied,
+            ..Decision::default()
+        }
+    }
+
     fn record(
         &self,
         folder: &str,
@@ -470,20 +495,7 @@ impl<M: Mailbox> Engine<M> {
         );
 
         self.store
-            .record_decision(&Decision {
-                at: Timestamp::now(),
-                mailbox: folder.to_owned(),
-                uid: message.uid,
-                message_id: message.message_id.clone(),
-                from: message.from.clone(),
-                subject: message.subject.clone(),
-                score: verdict.score,
-                verdict: verdict.verdict,
-                reason: verdict.reason,
-                action: action.clone(),
-                applied,
-                ..Decision::default()
-            })
+            .record_decision(&Self::entry(folder, message, verdict, action, applied))
             .context("record decision")?;
         Ok(())
     }

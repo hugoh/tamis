@@ -76,6 +76,7 @@ impl<M: Mailbox> Engine<M> {
             .add_keyword(folder, &uids, keyword::SORTED)
             .await
             .context("file by rule")?;
+        let intent = self.intend_move(folder, message, &verdict, target, keyword::SORTED)?;
         if let Err(err) = self.mail.move_messages(folder, &uids, target).await {
             // Take the keyword back off. If the connection is gone and this
             // fails too, the journal has no move for the message, so the next
@@ -87,9 +88,10 @@ impl<M: Mailbox> Engine<M> {
             {
                 tracing::debug!(%undo, "could not clear the sorted keyword");
             }
+            self.withdraw_move(intent, &err);
             return Err(err).context("file by rule");
         }
-        self.record(folder, message, &verdict, &action, true)
+        self.settle_move(intent, folder, message, &verdict, target)
     }
 
     /// Logs each folder the rules file into that the mailbox lacks, so a typo

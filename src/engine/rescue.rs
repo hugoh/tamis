@@ -24,16 +24,14 @@ impl<M: Mailbox> Engine<M> {
 
         summary.rescued += 1;
         let dest = self.cfg.folders.rescue_to().to_owned();
-        let action = Action::Move(dest.clone());
-        let applied = self.cfg.policy.mode == Mode::Live;
-        if applied {
-            self.move_rescued(message.uid, &dest)
+        let junk = self.cfg.folders.junk.clone();
+        if self.cfg.policy.mode == Mode::Live {
+            self.move_rescued(message, &verdict, &dest)
                 .await
                 .context("rescue")?;
+        } else {
+            self.record(&junk, message, &verdict, &Action::Move(dest), false)?;
         }
-
-        let junk = self.cfg.folders.junk.clone();
-        self.record(&junk, message, &verdict, &action, applied)?;
         Ok(true)
     }
 
@@ -67,9 +65,14 @@ impl<M: Mailbox> Engine<M> {
         }))
     }
 
-    async fn move_rescued(&mut self, uid: u32, dest: &str) -> Result<()> {
+    async fn move_rescued(
+        &mut self,
+        message: &Message,
+        verdict: &Judgement,
+        dest: &str,
+    ) -> Result<()> {
         let junk = self.cfg.folders.junk.clone();
-        let uids = [uid];
+        let uids = [message.uid];
 
         self.mail
             .ensure(dest)
@@ -79,6 +82,7 @@ impl<M: Mailbox> Engine<M> {
             .add_keyword(&junk, &uids, keyword::RESCUED)
             .await
             .context("flag rescued")?;
+        let intent = self.intend_move(&junk, message, verdict, dest, keyword::RESCUED)?;
         if let Err(err) = self.mail.move_messages(&junk, &uids, dest).await {
             // Left in Junk with the keyword, the next pass would read it as
             // the user moving a rescue back.
@@ -89,8 +93,9 @@ impl<M: Mailbox> Engine<M> {
             {
                 tracing::debug!(%undo, "could not clear the rescued keyword");
             }
+            self.withdraw_move(intent, &err);
             return Err(err).context(format!("move to {dest}"));
         }
-        Ok(())
+        self.settle_move(intent, &junk, message, verdict, dest)
     }
 }

@@ -59,4 +59,11 @@ CREATE TABLE enrollments (
 	expires_at INTEGER NOT NULL
 );",
     "CREATE INDEX decisions_by_at ON decisions (at, id);",
+    "CREATE TABLE pending_moves (
+	decision_id INTEGER PRIMARY KEY,
+	source      TEXT NOT NULL,
+	dest        TEXT NOT NULL,
+	message_id  TEXT NOT NULL,
+	keyword     TEXT NOT NULL
+);",
 ];

@@ -43,6 +43,7 @@ pub struct Fake {
     /// Whether the server advertises CONDSTORE.
     pub condstore: bool,
     faults: HashMap<&'static str, VecDeque<Error>>,
+    lost_replies: HashMap<&'static str, VecDeque<Error>>,
     /// Every operation performed, as "operation folder", oldest first.
     pub log: Vec<String>,
 }
@@ -80,6 +81,26 @@ impl Fake {
     /// with `error`; calls queue up.
     pub fn fail(&mut self, operation: &'static str, error: Error) {
         self.faults.entry(operation).or_default().push_back(error);
+    }
+
+    /// Makes the next call to `operation` take effect and then fail with
+    /// `error`, as when the connection drops before the reply arrives.
+    pub fn fail_after(&mut self, operation: &'static str, error: Error) {
+        self.lost_replies
+            .entry(operation)
+            .or_default()
+            .push_back(error);
+    }
+
+    fn reply(&mut self, operation: &'static str) -> Result<()> {
+        match self
+            .lost_replies
+            .get_mut(operation)
+            .and_then(VecDeque::pop_front)
+        {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 
     /// Delivers a message into `folder` and returns its UID.
@@ -405,7 +426,7 @@ impl Mailbox for Fake {
             message.mod_seq = dest.mod_seq;
             dest.messages.push(message);
         }
-        Ok(())
+        self.reply("move")
     }
 
     async fn add_keyword(&mut self, mailbox: &str, uids: &[u32], keyword: &str) -> Result<()> {

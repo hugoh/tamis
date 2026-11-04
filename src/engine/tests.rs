@@ -294,6 +294,55 @@ async fn moving_filed_spam_back_is_a_correction() {
 }
 
 #[tokio::test]
+async fn a_move_whose_reply_was_lost_is_journalled_on_the_next_pass() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail()
+        .fail_after("move", MailError::Connection("gone".into()));
+    assert!(env.engine.run_once().await.unwrap_err().is_connection());
+    assert_eq!(env.mail().uids("Junk").len(), 1, "the server did move it");
+
+    env.engine.run_once().await.unwrap();
+
+    let decisions = env.decisions();
+    assert_eq!(decisions.len(), 1);
+    assert!(decisions[0].applied);
+    assert!(env.store().pending_moves().unwrap().is_empty());
+
+    env.mail()
+        .move_messages("Junk", &[1], "INBOX")
+        .await
+        .unwrap();
+    let summary = env.engine.run_once().await.unwrap();
+    assert_eq!(summary.corrected, 1, "moving it back is learnt");
+}
+
+#[tokio::test]
+async fn a_move_that_never_happened_is_forgotten_and_tried_again() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail()
+        .fail("move", MailError::Connection("gone".into()));
+    assert!(env.engine.run_once().await.unwrap_err().is_connection());
+    assert_eq!(env.store().pending_moves().unwrap().len(), 1);
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.mail().uids("INBOX").is_empty());
+    assert_eq!(env.mail().uids("Junk").len(), 1);
+    let decisions = env.decisions();
+    assert_eq!(
+        decisions.len(),
+        1,
+        "no row left for the attempt that failed"
+    );
+    assert!(decisions[0].applied);
+    assert!(env.store().pending_moves().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn a_stale_filed_keyword_is_cleared_so_a_later_move_to_junk_is_missed_spam() {
     let mut env = Env::trained();
     env.start().await;

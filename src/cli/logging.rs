@@ -70,7 +70,9 @@ where
 }
 
 /// The filter: tamis at `info`, or `debug` under `--verbose`, and everything
-/// else at `warn`, so the libraries' own chatter stays out of the way.
+/// else at `warn`, so the libraries' own chatter stays out of the way. The
+/// IMAP parser crates are held to `error`: they warn about every server
+/// response with an empty text, as iCloud sends, and say nothing we can act on.
 /// `$TAMIS_LOG` replaces it, in the `EnvFilter` syntax.
 fn filter(verbose: bool) -> EnvFilter {
     EnvFilter::try_from_env("TAMIS_LOG").unwrap_or_else(|_| {

@@ -11,10 +11,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::{self, Config};
 use crate::engine::{self, Engine};
+use crate::health;
 use crate::live::{Status, Waiting};
 use crate::mail::watch::Watcher;
 use crate::mail::{self, Mailbox};
-use crate::monitor::Pinger;
+use crate::monitor::{self, Pinger};
 use crate::retry::{self, Backoff, Streak, log_at};
 use crate::rules::Rules;
 use crate::store::Store;
@@ -82,6 +83,8 @@ pub struct Daemon<C: Connector> {
     status: Arc<Status>,
     /// The heartbeat check; inert when monitoring isn't configured.
     beat: Pinger,
+    /// The daily quality check; inert when monitoring isn't configured.
+    quality: Pinger,
 }
 
 /// What ended the wait between passes.
@@ -117,6 +120,7 @@ impl<C: Connector> Daemon<C> {
             watcher: None,
             status: Arc::new(Status::new(Timestamp::now())),
             beat: Pinger::disabled(),
+            quality: Pinger::disabled(),
         }
     }
 
@@ -125,6 +129,14 @@ impl<C: Connector> Daemon<C> {
     #[must_use]
     pub fn with_status(mut self, status: Arc<Status>) -> Self {
         self.status = status;
+        self
+    }
+
+    /// Pings `quality` once a day with whether the training and the decisions
+    /// look healthy.
+    #[must_use]
+    pub fn with_quality(mut self, quality: Pinger) -> Self {
+        self.quality = quality;
         self
     }
 
@@ -155,6 +167,7 @@ impl<C: Connector> Daemon<C> {
             }
 
             let failure_wait = self.after(&outcome);
+            self.check_quality();
             let wake = match outcome {
                 Err(err) => {
                     let now = Timestamp::now();
@@ -181,6 +194,8 @@ impl<C: Connector> Daemon<C> {
         }
         let beat = std::mem::replace(&mut self.beat, Pinger::disabled());
         beat.close().await;
+        let quality = std::mem::replace(&mut self.quality, Pinger::disabled());
+        quality.close().await;
     }
 
     /// One pass over the account on a fresh connection.
@@ -265,6 +280,33 @@ impl<C: Connector> Daemon<C> {
         };
         log_at!(retry::level(failures, tracing::Level::ERROR), %err, failures, retry = ?wait, "{message}");
         wait
+    }
+
+    /// Pings the quality check when it is due: a failure listing what looks
+    /// wrong with the training or the decisions, or a success. The schedule
+    /// lives in the state database, so a restart doesn't move it.
+    fn check_quality(&self) {
+        if !self.quality.is_enabled() {
+            return;
+        }
+        match monitor::take_quality_slot(&self.store, Timestamp::now()) {
+            Ok(true) => {}
+            Ok(false) => return,
+            Err(err) => {
+                tracing::debug!(%err, "could not read the quality schedule");
+                return;
+            }
+        }
+
+        match health::collect(&self.store, &self.cfg) {
+            Ok(report) => match report.quality_body() {
+                Some(body) => self.quality.fail(&body),
+                None => self
+                    .quality
+                    .success("the training and the decisions look healthy"),
+            },
+            Err(err) => tracing::debug!(%err, "could not check the filter's quality"),
+        }
     }
 
     /// Reports a failed pass to the monitoring service: a rejected login at

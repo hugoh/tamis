@@ -111,8 +111,105 @@ enum Command {
     Login,
     /// Remove the account password from the system keychain
     Logout,
+    /// Show recent decisions
+    #[command(
+        long_about = "Show recent decisions, newest first. In shadow mode, actions read\n\"would ...\": what live mode would have done."
+    )]
+    Log {
+        /// How many decisions to show
+        #[arg(short = 'n', long = "number", default_value_t = 20)]
+        number: i64,
+    },
+    /// Show the configuration and what has been learnt
+    Status,
+    /// Check the configuration, the rules and that the filter is in good shape
+    #[command(
+        long_about = "Check that the configuration loads and the filing rules compile, that the filter\nhas learnt from both kinds of mail, how it has been deciding lately, and whether\nit is still deciding. Exits non-zero when a check fails."
+    )]
+    Doctor {
+        /// Print the report as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the checks to set up on a monitoring service such as healthchecks.io
+    #[command(
+        long_about = "Work out, from poll_interval and monitor.fail_after, the period and grace time of\nthe two checks `tamis run` pings when [monitor] is configured, and how soon each\nkind of trouble would alert."
+    )]
+    Monitor {
+        /// Print the settings as JSON
+        #[arg(long)]
+        json: bool,
+        #[command(subcommand)]
+        action: Option<MonitorAction>,
+    },
+    /// View and edit the whitelist
+    #[command(
+        long_about = "The whitelist holds senders tamis trusts. Recipients you write to are\nadded automatically; these commands add and remove addresses by hand."
+    )]
+    Whitelist {
+        #[command(subcommand)]
+        action: WhitelistAction,
+    },
+    /// View, validate and try the filing rules
+    #[command(
+        long_about = "Good mail is filed into folders by a Sieve script (RFC 5228) named by\nrules.script. Only fileinto matters: tamis moves mail over IMAP."
+    )]
+    Rules {
+        #[command(subcommand)]
+        action: RulesAction,
+    },
     /// Print the version
     Version,
+}
+
+#[derive(Subcommand, Debug)]
+enum MonitorAction {
+    /// Send one ping to each configured check, to see that the URLs work
+    Test,
+}
+
+#[derive(Subcommand, Debug)]
+enum WhitelistAction {
+    /// List whitelisted addresses
+    List,
+    /// Whitelist addresses
+    Add {
+        #[arg(required = true)]
+        addresses: Vec<String>,
+    },
+    /// Remove addresses from the whitelist
+    #[command(
+        visible_alias = "remove",
+        long_about = "Remove the given addresses, or with --matching every address or source that\ncontains TEXT. --matching lists what it would remove and does nothing more\nuntil you repeat it with --yes."
+    )]
+    Rm {
+        #[arg(required_unless_present = "matching", conflicts_with = "matching")]
+        addresses: Vec<String>,
+        /// Remove every address or source containing this text
+        #[arg(long)]
+        matching: Option<String>,
+        /// With --matching, really remove them
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum RulesAction {
+    /// Print the configured rules script
+    Show,
+    /// Validate a Sieve script (default: rules.script)
+    #[command(
+        long_about = "Compile the script and report any error. With --folders, also connect to the\nmailbox and fail if a folder the script files into doesn't exist."
+    )]
+    Check {
+        file: Option<PathBuf>,
+        /// Also check the folders the script files into exist in the mailbox
+        #[arg(long)]
+        folders: bool,
+    },
+    /// Show where the rules would file a message
+    Test { message: PathBuf },
 }
 
 /// What a command works with.
@@ -187,6 +284,30 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
         Command::Init { host, user } => commands::init(app, &host, &user),
         Command::Login => commands::login(app).await,
         Command::Logout => commands::logout(app),
+        Command::Log { number } => commands::log(app, number),
+        Command::Status => commands::status(app),
+        Command::Doctor { json } => commands::doctor(app, json),
+        Command::Monitor { json, action: None } => commands::monitor(app, json),
+        Command::Monitor {
+            action: Some(MonitorAction::Test),
+            ..
+        } => commands::monitor_test(app).await,
+        Command::Whitelist { action } => match action {
+            WhitelistAction::List => commands::whitelist_list(app),
+            WhitelistAction::Add { addresses } => commands::whitelist_add(app, &addresses),
+            WhitelistAction::Rm {
+                addresses,
+                matching,
+                yes,
+            } => commands::whitelist_remove(app, &addresses, matching.as_deref(), yes),
+        },
+        Command::Rules { action } => match action {
+            RulesAction::Show => commands::rules_show(app),
+            RulesAction::Check { file, folders } => {
+                commands::rules_check(app, file.as_deref(), folders).await
+            }
+            RulesAction::Test { message } => commands::rules_test(app, &message),
+        },
     }
 }
 

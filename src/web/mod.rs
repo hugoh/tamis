@@ -49,7 +49,7 @@ const CONTENT_SECURITY_POLICY: &str =
     "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'";
 
 #[derive(RustEmbed)]
-#[folder = "internal/web/static/"]
+#[folder = "web/static/"]
 struct Assets;
 
 const REQUIRED_ASSETS: [&str; 2] = ["vendor/theme.css", "vendor/htmx.min.js"];

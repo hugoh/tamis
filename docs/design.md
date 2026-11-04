@@ -95,7 +95,7 @@ Constraints:
 
 - It is a hosted API, so message content leaves the machine. Off by
   default; send bounded text and metadata, never attachments.
-- The study used the Python SDK; a Go client needs the HTTP API, not yet
+- The study used the Python SDK; a Rust client needs the HTTP API, not yet
   checked.
 - Pin the model version, cache verdicts per message, and calibrate its
   probabilities on the user's own corrections before trusting thresholds.
@@ -158,8 +158,8 @@ providers:
 - IMAP only (`imap.mail.me.com:993`), app-specific password, no OAuth, no JMAP.
 - CONDSTORE/QRESYNC are advertised but have been buggy, and iCloud never
   confirms `ENABLE QRESYNC`. tamis doesn't use them: it searches
-  each pass instead of tracking flag changes. go-imap v2 has no client-side
-  QRESYNC either.
+  each pass instead of tracking flag changes. The IMAP client (`imap-next`) would
+  handle VANISHED, but tamis never asks for it.
 - MOVE is missing. `tamis probe` measures what the extensions tamis relies on
   (IDLE, UIDPLUS, MOVE, SPECIAL-USE, custom keywords) actually do.
 - Without MOVE, use COPY + `\Deleted` + `UID EXPUNGE`; never plain `EXPUNGE`
@@ -172,7 +172,7 @@ providers:
 
 ## Architecture
 
-One Go daemon:
+One Rust daemon:
 
 ```text
 connectors (IMAP, JMAP) ─┐

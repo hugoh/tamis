@@ -72,16 +72,15 @@ pub fn self_signed(dir: &Path, host: &str, now: Timestamp) -> Result<(PathBuf, P
 
 fn write(path: &Path, content: &str, mode: u32) -> Result<(), Error> {
     use std::io::Write as _;
-    use std::os::unix::fs::OpenOptionsExt as _;
 
     let io = |err| Error::Io(path.to_path_buf(), err);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(mode)
-        .open(path)
-        .map_err(io)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode);
+    #[cfg(not(unix))]
+    let _ = mode;
+    let mut file = options.open(path).map_err(io)?;
     file.write_all(content.as_bytes()).map_err(io)
 }
 

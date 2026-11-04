@@ -67,27 +67,24 @@ pub async fn fetch_folder(
 }
 
 fn create_private_dir(dir: &Path) -> Result<(), Error> {
-    use std::os::unix::fs::DirBuilderExt as _;
-
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder
         .create(dir)
         .map_err(|err| Error::Io(format!("create {}: {err}", dir.display())))
 }
 
 fn write_private(path: &Path, content: &[u8]) -> Result<(), Error> {
     use std::io::Write as _;
-    use std::os::unix::fs::OpenOptionsExt as _;
 
     let io = |err| Error::Io(format!("write {}: {err}", path.display()));
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)
-        .map_err(io)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(path).map_err(io)?;
     file.write_all(content).map_err(io)
 }
 

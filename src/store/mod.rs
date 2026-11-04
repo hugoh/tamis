@@ -7,7 +7,7 @@ mod schema;
 mod web;
 
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -429,7 +429,7 @@ fn create_private(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(io)?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(io)?;
     }
     Ok(())
 }
@@ -440,6 +440,8 @@ fn unix(seconds: i64) -> Timestamp {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     fn open() -> (tempfile::TempDir, Store) {

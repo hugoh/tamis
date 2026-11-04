@@ -1,3 +1,0 @@
-# Go is only needed to build the reference implementation while it is ported to Rust.
-[tools]
-go = "1.27.3"

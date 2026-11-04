@@ -13,9 +13,9 @@ tamis runs the script itself, client-side, over IMAP. Because the rules are
 plain Sieve, they move to a server-side filter unchanged if the provider
 changes.
 
-The script is evaluated by [`foxcpp/go-sieve`](https://github.com/foxcpp/go-sieve),
-an embeddable interpreter. It is a pre-1.0 module (a pseudo-version in
-`go.mod`), so upgrades deserve a test run.
+The script is evaluated by [`sieve-rs`](https://github.com/stalwartlabs/sieve),
+Stalwart's embeddable interpreter (AGPL-3.0, which is why tamis is too). It is a
+pre-1.0 crate, so upgrades deserve a test run.
 
 ## Configuration
 
@@ -55,7 +55,7 @@ flowchart LR
     rules -- no --> stay[stays in the inbox]
 ```
 
-Rules run in `Engine.handle` (`internal/engine/engine.go`) after `judge`, and
+Rules run in the engine (`src/engine/mod.rs`) after the verdict, and
 only for a **good** verdict, whether it came from the whitelist or the model.
 They never see spam, which goes to Junk first, and never see uncertain mail,
 which stays in the inbox for the user. A rule therefore can't hide a message

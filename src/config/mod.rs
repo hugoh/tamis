@@ -151,7 +151,64 @@ impl Default for Account {
     }
 }
 
+/// Bounds `password_command`, so a hung command can't block the run loop.
+const PASSWORD_COMMAND_TIMEOUT: Duration = Duration::from_mins(2);
+
+/// Why `password_command` gave no password.
+#[derive(Debug, Error)]
+pub enum PasswordError {
+    /// `account.password_command` isn't set, so callers can try other sources.
+    #[error("account.password_command is not set")]
+    NotSet,
+    #[error("account.password_command: timed out after {0:?}")]
+    TimedOut(Duration),
+    #[error("account.password_command: {0}")]
+    Failed(String),
+    #[error("account.password_command: printed an empty password")]
+    Empty,
+}
+
 impl Account {
+    /// Runs `password_command` without a shell; its stdout, minus the
+    /// trailing newline, is the password.
+    ///
+    /// # Errors
+    /// [`PasswordError::NotSet`] when none is configured, so callers can try
+    /// other sources; otherwise why the command gave no password.
+    pub async fn password(&self) -> Result<String, PasswordError> {
+        self.password_within(PASSWORD_COMMAND_TIMEOUT).await
+    }
+
+    async fn password_within(&self, timeout: Duration) -> Result<String, PasswordError> {
+        let Some((program, args)) = self.password_command.split_first() else {
+            return Err(PasswordError::NotSet);
+        };
+
+        let mut command = tokio::process::Command::new(program);
+        command
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .kill_on_drop(true);
+
+        let output = match tokio::time::timeout(timeout, command.output()).await {
+            Err(_) => return Err(PasswordError::TimedOut(timeout)),
+            Ok(Err(err)) => return Err(PasswordError::Failed(err.to_string())),
+            Ok(Ok(output)) => output,
+        };
+        if !output.status.success() {
+            return Err(PasswordError::Failed(format!("{}", output.status)));
+        }
+
+        let password = String::from_utf8_lossy(&output.stdout)
+            .trim_end_matches(['\r', '\n'])
+            .to_owned();
+        if password.is_empty() {
+            Err(PasswordError::Empty)
+        } else {
+            Ok(password)
+        }
+    }
+
     /// The server's host:port.
     #[must_use]
     pub fn addr(&self) -> String {
@@ -551,5 +608,49 @@ mod tests {
 
         fs::write(&script, "require \"fileinto\"; fileinto \"X\";").unwrap();
         assert!(Config::load(&env, &path).is_ok());
+    }
+
+    fn account(command: &[&str]) -> Account {
+        Account {
+            password_command: command.iter().map(|c| (*c).to_owned()).collect(),
+            ..Account::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn the_password_is_what_the_command_prints() {
+        let cases = [
+            (account(&["printf", "hunter2\\n"]), "hunter2"),
+            (account(&["printf", "a b\\r\\n"]), "a b"),
+        ];
+        for (account, want) in cases {
+            assert_eq!(account.password().await.unwrap(), want);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_missing_empty_failing_or_hung_command_gives_no_password() {
+        assert!(matches!(
+            Account::default().password().await,
+            Err(PasswordError::NotSet)
+        ));
+        assert!(matches!(
+            account(&["printf", ""]).password().await,
+            Err(PasswordError::Empty)
+        ));
+        assert!(matches!(
+            account(&["false"]).password().await,
+            Err(PasswordError::Failed(_))
+        ));
+        assert!(matches!(
+            account(&["/no/such/command"]).password().await,
+            Err(PasswordError::Failed(_))
+        ));
+        assert!(matches!(
+            account(&["sleep", "5"])
+                .password_within(Duration::from_millis(100))
+                .await,
+            Err(PasswordError::TimedOut(_))
+        ));
     }
 }

@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod classify;
+pub mod cli;
 pub mod config;
 pub mod daemon;
 pub mod engine;

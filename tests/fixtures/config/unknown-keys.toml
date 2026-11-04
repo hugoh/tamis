@@ -1,0 +1,10 @@
+bogus = 1
+
+[account]
+host = "h"
+user = "u"
+colour = "red"
+
+[policy]
+mode = "shadow"
+speed = 3

@@ -1,0 +1,6 @@
+[account]
+host = "h"
+user = "u"
+
+[policy]
+journal_retention = "0"

@@ -79,11 +79,16 @@ type golden struct {
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: tamis-golden MAILDIR OUT.json")
+		fmt.Fprintln(os.Stderr, "usage: tamis-golden FIXTURES OUTDIR")
 		os.Exit(2)
 	}
 
-	if err := run(os.Args[1], os.Args[2]); err != nil {
+	if err := run(filepath.Join(os.Args[1], "mail"), filepath.Join(os.Args[2], "classify_auth.json")); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	if err := runConfig(filepath.Join(os.Args[1], "config"), filepath.Join(os.Args[2], "config.json")); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -182,4 +187,18 @@ func tallies(raw map[string][]byte) []tally {
 		build("mixed", map[string]int{"auth-icloud-multi.eml": 10, "auth-no-header.eml": 15}),
 		build("single-provider", map[string]int{"auth-dmarc-pass.eml": 20}),
 	}
+}
+
+func runConfig(dir, out string) error {
+	cases, err := configCases(dir)
+	if err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(cases, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(out, append(data, '\n'), 0o644)
 }

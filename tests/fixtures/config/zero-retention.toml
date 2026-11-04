@@ -1,0 +1,7 @@
+[account]
+host = "h"
+user = "u"
+
+[policy]
+journal_retention = "0s"
+poll_interval = "1.5h"

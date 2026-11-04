@@ -1,0 +1,8 @@
+[account]
+host = "h"
+user = "u"
+
+[web]
+enabled = true
+listen = "127.0.0.1:8484"
+origin = "http://localhost:8484"

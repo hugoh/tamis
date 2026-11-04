@@ -1,0 +1,8 @@
+[account]
+host = "h"
+user = "u"
+
+[web]
+enabled = false
+listen = "garbage"
+origin = "nope"

@@ -1,0 +1,3 @@
+[account]
+host = "imap.example.org"
+user = "me@example.org"

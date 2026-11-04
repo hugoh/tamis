@@ -7,6 +7,9 @@ mod domain;
 mod error;
 mod features;
 mod filing;
+mod junk;
+mod keywords;
+mod rescue;
 mod train;
 
 use std::fmt::Write as _;
@@ -34,6 +37,7 @@ const FETCH_BATCH: usize = 50;
 enum Kind {
     Watched,
     Sent,
+    Junk,
 }
 
 /// Runs passes over one account.
@@ -86,6 +90,15 @@ impl<M: Mailbox> Engine<M> {
                 return Err(err);
             }
             tracing::warn!(%err, "not learning recipients from Sent");
+        }
+
+        if self.wants_junk() {
+            let junk = self.cfg.folders.junk.clone();
+            self.scan(&junk, Kind::Junk, &mut summary).await?;
+        }
+
+        if self.cfg.policy.learn_from_keywords {
+            self.learn_from_keywords(&mut summary).await?;
         }
         Ok(summary)
     }
@@ -161,6 +174,7 @@ impl<M: Mailbox> Engine<M> {
             match kind {
                 Kind::Watched => self.handle(folder, message, summary).await,
                 Kind::Sent => self.handle_sent(folder, message).await,
+                Kind::Junk => self.handle_junk(message, summary).await,
             }
             .context(format!("{folder} UID {}", message.uid))?;
 
@@ -388,6 +402,33 @@ impl<M: Mailbox> Engine<M> {
             score,
         };
         self.record(folder, message, &judgement, &Action::TrainGood, true)
+    }
+
+    /// Trains a message as spam and takes its sender off the whitelist: the
+    /// user has said it is spam.
+    fn learn_spam(
+        &self,
+        folder: &str,
+        message: &Message,
+        tokens: &[String],
+        reason: Reason,
+    ) -> Result<()> {
+        self.store
+            .train(&training_key(message), tokens, Label::Spam)
+            .context("learn spam")?;
+        if !message.from.is_empty() {
+            self.store
+                .remove_address(&message.from)
+                .context("learn spam")?;
+        }
+
+        let score = self.rescore(&message.raw).context("learn spam")?;
+        let judgement = Judgement {
+            verdict: Verdict::Spam,
+            reason,
+            score,
+        };
+        self.record(folder, message, &judgement, &Action::TrainSpam, true)
     }
 
     fn record(

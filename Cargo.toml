@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.96"
 description = "A second-opinion spam filter and mail sorter for remote mailboxes"
 repository = "https://github.com/hugoh/tamis"
-license = "MIT"
+license = "AGPL-3.0-only"
 publish = false
 
 [dependencies]

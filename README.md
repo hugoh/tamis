@@ -458,4 +458,4 @@ plain version, which is also at the foot of every page.
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0-only](LICENSE)

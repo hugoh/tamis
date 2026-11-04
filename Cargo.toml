@@ -7,6 +7,7 @@ description = "A second-opinion spam filter and mail sorter for remote mailboxes
 repository = "https://github.com/hugoh/tamis"
 license = "AGPL-3.0-only"
 publish = false
+default-run = "tamis"
 
 [package.metadata.cargo-machete]
 # The crate is imported under its library name, sieve.

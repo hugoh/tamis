@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build application"
 #MISE sources=["src/**/*.rs", "Cargo.toml", "Cargo.lock", "web/static/vendor/*"]
+#MISE outputs=["target/release/tamis"]
 #MISE depends=["prebuild"]
 cargo build --release

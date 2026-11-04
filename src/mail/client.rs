@@ -514,13 +514,8 @@ fn flag_name(flag: &FlagFetch<'_>) -> String {
 }
 
 fn date(timestamp: Timestamp) -> NaiveDate {
-    let civil = timestamp.to_zoned(jiff::tz::TimeZone::UTC).date();
-    let day = chrono::NaiveDate::from_ymd_opt(
-        i32::from(civil.year()),
-        u32::try_from(civil.month()).unwrap_or(1),
-        u32::try_from(civil.day()).unwrap_or(1),
-    )
-    .unwrap_or(chrono::NaiveDate::MIN);
+    let day = chrono::DateTime::from_timestamp(timestamp.as_second(), 0)
+        .map_or(chrono::NaiveDate::MIN, |at| at.date_naive());
     NaiveDate::unvalidated(day)
 }
 

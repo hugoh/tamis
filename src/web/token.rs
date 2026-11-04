@@ -38,13 +38,7 @@ pub fn b64(raw: &[u8]) -> String {
 /// What is stored in place of a token, so the database never holds one.
 #[must_use]
 pub fn hash_token(token: &str) -> String {
-    use std::fmt::Write as _;
-    Sha256::digest(token.as_bytes())
-        .iter()
-        .fold(String::with_capacity(64), |mut hex, byte| {
-            let _ = write!(hex, "{byte:02x}");
-            hex
-        })
+    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 /// Values handed out under random keys that expire.

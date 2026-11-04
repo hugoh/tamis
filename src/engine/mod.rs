@@ -15,7 +15,6 @@ mod rescue;
 mod train;
 mod undo;
 
-use std::fmt::Write as _;
 use std::sync::Arc;
 
 use jiff::Timestamp;
@@ -519,13 +518,7 @@ fn skip_reason(message: &Message, trained: bool, sorted: bool) -> Option<&'stati
 /// content when it has none.
 fn training_key(message: &Message) -> String {
     if message.message_id.is_empty() {
-        let digest = Sha256::digest(&message.raw);
-        digest
-            .iter()
-            .fold(String::from("sha256:"), |mut hex, byte| {
-                let _ = write!(hex, "{byte:02x}");
-                hex
-            })
+        format!("sha256:{}", hex::encode(Sha256::digest(&message.raw)))
     } else {
         message.message_id.clone()
     }

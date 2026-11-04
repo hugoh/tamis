@@ -3,6 +3,7 @@
 use std::io::Write;
 
 use anyhow::{Context as _, Result, bail};
+use unicode_width::UnicodeWidthStr as _;
 
 /// An ANSI SGR code.
 pub type Style = &'static str;
@@ -67,7 +68,7 @@ pub fn cell(text: &str, style: Style) -> Cell {
 }
 
 fn width(cell: &Cell) -> usize {
-    cell.iter().map(|(text, _)| text.chars().count()).sum()
+    cell.iter().map(|(text, _)| text.width()).sum()
 }
 
 const TABLE_GAP: usize = 2;
@@ -168,5 +169,18 @@ mod tests {
                 .collect();
             assert_eq!(plain, "a     long  tail\nbbbb  x\nheading\n", "{mode}");
         }
+    }
+
+    #[test]
+    fn tables_align_wide_characters_by_the_columns_they_take() {
+        let rows = vec![
+            vec![cell("日本", ""), cell("x", "")],
+            vec![cell("ab", ""), cell("y", "")],
+        ];
+        let off = Palette::new("never", false, &env(&[])).unwrap();
+        let mut out = Vec::new();
+        write_table(&mut out, off, &rows).unwrap();
+
+        assert_eq!(String::from_utf8(out).unwrap(), "日本  x\nab    y\n");
     }
 }

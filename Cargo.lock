@@ -1700,6 +1700,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
+name = "humantime"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15cdd26707701c53297e2fa6afb323d55fbc1d0810c3aec078ae3ef0424c3c15"
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3810,8 +3816,10 @@ dependencies = [
  "clap",
  "fastrand",
  "getrandom 0.4.3",
+ "hex",
  "html5ever",
  "http-body-util",
+ "humantime",
  "imap-client",
  "jiff",
  "keyring",
@@ -3841,6 +3849,7 @@ dependencies = [
  "tracing-subscriber",
  "trait-variant",
  "unicode-general-category",
+ "unicode-width",
  "url",
  "webauthn-rs",
  "webauthn-rs-proto",
@@ -4232,6 +4241,12 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
 
 [[package]]
 name = "universal-hash"

@@ -545,3 +545,341 @@ fn training_keys_fall_back_to_a_content_hash() {
         "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     );
 }
+
+#[tokio::test]
+async fn a_message_dropped_in_a_training_folder_is_learnt_and_moved_on() {
+    for mode in [Mode::Live, Mode::Shadow] {
+        let mut env = Env::with(mode, |_| {});
+        let spam_uid = env.mail().deliver("TrainSpam", &spam("ts1"), &[]);
+        let good_uid = env.mail().deliver("TrainGood", &good("tg1"), &[]);
+
+        let summary = env.engine.run_once().await.unwrap();
+
+        assert_eq!(summary.trained, 2, "{mode:?}");
+        assert_eq!(env.store().trained("<ts1@x>").unwrap(), Some(Label::Spam));
+        assert_eq!(env.store().trained("<tg1@x>").unwrap(), Some(Label::Good));
+        assert!(env.store().has_address("alice@friends.example").unwrap());
+        assert_eq!(
+            env.mail().flags("Junk", 1),
+            Some(vec!["$tamistrained".to_owned()])
+        );
+        assert_eq!(
+            env.mail().flags("INBOX", 1),
+            Some(vec!["$tamistrained".to_owned()])
+        );
+        assert!(env.mail().uids("TrainSpam").is_empty() && env.mail().uids("TrainGood").is_empty());
+        let _ = (spam_uid, good_uid);
+
+        let reasons: Vec<(String, String, bool)> = env
+            .decisions()
+            .iter()
+            .map(|d| (d.reason.clone(), d.action.clone(), d.applied))
+            .collect();
+        assert!(
+            reasons.contains(&("train folder".into(), "train:spam".into(), true)),
+            "{reasons:?}"
+        );
+        assert!(
+            reasons.contains(&("train folder".into(), "train:good".into(), true)),
+            "{reasons:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn trained_mail_that_lands_in_the_inbox_is_not_judged_again() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("TrainGood", &good("tg1"), &[]);
+
+    let summary = env.engine.run_once().await.unwrap();
+
+    assert_eq!((summary.trained, summary.scanned), (1, 0));
+}
+
+#[tokio::test]
+async fn empty_training_folders_cost_one_status() {
+    let mut env = Env::new(Mode::Live);
+
+    env.engine.run_once().await.unwrap();
+
+    let log = &env.mail().log;
+    assert!(log.contains(&"messages TrainSpam".to_owned()));
+    assert!(
+        !log.iter()
+            .any(|call| call.ends_with("TrainSpam") && !call.starts_with("messages")),
+        "{log:?}"
+    );
+}
+
+#[tokio::test]
+async fn sent_mail_whitelists_its_recipients_but_not_you() {
+    let mut env = Env::new(Mode::Live);
+    env.start().await;
+    env.mail().deliver(
+        "Sent Messages",
+        "From: me@example.org\r\nTo: Bob <Bob@Friends.example>, me@example.org\r\nCc: carol@friends.example\r\nSubject: hi\r\nMessage-ID: <s1@x>\r\n\r\nhi",
+        &[],
+    );
+
+    env.engine.run_once().await.unwrap();
+
+    let listed: Vec<String> = env
+        .store()
+        .addresses()
+        .unwrap()
+        .into_iter()
+        .map(|a| a.address)
+        .collect();
+    assert_eq!(listed, ["bob@friends.example", "carol@friends.example"]);
+}
+
+#[tokio::test]
+async fn answering_mail_tamis_doubted_teaches_that_it_is_good() {
+    let cases = [
+        ("spam in Junk", "spam", "Junk", true),
+        ("uncertain in the inbox", "uncertain", "INBOX", true),
+        ("good is left alone", "good", "INBOX", false),
+        ("not judged at all", "", "INBOX", false),
+    ];
+    for (name, verdict, folder, learnt) in cases {
+        let mut env = Env::trained();
+        env.mail().deliver(folder, &spam("orig"), &[]);
+        env.start().await;
+        if !verdict.is_empty() {
+            let message = Message {
+                message_id: "<orig@x>".into(),
+                from: "winner@lottery.example".into(),
+                ..Message::default()
+            };
+            let judgement = Judgement {
+                verdict: if verdict == "spam" {
+                    Verdict::Spam
+                } else if verdict == "good" {
+                    Verdict::Good
+                } else {
+                    Verdict::Uncertain
+                },
+                reason: Reason::Bayes,
+                score: 0.5,
+            };
+            env.engine
+                .record("INBOX", &message, &judgement, &Action::None, false)
+                .unwrap();
+        }
+        env.mail().deliver(
+            "Sent Messages",
+            "From: me@example.org\r\nTo: winner@lottery.example\r\nSubject: Re: hi\r\nMessage-ID: <reply@x>\r\nIn-Reply-To: <orig@x>\r\n\r\nthanks",
+            &[],
+        );
+
+        env.engine.run_once().await.unwrap();
+
+        let label = env.store().trained("<orig@x>").unwrap();
+        assert_eq!(label == Some(Label::Good), learnt, "{name}");
+    }
+}
+
+#[tokio::test]
+async fn a_reply_to_vanished_mail_is_only_a_warning() {
+    let mut env = Env::trained();
+    env.start().await;
+    let message = Message {
+        message_id: "<gone@x>".into(),
+        ..Message::default()
+    };
+    let judgement = Judgement {
+        verdict: Verdict::Spam,
+        reason: Reason::Bayes,
+        score: 0.9,
+    };
+    env.engine
+        .record("INBOX", &message, &judgement, &Action::None, false)
+        .unwrap();
+    env.mail().deliver(
+        "Sent Messages",
+        "From: me@example.org\r\nTo: a@b.example\r\nMessage-ID: <r@x>\r\nIn-Reply-To: <gone@x>\r\n\r\nx",
+        &[],
+    );
+
+    assert!(env.engine.run_once().await.is_ok());
+}
+
+#[tokio::test]
+async fn a_sent_folder_that_cannot_be_scanned_does_not_fail_the_pass() {
+    let mut env = Env::new(Mode::Live);
+    env.mail().remove_folder("Sent Messages");
+    assert!(env.engine.run_once().await.is_ok());
+
+    let mut dropped = Env::new(Mode::Live);
+    dropped
+        .mail()
+        .fail("state", MailError::Server("fine".into()));
+    dropped
+        .mail()
+        .fail("state", MailError::Connection("gone".into()));
+    let err = dropped.engine.run_once().await.unwrap_err();
+    assert!(
+        err.to_string().contains("scan INBOX") || err.is_connection(),
+        "{err}"
+    );
+}
+
+fn corpus(env: &mut Env) {
+    let old = jiff::Timestamp::from_second(1_000).unwrap();
+    env.mail()
+        .deliver_at("INBOX", &good("read-old"), &["\\Seen"], old);
+    env.mail()
+        .deliver_at("INBOX", &good("unread-old"), &[], old);
+    env.mail().deliver("INBOX", &good("read-new"), &["\\Seen"]);
+    env.mail().deliver("Junk", &spam("j1"), &[]);
+    env.mail().deliver("Junk", &spam("j2"), &[]);
+    env.mail().deliver(
+        "Sent Messages",
+        "From: me@example.org\r\nTo: bob@friends.example\r\nMessage-ID: <s1@x>\r\n\r\nhi",
+        &[],
+    );
+}
+
+fn options() -> BootstrapOptions {
+    BootstrapOptions {
+        sent_limit: 10,
+        good: vec![Source {
+            folder: "INBOX".into(),
+            limit: 10,
+        }],
+        spam: vec![Source {
+            folder: "Junk".into(),
+            limit: 1,
+        }],
+        good_min_age: std::time::Duration::from_secs(3600),
+        ..BootstrapOptions::default()
+    }
+}
+
+#[tokio::test]
+async fn bootstrap_learns_old_read_mail_and_the_latest_spam() {
+    let mut env = Env::new(Mode::Live);
+    corpus(&mut env);
+
+    let summary = env.engine.bootstrap(&options()).await.unwrap();
+
+    assert_eq!((summary.addresses, summary.good, summary.spam), (1, 1, 1));
+    assert_eq!(
+        env.store().trained("<read-old@x>").unwrap(),
+        Some(Label::Good)
+    );
+    assert_eq!(
+        env.store().trained("<unread-old@x>").unwrap(),
+        None,
+        "unread mail may be spam nobody has seen"
+    );
+    assert_eq!(
+        env.store().trained("<read-new@x>").unwrap(),
+        None,
+        "recent mail is too new"
+    );
+    assert_eq!(
+        env.store().trained("<j1@x>").unwrap(),
+        None,
+        "only the latest are taken"
+    );
+    assert_eq!(env.store().trained("<j2@x>").unwrap(), Some(Label::Spam));
+    assert!(env.store().has_address("bob@friends.example").unwrap());
+    assert_eq!(
+        env.store().cursor("INBOX").unwrap().unwrap().last_uid,
+        3,
+        "watching starts from current mail"
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_can_leave_the_cursors_alone() {
+    let mut env = Env::new(Mode::Live);
+    corpus(&mut env);
+
+    env.engine
+        .bootstrap(&BootstrapOptions {
+            keep_cursors: true,
+            ..options()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(env.store().cursor("INBOX").unwrap(), None);
+}
+
+#[tokio::test]
+async fn refreshing_learns_what_was_learnt_again() {
+    let mut env = Env::new(Mode::Live);
+    corpus(&mut env);
+    env.engine.bootstrap(&options()).await.unwrap();
+
+    let again = env.engine.bootstrap(&options()).await.unwrap();
+    assert_eq!(
+        (again.good, again.spam, again.refreshed),
+        (0, 0, 0),
+        "nothing changed"
+    );
+
+    let refreshed = env
+        .engine
+        .bootstrap(&BootstrapOptions {
+            refresh: true,
+            ..options()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        (refreshed.good, refreshed.spam, refreshed.refreshed),
+        (1, 1, 2)
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_learns_the_providers_authserv_id() {
+    let mut env = Env::new(Mode::Live);
+    let old = jiff::Timestamp::from_second(1_000).unwrap();
+    for n in 0..20 {
+        let raw = message(
+            &format!("a{n}"),
+            "Alice <alice@friends.example>",
+            "hi",
+            "hello",
+            "Authentication-Results: mx.icloud.com; dmarc=pass header.from=friends.example\r\n",
+        );
+        env.mail().deliver_at("INBOX", &raw, &["\\Seen"], old);
+    }
+
+    let wide = BootstrapOptions {
+        good: vec![Source {
+            folder: "INBOX".into(),
+            limit: 50,
+        }],
+        ..options()
+    };
+    let summary = env.engine.bootstrap(&wide).await.unwrap();
+
+    assert_eq!(summary.auth_server_id.as_deref(), Some("icloud.com"));
+    let pin = resolve_auth_pin(env.store(), &env.engine.cfg).unwrap();
+    assert_eq!(
+        (pin.id.as_str(), pin.source),
+        ("icloud.com", AuthSource::Learnt)
+    );
+}
+
+#[tokio::test]
+async fn a_failing_corpus_search_stops_bootstrap() {
+    let mut env = Env::new(Mode::Live);
+    env.mail()
+        .fail("seen_before", MailError::Server("nope".into()));
+
+    let err = env
+        .engine
+        .bootstrap(&options())
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("bootstrap from INBOX"), "{err}");
+}

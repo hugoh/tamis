@@ -75,6 +75,8 @@ pub enum Action {
     Keyword(String),
     TrainGood,
     TrainSpam,
+    /// A keyword was cleared by an undo.
+    Unflag(String),
 }
 
 impl fmt::Display for Action {
@@ -85,6 +87,7 @@ impl fmt::Display for Action {
             Self::Keyword(keyword) => write!(f, "keyword:{keyword}"),
             Self::TrainGood => f.write_str("train:good"),
             Self::TrainSpam => f.write_str("train:spam"),
+            Self::Unflag(keyword) => write!(f, "unflag:{keyword}"),
         }
     }
 }

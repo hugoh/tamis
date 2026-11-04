@@ -5,9 +5,9 @@ use super::Engine;
 use crate::mail::Mailbox;
 
 /// The store key for the provider domain bootstrap learnt.
-const AUTH_SETTING: &str = "auth_server_id";
+pub(super) const AUTH_SETTING: &str = "auth_server_id";
 /// The store key for the IMAP host the learnt domain belongs to.
-const AUTH_HOST_SETTING: &str = "auth_server_id_host";
+pub(super) const AUTH_HOST_SETTING: &str = "auth_server_id_host";
 
 /// The `account.auth_server_id` value that turns pinning off: only the
 /// topmost `Authentication-Results` header counts, whatever it names.

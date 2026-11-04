@@ -2,10 +2,12 @@
 //! live mode) and journals every decision.
 
 mod authid;
+mod bootstrap;
 mod domain;
 mod error;
 mod features;
 mod filing;
+mod train;
 
 use std::fmt::Write as _;
 use std::sync::Arc;
@@ -14,6 +16,7 @@ use jiff::Timestamp;
 use sha2::{Digest, Sha256};
 
 pub use authid::{AuthPin, AuthSource, NO_AUTH_SERVER_ID, resolve_auth_pin};
+pub use bootstrap::{BootstrapOptions, BootstrapSummary, Source};
 pub use domain::{Action, Judgement, Reason, Summary, Verdict, keyword};
 pub use error::{Context, Error, Result};
 
@@ -30,6 +33,7 @@ const FETCH_BATCH: usize = 50;
 #[derive(Clone, Copy)]
 enum Kind {
     Watched,
+    Sent,
 }
 
 /// Runs passes over one account.
@@ -68,8 +72,20 @@ impl<M: Mailbox> Engine<M> {
     pub async fn run_once(&mut self) -> Result<Summary> {
         let mut summary = Summary::default();
 
+        for folder in self.train_folders() {
+            self.train(&folder, &mut summary).await?;
+        }
+
         for folder in self.cfg.folders.watch.clone() {
             self.scan(&folder, Kind::Watched, &mut summary).await?;
+        }
+
+        let sent = self.cfg.folders.sent.clone();
+        if let Err(err) = self.scan(&sent, Kind::Sent, &mut summary).await {
+            if err.is_connection() {
+                return Err(err);
+            }
+            tracing::warn!(%err, "not learning recipients from Sent");
         }
         Ok(summary)
     }
@@ -144,6 +160,7 @@ impl<M: Mailbox> Engine<M> {
         for message in &messages {
             match kind {
                 Kind::Watched => self.handle(folder, message, summary).await,
+                Kind::Sent => self.handle_sent(folder, message).await,
             }
             .context(format!("{folder} UID {}", message.uid))?;
 

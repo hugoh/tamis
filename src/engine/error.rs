@@ -8,6 +8,11 @@ pub enum Error {
     Mail(#[from] mail::Error),
     #[error(transparent)]
     Store(#[from] store::Error),
+    /// The message is no longer where tamis put it.
+    #[error(
+        "{message_id} in {folder}: message not found where tamis left it; was it moved or deleted?"
+    )]
+    MessageGone { message_id: String, folder: String },
     /// An error with what was being done when it happened.
     #[error("{context}: {source}")]
     Context { context: String, source: Box<Error> },
@@ -23,7 +28,17 @@ impl Error {
         match self {
             Self::Mail(err) => err.is_connection(),
             Self::Context { source, .. } => source.is_connection(),
-            Self::Store(_) => false,
+            Self::Store(_) | Self::MessageGone { .. } => false,
+        }
+    }
+
+    /// Whether a message wasn't where it was looked for.
+    #[must_use]
+    pub fn is_message_gone(&self) -> bool {
+        match self {
+            Self::MessageGone { .. } => true,
+            Self::Context { source, .. } => source.is_message_gone(),
+            _ => false,
         }
     }
 }

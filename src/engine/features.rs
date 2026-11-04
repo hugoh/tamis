@@ -23,6 +23,11 @@ impl<M: Mailbox> Engine<M> {
         ))
     }
 
+    /// [`Engine::features`] without the model, for training.
+    pub(super) fn tokens(&self, raw: &[u8]) -> Result<Vec<String>> {
+        Ok(self.features(raw)?.0)
+    }
+
     /// The score the model gives `raw` now, after it has been trained on it.
     pub(super) fn rescore(&self, raw: &[u8]) -> Result<f64> {
         let (tokens, model) = self.features(raw)?;

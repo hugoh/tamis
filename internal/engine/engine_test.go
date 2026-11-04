@@ -422,6 +422,39 @@ func TestCorrection(t *testing.T) {
 	require.Equal(t, "correction", decision.Reason)
 }
 
+func TestCorrectionCanBeCorrectedBack(t *testing.T) {
+	t.Parallel()
+
+	const sender = "changed@mind.example"
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.run(t)
+
+	e.append(t, inbox, e.spammy(sender))
+	require.Equal(t, 1, e.run(t).Spam)
+
+	filed := e.messages(t, junk)
+	require.Len(t, filed, 1)
+	require.NoError(t, e.client.Move(junk, []uint32{filed[0].UID}, inbox))
+	require.Equal(t, 1, e.run(t).Corrected)
+
+	e.moveToJunk(t, sender)
+	require.Equal(t, 1, e.run(t).Corrected, "moving it to Junk again is a new correction")
+
+	decision := e.decisions(t)[0]
+	require.Equal(t, "spam", decision.Verdict)
+
+	label, trained, err := e.db.Trained(t.Context(), decision.MessageID)
+	require.NoError(t, err)
+	require.True(t, trained)
+	require.Equal(t, classify.Spam, label)
+
+	whitelisted, err := e.db.HasAddress(t.Context(), sender)
+	require.NoError(t, err)
+	require.False(t, whitelisted)
+}
+
 func TestUIDValidityChangeRestartsFolder(t *testing.T) {
 	t.Parallel()
 

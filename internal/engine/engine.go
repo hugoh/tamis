@@ -374,6 +374,11 @@ func (e *Engine) learnCorrection(
 		return false, err
 	}
 
+	// Left on, the keyword would hide a later move back to Junk from isMissedSpam.
+	if err := e.mail.RemoveKeyword(folder, []uint32{message.UID}, FiledKeyword); err != nil {
+		return false, fmt.Errorf("clear filed keyword: %w", err)
+	}
+
 	summary.Scanned++
 	summary.Corrected++
 

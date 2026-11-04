@@ -147,8 +147,9 @@ flowchart TD
 
 **Corrections.** In live mode, tamis tags spam with `$TamisFiled` before moving
 it to Junk. If that message turns up in a watched folder again, the user moved
-it back. tamis treats this as "not spam": it trains the message as good and
-whitelists the sender.
+it back. tamis treats this as "not spam": it trains the message as good,
+whitelists the sender and removes `$TamisFiled`, so that moving the message to
+Junk again later is learnt as missed spam.
 
 **Sender verification.** A whitelisted address only counts when the provider's
 `Authentication-Results` header shows DMARC passing for the `From` domain, or
@@ -210,7 +211,8 @@ mode would have done; `tamis log` prints it.
 `undo` entry exists for the same Message-ID. The link is derived from the
 journal when it is read, not stored on the decision, so the two can't disagree.
 `tamis learn` without a label refuses such a decision; `--good` or `--spam`
-changes it again. `tamis doctor`'s correction rate counts judged decisions that
+changes it again, and the web UI's Spam and Good buttons are offered only on
+decisions that have no correction yet. `tamis doctor`'s correction rate counts judged decisions that
 were corrected.
 
 `tamis run` prunes the journal when it starts and then once a day: decisions
@@ -244,8 +246,8 @@ new UID. Undo refuses:
 
 - decisions only recorded in shadow mode;
 - decisions already undone;
-- training and corrections, which are changed by dropping the message in the
-  other training folder;
+- training, which is changed by dropping the message in the other training
+  folder, and corrections, which `learn` changes;
 - messages no longer where tamis left them.
 
 The decision is marked undone last, so an undo that fails partway (say the
@@ -259,8 +261,13 @@ learns the opposite of the verdict; an uncertain verdict needs a flag. It
 trains the message and updates the whitelist like an undo would, but moves
 nothing and sets no keyword, and journals the result as a `correction`.
 
+It also changes a `correction`, for when the move that taught tamis was a
+mistake: with no flag it learns the opposite, so correction #167 (good) becomes
+spam. The message is looked for in the folder the decision names, then in Junk,
+since it may have been moved since.
+
 It refuses decisions that were applied (use `undo`) and anything that isn't
-tamis's own judgement, such as training and corrections.
+tamis's own judgement or a correction, such as training.
 
 ## Rescue
 
@@ -380,7 +387,7 @@ stateDiagram-v2
     Inbox --> Junk: spam verdict (live)
     Inbox --> Folder: good, and a rule files it (live)
     Junk --> Inbox: user moves it back
-    Inbox --> Inbox: next pass sees $TamisFiled, learns good
+    Inbox --> Inbox: next pass sees $TamisFiled, learns good, removes it
     Inbox --> Junk: user moves missed spam
     Junk --> Junk: next pass learns spam
     Junk --> Inbox: rescue (live)

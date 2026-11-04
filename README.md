@@ -114,7 +114,7 @@ tamis status      # mode, folders, how much it has learnt, how the daemon is doi
 tamis monitor     # the healthchecks.io checks to set up for [monitor], and when they alert
 tamis doctor      # does the config load, do the rules compile, is the daemon and the filter in good shape? (--json; exits 1 on failure)
 tamis undo 42     # reverse decision 42 from the log
-tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
+tamis learn 42    # learn the opposite of decision 42's verdict (shadow mode, or to change a correction)
 tamis whitelist list   # also: add ADDRESS..., rm ADDRESS... or rm --matching TEXT
 tamis rules show       # also: check [--folders] [FILE] to validate a Sieve script, test MESSAGE.eml to see where it goes
 tamis web enroll       # one-time link to enrol a passkey for the web interface

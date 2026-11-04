@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/hugoh/tamis/internal/classify"
+	"github.com/hugoh/tamis/internal/mail"
 	"github.com/hugoh/tamis/internal/store"
 )
 
@@ -43,7 +44,7 @@ func (e *Engine) Learn(
 		return "", fmt.Errorf("learn decision %d: %w", decisionID, err)
 	}
 
-	messages, err := e.locate(decision.Mailbox, decision.MessageID)
+	folder, messages, err := e.locateForLearn(decision)
 	if err != nil {
 		return "", fmt.Errorf("learn decision %d: %w", decisionID, err)
 	}
@@ -64,7 +65,7 @@ func (e *Engine) Learn(
 
 	err = e.record(
 		ctx,
-		decision.Mailbox,
+		folder,
 		messages[0],
 		judgement{
 			verdict: verdict,
@@ -85,15 +86,29 @@ func (e *Engine) Learn(
 	return "learnt as good, sender whitelisted", nil
 }
 
+// locateForLearn finds the message where it was judged or, if the user has
+// since sent it to Junk, there.
+func (e *Engine) locateForLearn(decision store.Decision) (string, []mail.Message, error) {
+	var err error
+
+	for _, folder := range []string{decision.Mailbox, e.cfg.Folders.Junk} {
+		var messages []mail.Message
+
+		messages, err = e.locate(folder, decision.MessageID)
+		if !errors.Is(err, ErrMessageGone) {
+			return folder, messages, err
+		}
+	}
+
+	return "", nil, err
+}
+
 func learntLabel(decision store.Decision, label *classify.Label) (classify.Label, error) {
+	if err := refuseLearning(decision, label); err != nil {
+		return 0, err
+	}
+
 	switch {
-	case decision.Reason != ReasonBayes && decision.Reason != ReasonWhitelisted:
-		return 0, ErrNotLearnable
-	case decision.Applied:
-		return 0, ErrAlreadyApplied
-	case label == nil && decision.CorrectedBy > 0:
-		return 0, fmt.Errorf("%w by decision %d; pass --good or --spam to change it",
-			ErrAlreadyCorrected, decision.CorrectedBy)
 	case label != nil:
 		return *label, nil
 	case decision.Verdict == VerdictSpam:
@@ -102,5 +117,23 @@ func learntLabel(decision store.Decision, label *classify.Label) (classify.Label
 		return classify.Spam, nil
 	default:
 		return 0, ErrNeedsLabel
+	}
+}
+
+// refuseLearning says why a decision can't be learnt from. A correction is
+// already applied by nature, so it stays learnable to change one's mind.
+func refuseLearning(decision store.Decision, label *classify.Label) error {
+	correction := decision.Reason == ReasonCorrection
+
+	switch {
+	case decision.Reason != ReasonBayes && decision.Reason != ReasonWhitelisted && !correction:
+		return ErrNotLearnable
+	case decision.Applied && !correction:
+		return ErrAlreadyApplied
+	case label == nil && decision.CorrectedBy > 0:
+		return fmt.Errorf("%w by decision %d; pass --good or --spam to change it",
+			ErrAlreadyCorrected, decision.CorrectedBy)
+	default:
+		return nil
 	}
 }

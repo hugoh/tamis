@@ -833,8 +833,9 @@ func (a *app) learnCommand() *cobra.Command {
 		Short: "Teach tamis the right answer for decisions it only recorded",
 		Long: "Teach tamis the right answer for decisions it recorded without acting on, by\n" +
 			"the IDs 'tamis log' shows (shadow mode). With no flag it learns the opposite\n" +
-			"of the verdict. The mail stays where it is. Use 'tamis undo' for decisions\n" +
-			"that were applied.",
+			"of the verdict. The mail stays where it is, in its folder or in Junk. A\n" +
+			"correction can be learnt again to change it. Use 'tamis undo' for other\n" +
+			"decisions that were applied.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ids, err := parseIDs(args)

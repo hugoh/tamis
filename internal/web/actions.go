@@ -135,7 +135,8 @@ func (s *Server) whitelistAdd(resp http.ResponseWriter, req *http.Request) {
 // learnable and undoable mirror the engine's own rules, so the page offers
 // only what will work.
 func learnable(decision store.Decision) bool {
-	return !decision.Applied && decision.CorrectedBy == 0 && ownJudgement(decision)
+	return decision.CorrectedBy == 0 &&
+		(!decision.Applied && ownJudgement(decision) || decision.Reason == engine.ReasonCorrection)
 }
 
 func undoable(decision store.Decision) bool {

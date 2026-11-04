@@ -172,3 +172,34 @@ func TestLearnWithALabelOverridesAnEarlierCorrection(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, summary, "learnt as spam")
 }
+
+func TestLearnChangesACorrectionWhereverTheMessageIs(t *testing.T) {
+	t.Parallel()
+
+	const sender = "changed@mind.example"
+
+	e := setup(t, config.ModeLive)
+	e.trainModel(t)
+	e.run(t)
+	e.append(t, inbox, e.spammy(sender))
+	require.Equal(t, 1, e.run(t).Spam)
+
+	filed := e.messages(t, junk)
+	require.Len(t, filed, 1)
+	require.NoError(t, e.client.Move(junk, []uint32{filed[0].UID}, inbox))
+	require.Equal(t, 1, e.run(t).Corrected)
+	id := e.latestDecisionID(t)
+
+	e.moveToJunk(t, sender)
+
+	summary, err := e.engine.Learn(t.Context(), id, nil)
+	require.NoError(t, err)
+	require.Contains(t, summary, "learnt as spam")
+
+	whitelisted, err := e.db.HasAddress(t.Context(), sender)
+	require.NoError(t, err)
+	require.False(t, whitelisted)
+
+	_, err = e.engine.Learn(t.Context(), id, nil)
+	require.ErrorIs(t, err, engine.ErrAlreadyCorrected)
+}

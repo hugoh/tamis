@@ -22,7 +22,7 @@ use crate::mail::watch::Watcher;
 use crate::monitor::Pinger;
 use crate::rules::Rules;
 use crate::store::Store;
-use crate::web::{Job, Options, RunJobs, Server};
+use crate::web::{Job, Options, RunJobs, Server, cert};
 
 /// Reaches the real mailbox, finding the password afresh where it is kept.
 struct ImapConnector {
@@ -140,19 +140,30 @@ async fn start_web(
     if !cfg.web.enabled {
         return Ok(None);
     }
-    if cfg.web.tls() {
-        bail!(
-            "web interface: serving HTTPS directly is not supported yet; use a TLS-terminating proxy with an https origin"
-        );
-    }
+    let tls = cert::files(cfg, Timestamp::now()).map_err(|err| anyhow!("web interface: {err}"))?;
     let server = Server::new(Arc::clone(cfg), Arc::clone(store), options)
         .map_err(|err| anyhow!("web interface: {err}"))?;
     let listener = tokio::net::TcpListener::bind(&cfg.web.listen)
         .await
         .map_err(|err| anyhow!("web interface: listen on {}: {err}", cfg.web.listen))?;
-    tracing::info!(addr = %cfg.web.listen, origin = %cfg.web.origin, "web interface up");
+    match tls.as_ref().map(|(cert, _)| cert::fingerprint(cert)) {
+        Some(Ok(fingerprint)) => {
+            tracing::info!(addr = %cfg.web.listen, origin = %cfg.web.origin, %fingerprint, "web interface up");
+        }
+        Some(Err(err)) => bail!("web interface: {err}"),
+        None => {
+            tracing::info!(addr = %cfg.web.listen, origin = %cfg.web.origin, "web interface up");
+        }
+    }
     Ok(Some(tokio::spawn(async move {
-        if let Err(err) = server.serve(listener, shutdown).await {
+        if let Err(err) = server
+            .serve(
+                listener,
+                tls.as_ref().map(|(c, k)| (c.as_path(), k.as_path())),
+                shutdown,
+            )
+            .await
+        {
             tracing::error!(%err, "web interface stopped");
         }
     })))

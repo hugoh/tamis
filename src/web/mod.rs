@@ -2,6 +2,7 @@
 //! passkeys.
 
 mod auth;
+pub mod cert;
 mod listing;
 mod pages;
 #[cfg(test)]
@@ -24,7 +25,7 @@ use axum::routing::{get, post};
 use rust_embed::RustEmbed;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 use url::Url;
 use webauthn_rs::prelude::{
     DiscoverableAuthentication, PasskeyRegistration, Webauthn, WebauthnBuilder,
@@ -73,6 +74,8 @@ pub enum Error {
     NoAssets(String),
     #[error("set up passkeys: {0}")]
     Passkeys(String),
+    #[error("{0}")]
+    Tls(String),
     #[error("serve: {0}")]
     Serve(#[from] std::io::Error),
 }
@@ -164,24 +167,41 @@ impl Server {
         })
     }
 
-    /// Serves on `listener` until `shutdown` is cancelled.
+    /// Serves on `listener` until `shutdown` is cancelled, over HTTPS when
+    /// given a certificate and key.
     ///
     /// # Errors
-    /// When the listener fails.
+    /// When the certificate can't be loaded or the listener fails.
     pub async fn serve(
         self,
         listener: tokio::net::TcpListener,
+        tls: Option<(&std::path::Path, &std::path::Path)>,
         shutdown: CancellationToken,
     ) -> Result<(), Error> {
-        let stop = shutdown.clone();
-        let serving = axum::serve(listener, self.router)
-            .with_graceful_shutdown(async move { stop.cancelled().await });
-        tokio::select! {
-            result = serving => result?,
-            () = async {
-                shutdown.cancelled().await;
-                tokio::time::sleep(SHUTDOWN_GRACE).await;
-            } => warn!("web server did not stop in {SHUTDOWN_GRACE:?}; closing it"),
+        let std_listener = listener.into_std()?;
+        let handle = axum_server::Handle::new();
+        let stopper = handle.clone();
+        tokio::spawn(async move {
+            shutdown.cancelled().await;
+            stopper.graceful_shutdown(Some(SHUTDOWN_GRACE));
+        });
+        let service = self.router.into_make_service();
+        match tls {
+            Some((cert, key)) => {
+                let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key)
+                    .await
+                    .map_err(|err| Error::Tls(format!("load certificate: {err}")))?;
+                axum_server::from_tcp_rustls(std_listener, config)?
+                    .handle(handle)
+                    .serve(service)
+                    .await?;
+            }
+            None => {
+                axum_server::from_tcp(std_listener)?
+                    .handle(handle)
+                    .serve(service)
+                    .await?;
+            }
         }
         Ok(())
     }

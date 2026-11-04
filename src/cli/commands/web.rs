@@ -75,3 +75,25 @@ pub(in super::super) fn revoke(app: &mut App, ids: &[i64]) -> Result<()> {
     }
     Ok(())
 }
+
+pub(in super::super) fn cert(app: &mut App, pem: bool) -> Result<()> {
+    let (cfg, _) = open_web(app)?;
+    let Some((cert_file, _)) = crate::web::cert::files(&cfg, Timestamp::now())
+        .map_err(|err| anyhow!("web interface: {err}"))?
+    else {
+        bail!("web is not serving TLS: set self_signed = true, or tls_cert and tls_key, in [web]");
+    };
+    if pem {
+        let data = std::fs::read(&cert_file).map_err(|err| anyhow!("read certificate: {err}"))?;
+        app.env.stdout.write_all(&data)?;
+        return Ok(());
+    }
+    let fingerprint =
+        crate::web::cert::fingerprint(&cert_file).map_err(|err| anyhow!("fingerprint: {err}"))?;
+    writeln!(
+        app.env.stdout,
+        "Certificate: {}\nSHA-256 fingerprint: {fingerprint}\n\nCopy it to each device (tamis web cert --pem) and trust it for web sites;\nuntil then its browser will refuse to create or use a passkey.",
+        cert_file.display()
+    )?;
+    Ok(())
+}

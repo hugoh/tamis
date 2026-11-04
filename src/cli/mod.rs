@@ -294,6 +294,15 @@ enum WebAction {
     Enroll,
     /// List enrolled passkeys
     Passkeys,
+    /// Show the certificate to install on your devices
+    #[command(
+        long_about = "Show the certificate the web interface serves HTTPS with, making a self-signed\none first if web.self_signed is set. Browsers only accept passkeys from a\ncertificate they trust, so install it on each device. --pem prints the\ncertificate itself, never the key."
+    )]
+    Cert {
+        /// Print the certificate as PEM, for copying to a device
+        #[arg(long)]
+        pem: bool,
+    },
     /// Remove enrolled passkeys
     Revoke {
         #[arg(required = true, value_name = "ID")]
@@ -446,6 +455,7 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
         Command::Web { action } => match action {
             WebAction::Enroll => commands::web_enroll(app),
             WebAction::Passkeys => commands::web_passkeys(app),
+            WebAction::Cert { pem } => commands::web_cert(app, pem),
             WebAction::Revoke { ids } => commands::web_revoke(app, &ids),
         },
         Command::Whitelist { action } => match action {

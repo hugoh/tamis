@@ -477,3 +477,55 @@ async fn run_serves_the_web_interface_and_stops_it_on_shutdown() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn run_serves_https_with_a_self_signed_certificate() {
+    let dir = tempfile::tempdir().unwrap();
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let web = format!(
+        "[web]\nenabled = true\nself_signed = true\nlisten = \"127.0.0.1:{port}\"\norigin = \"https://localhost:{port}\"\n"
+    );
+    let Some(account) = account(dir.path(), "shadow", &web) else {
+        return;
+    };
+
+    let shutdown = CancellationToken::new();
+    let (out, err) = (Capture::default(), Capture::default());
+    let argv = vec!["-c".to_owned(), account.config.clone(), "run".to_owned()];
+    let running = tokio::spawn({
+        let (env, shutdown) = (env(&out, &err), shutdown.clone());
+        async move { cli::run(&argv, env, shutdown).await }
+    });
+
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap();
+    let mut login = None;
+    for _ in 0..50 {
+        if let Ok(response) = client
+            .get(format!("https://localhost:{port}/auth/login"))
+            .send()
+            .await
+        {
+            login = Some(response);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let login = login.expect("the web interface did not come up over HTTPS");
+
+    assert_eq!(login.status(), 200);
+    assert!(dir.path().join("web-cert.pem").exists());
+
+    shutdown.cancel();
+    let code = tokio::time::timeout(Duration::from_secs(15), running)
+        .await
+        .expect("run did not stop")
+        .unwrap();
+    assert_eq!(code, 0, "{}", err.text());
+}

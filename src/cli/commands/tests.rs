@@ -437,3 +437,29 @@ async fn passkeys_are_listed_and_revoked() {
     assert_eq!(revoked, format!("revoked passkey {id}\n"));
     assert!(store.passkeys().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn cert_shows_the_fingerprint_or_the_pem_and_needs_tls() {
+    let dir = tempfile::tempdir().unwrap();
+    let (plain, _) = setup(dir.path(), WEB);
+    let (_, _, err) = run(&["-c", &plain, "web", "cert"]).await;
+    assert!(err.contains("web is not serving TLS"), "{err}");
+
+    let secure = tempfile::tempdir().unwrap();
+    let (config, _) = setup(
+        secure.path(),
+        "[web]\nenabled = true\nself_signed = true\norigin = \"https://tamis.example.org\"\n",
+    );
+    let (code, out, _) = run(&["-c", &config, "web", "cert"]).await;
+    let (_, pem, _) = run(&["-c", &config, "web", "cert", "--pem"]).await;
+
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains("SHA-256 fingerprint: ") && out.contains("web-cert.pem"),
+        "{out}"
+    );
+    assert!(
+        pem.starts_with("-----BEGIN CERTIFICATE-----") && !pem.contains("PRIVATE"),
+        "{pem}"
+    );
+}

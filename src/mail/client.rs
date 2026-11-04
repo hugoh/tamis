@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use imap_client::client::tokio::{Client as Imap, ClientError};
 use imap_client::imap_types::IntoStatic;
-use imap_client::imap_types::core::{AString, Atom, Vec1};
+use imap_client::imap_types::core::{AString, Atom, IString, Quoted, Vec1};
 use imap_client::imap_types::datetime::NaiveDate;
 use imap_client::imap_types::envelope::{Address, Envelope};
 use imap_client::imap_types::fetch::{
@@ -16,9 +16,11 @@ use imap_client::imap_types::fetch::{
 use imap_client::imap_types::flag::{Flag, FlagFetch, StoreType};
 use imap_client::imap_types::mailbox::Mailbox as ImapMailbox;
 use imap_client::imap_types::search::SearchKey;
+use imap_client::imap_types::secret::Secret;
 use imap_client::imap_types::sequence::SequenceSet;
 use imap_client::imap_types::status::StatusDataItemName;
 use imap_client::tasks::tasks::TaskError;
+use imap_client::tasks::tasks::login::LoginTask;
 use jiff::Timestamp;
 use mail_parser::MessageParser;
 use tokio::time::timeout;
@@ -104,6 +106,17 @@ async fn within<T>(
     }
 }
 
+/// A string the way go-imap sends credentials: quoted, which every server
+/// reads, rather than as a bare atom, which some read differently. Strings a
+/// quoted string can't hold (line breaks) go as literals.
+fn quoted(value: &str) -> Result<AString<'static>> {
+    match Quoted::try_from(value.to_owned()) {
+        Ok(quoted) => Ok(AString::String(IString::Quoted(quoted))),
+        Err(_) => AString::try_from(value.to_owned())
+            .map_err(|_| Error::Server("invalid credentials".to_owned())),
+    }
+}
+
 fn invalid<E: std::fmt::Display>(err: E) -> Error {
     Error::Server(format!("invalid argument: {err}"))
 }
@@ -123,11 +136,20 @@ impl Client {
                 Imap::rustls(&config.host, config.port, false, None).await
             }?;
 
-            if let Err(err) = imap
-                .login(config.username.as_str(), config.password.as_str())
-                .await
-            {
-                return Ok(Err(err));
+            let (Ok(user), Ok(password)) = (quoted(&config.username), quoted(&config.password))
+            else {
+                return Ok(Err(ClientError::ResolveTask(TaskError::MissingData(
+                    "credentials".to_owned(),
+                ))));
+            };
+            // The task rather than `login()`, which would send bare atoms.
+            let login = imap
+                .resolve(LoginTask::new(user, Secret::new(password)))
+                .await;
+            match login {
+                Ok(Ok(_)) => imap.refresh_capabilities().await?,
+                Ok(Err(err)) => return Ok(Err(ClientError::ResolveTask(err))),
+                Err(err) => return Ok(Err(err)),
             }
             if imap.state.ext_condstore_supported() {
                 imap.enable_condstore_if_supported().await?;

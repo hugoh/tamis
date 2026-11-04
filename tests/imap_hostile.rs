@@ -149,3 +149,76 @@ async fn a_rejected_login_is_retried_rarely_and_does_not_block_closing() {
         .await
         .expect("close hung");
 }
+
+/// Serves one connection that accepts the login and returns the `LOGIN` line
+/// it was sent, so a test can see how credentials are encoded.
+async fn login_line_for(username: &str, password: &str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let seen = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        let mut login = String::new();
+        write
+            .write_all(b"* OK [CAPABILITY IMAP4rev1 LITERAL+] ready\r\n")
+            .await
+            .unwrap();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let (tag, command) = line.split_once(' ').unwrap_or((&line, ""));
+            if command.starts_with("LOGIN") {
+                login = line.clone();
+            }
+            let reply = if command.starts_with("CAPABILITY") {
+                format!("* CAPABILITY IMAP4rev1 LITERAL+\r\n{tag} OK done\r\n")
+            } else if command.starts_with("LOGIN") {
+                format!("{tag} OK [CAPABILITY IMAP4rev1 LITERAL+] logged in\r\n")
+            } else {
+                format!("{tag} OK done\r\n")
+            };
+            write.write_all(reply.as_bytes()).await.unwrap();
+            if command.starts_with("LOGOUT") {
+                break;
+            }
+        }
+        login
+    });
+
+    let config = DialConfig {
+        host: "127.0.0.1".to_owned(),
+        port,
+        username: username.to_owned(),
+        password: password.to_owned(),
+        plaintext: true,
+    };
+    let client = Client::dial(&config).await.unwrap();
+    client.close().await;
+    seen.await.unwrap()
+}
+
+#[tokio::test]
+async fn credentials_reach_the_server_as_typed() {
+    let cases = [
+        (
+            "hugoh@hugoh.net",
+            "abcd-efgh-ijkl-mnop",
+            r#"LOGIN "hugoh@hugoh.net" "abcd-efgh-ijkl-mnop""#,
+        ),
+        (
+            "me@example.org",
+            "has space",
+            r#"LOGIN "me@example.org" "has space""#,
+        ),
+        (
+            "me@example.org",
+            r#"quo"te\slash"#,
+            r#"LOGIN "me@example.org" "quo\"te\\slash""#,
+        ),
+    ];
+    for (user, password, want) in cases {
+        let line = login_line_for(user, password).await;
+
+        let command = line.split_once(' ').map_or("", |(_, rest)| rest);
+        assert_eq!(command, want, "password {password:?}");
+    }
+}

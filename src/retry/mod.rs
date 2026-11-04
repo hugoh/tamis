@@ -57,6 +57,13 @@ impl Backoff {
         delay
     }
 
+    /// The next delay without jitter, for working out when things would happen.
+    pub fn next_nominal(&mut self) -> Duration {
+        let delay = self.current;
+        self.current = (self.current * MULTIPLIER).min(self.max);
+        delay
+    }
+
     pub fn reset(&mut self) {
         self.current = self.first;
     }

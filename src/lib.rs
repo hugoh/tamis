@@ -4,6 +4,7 @@ pub mod config;
 pub mod daemon;
 pub mod engine;
 pub mod mail;
+pub mod monitor;
 pub mod report;
 pub mod retry;
 pub mod rules;

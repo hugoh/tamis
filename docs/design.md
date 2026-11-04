@@ -1,7 +1,10 @@
 # Design
 
-Status: draft. Captures the initial design discussion; expect it to change once
-the iCloud capability probe has run.
+Status: partly built. The core (token Bayes, whitelist, train folders, inferred
+corrections, rescue, shadow mode, undo, filing rules, the web interface) is
+implemented; [engine.md](engine.md) describes what the code does today. The
+rest of this page is the plan around it, and says where it hasn't been built.
+The iCloud probe has run: see [iCloud notes](#icloud-notes).
 
 ## Goal
 
@@ -44,9 +47,12 @@ rescue from the provider's junk folder, shadow mode, or undo.
 ## Classification
 
 The provider has already applied delivery-time checks, so re-running
-SpamAssassin or Rspamd adds little. The value is in personal signals. Several
-scorers feed a small combiner (logistic regression) trained on the user's own
-corrections:
+SpamAssassin or Rspamd adds little. The value is in personal signals. The
+plan is for several scorers to feed a small combiner (logistic regression)
+trained on the user's own corrections. **Built today:** token Bayes, the
+correspondent whitelist and the provider's Junk folder as a prior; the verdict
+comes from the whitelist or the Bayes score against two thresholds, with no
+combiner. The other rows are not built.
 
 | Signal | Why |
 |---|---|
@@ -158,22 +164,28 @@ training can be compared with today's behaviour on real mail. See
 
 ## Actions and safety
 
-- Spam tier: move to Junk (or flag only, configurable).
-- Uncertain tier: move to `Junk/Uncertain`, or flag in place.
+- Spam tier: move to Junk.
+- Uncertain tier: flag in place with `$TamisUncertain`; nothing moves. (A
+  `Junk/Uncertain` folder and a flag-only option for spam were planned and
+  not built.)
 - Rescue: whitelisted sender with DKIM/DMARC pass, or a strong good score,
   in the provider's Junk gets moved back to the Inbox (or a `Rescued` folder).
 - Never delete. Every action goes into a journal and can be undone.
-- Rate-limit moves; all actions are idempotent.
+- All actions are idempotent: a move can be repeated after a failure. Moves
+  are not rate-limited.
 - **Shadow mode** for the first one to two weeks: report what would have
   happened, act on nothing.
 - Always fetch with `BODY.PEEK` so scanning never marks mail as read.
 
 ## Feedback
 
-A daily digest message delivered into the mailbox itself: caught, uncertain,
-rescued, with undo links to a small web UI. Login failures (e.g. a revoked
-app-specific password) alert through a separate channel such as ntfy, since
-the mailbox itself is unreachable then.
+Planned, not built: a daily digest message delivered into the mailbox itself
+(caught, uncertain, rescued, with undo links). What exists instead is the web
+interface (decisions with undo and learn, whitelist, health, rules, logs),
+`tamis log`, `tamis doctor`, and dead-man's-switch pings that alert when the
+daemon stops or the filter's quality drops; see [monitoring.md](monitoring.md).
+A revoked app-specific password shows up there too, through a channel other
+than the mailbox.
 
 ## Onboarding
 
@@ -197,6 +209,12 @@ providers:
   handle VANISHED, but tamis never asks for it.
 - MOVE is missing. `tamis probe` measures what the extensions tamis relies on
   (IDLE, UIDPLUS, MOVE, SPECIAL-USE, custom keywords) actually do.
+- Measured with `tamis probe --write` on a real account (2026-11-03): IDLE,
+  UIDPLUS and custom keywords (`PERMANENTFLAGS` includes `\*`) work;
+  APPENDUID is returned; `BODY.PEEK` leaves mail unread; two concurrent
+  connections are accepted; an IDLE push arrives in about 4 seconds; MOVE and
+  SPECIAL-USE are absent, so the Junk folder is found by name, not by
+  `\Junk`; the COPY fallback below works.
 - Without MOVE, use COPY + `\Deleted` + `UID EXPUNGE`; never plain `EXPUNGE`
   without UIDPLUS.
 - Connection limits are undocumented: IDLE on the watched folders only, poll the rest.
@@ -207,7 +225,7 @@ providers:
 
 ## Architecture
 
-One Rust daemon:
+One Rust daemon (JMAP, the combiner and the API are plans, not built):
 
 ```text
 connectors (IMAP, JMAP) ─┐
@@ -226,5 +244,7 @@ web UI / API, TOML config
 | 0 | iCloud capability probe: which extensions actually work (`tamis probe`) |
 | MVP (done, see [engine.md](engine.md)) | IMAP, Train folders, token Bayes, whitelist from Sent, shadow mode, SQLite, CLI |
 | Filing (done, see [rules.md](rules.md)) | Sieve rules file good mail into folders; `tamis rules`; web Rules page |
-| Next | Opt-in Jev signal, inferred corrections, rescue from Junk, digest, web UI with undo |
+| Corrections and rescue (done, see [engine.md](engine.md)) | Inferred corrections, `$Junk`/`$NotJunk` marks, rescue from Junk, undo and learn |
+| Web interface (done) | Passkey sign-in, decisions with undo and learn, whitelist, rules, health, logs |
+| Next | Opt-in Jev signal and the combiner, digest, Hide My Email alias check, token aging (open question above) |
 | Later | JMAP, OAuth (Gmail, Microsoft), local embeddings, optional Rspamd signal |

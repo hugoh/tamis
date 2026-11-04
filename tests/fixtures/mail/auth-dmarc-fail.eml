@@ -1,0 +1,5 @@
+Authentication-Results: mx.provider.example; dmarc=fail header.from=example.org
+From: Alice <alice@example.org>
+Subject: x
+
+body

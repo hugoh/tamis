@@ -1,0 +1,6 @@
+Authentication-Results: mx.provider.example; dkim=none
+Authentication-Results: forged.example; dmarc=pass header.from=example.org
+From: Alice <alice@example.org>
+Subject: x
+
+body

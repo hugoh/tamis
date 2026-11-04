@@ -1,0 +1,7 @@
+From: "Bank Security" <security@bank-alerts.example.co.uk>
+To: victim@example.org
+Subject: Urgent: verify your account
+Content-Type: text/plain; charset=utf-8
+
+Your account is suspended. Verify now: https://login.secure.bank-alerts.example.co.uk/verify
+Act now or lose access. Free prize inside.

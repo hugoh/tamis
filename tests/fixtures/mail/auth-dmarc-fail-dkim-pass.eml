@@ -1,0 +1,5 @@
+Authentication-Results: mx.provider.example; dmarc=fail header.from=example.org; dkim=pass header.d=example.org
+From: Alice <alice@example.org>
+Subject: x
+
+body

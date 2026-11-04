@@ -355,3 +355,54 @@ async fn the_daemon_passes_when_mail_arrives_and_stops_on_shutdown() {
         "{status}"
     );
 }
+
+#[tokio::test]
+async fn probe_reports_the_server_and_leaves_no_scratch_folders() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(account) = account(dir.path(), "shadow", "") else {
+        return;
+    };
+
+    let (code, out, err) = tamis(&account.config, &["probe", "--write", "--idle-wait", "5s"]).await;
+
+    assert_eq!(code, 0, "{out}\n{err}");
+    for expected in [
+        "ok    login",
+        "ok    IDLE",
+        "ok    APPEND",
+        "ok    BODY.PEEK",
+        "ok    STORE keyword",
+        "ok    IDLE push",
+        "ok    MOVE message",
+        "ok    DELETE scratch",
+    ] {
+        assert!(
+            out.lines().any(|line| line.starts_with(expected)),
+            "missing {expected:?} in:\n{out}"
+        );
+    }
+    let mut client = Client::dial(&account.dial).await.unwrap();
+    let leftovers = client.list_with_attributes().await.unwrap();
+    assert!(
+        leftovers
+            .iter()
+            .all(|(name, _)| !name.starts_with("tamis-probe-")),
+        "{leftovers:?}"
+    );
+}
+
+#[tokio::test]
+async fn probe_without_write_touches_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(account) = account(dir.path(), "shadow", "") else {
+        return;
+    };
+
+    let (code, out, _) = tamis(&account.config, &["probe", "--json"]).await;
+
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        out.contains(r#""name": "write checks""#) && out.contains(r#""status": "skip""#),
+        "{out}"
+    );
+}

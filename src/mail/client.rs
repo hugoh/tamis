@@ -13,7 +13,7 @@ use imap_client::imap_types::envelope::{Address, Envelope};
 use imap_client::imap_types::fetch::{
     MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName,
 };
-use imap_client::imap_types::flag::{Flag, FlagFetch, StoreType};
+use imap_client::imap_types::flag::{Flag, FlagFetch, FlagPerm, StoreType};
 use imap_client::imap_types::mailbox::Mailbox as ImapMailbox;
 use imap_client::imap_types::search::SearchKey;
 use imap_client::imap_types::secret::Secret;
@@ -104,6 +104,16 @@ async fn within<T>(
         Ok(result) => result.map_err(map_error),
         Err(_) => Err(Error::Connection("the server stopped answering".to_owned())),
     }
+}
+
+/// What a read-only `SELECT` reported.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Examined {
+    pub messages: u32,
+    pub uid_validity: u32,
+    pub uid_next: u32,
+    /// `PERMANENTFLAGS` includes `\*`: the server keeps keywords it was never told about.
+    pub keywords_allowed: bool,
 }
 
 /// A string the way go-imap sends credentials: quoted, which every server
@@ -204,6 +214,82 @@ impl Client {
             .collect::<Result<Vec<_>>>()?;
         let appended = within(self.imap.appenduid(mailbox, flags, raw)).await?;
         Ok(appended.map(|(uid, _validity)| uid.get()))
+    }
+
+    /// The capabilities the server advertises, as it spelled them.
+    #[must_use]
+    pub fn capabilities(&self) -> Vec<String> {
+        self.imap
+            .state
+            .capabilities_iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// Every folder with its attributes, such as `\\Junk`.
+    ///
+    /// # Errors
+    /// Fails when the server refuses the listing.
+    pub async fn list_with_attributes(&mut self) -> Result<Vec<(String, Vec<String>)>> {
+        let listed = within(self.imap.list("", "*")).await?;
+        Ok(listed
+            .into_iter()
+            .map(|(mailbox, _, attributes)| {
+                (
+                    mailbox_name(&mailbox),
+                    attributes.iter().map(ToString::to_string).collect(),
+                )
+            })
+            .collect())
+    }
+
+    /// Opens `mailbox` read-only and says what the server reported.
+    ///
+    /// # Errors
+    /// Fails when the folder can't be opened.
+    pub async fn examine(&mut self, mailbox: &str) -> Result<Examined> {
+        self.selected = None;
+        let data = within(self.imap.examine(mailbox)).await?;
+        Ok(Examined {
+            messages: data.exists.unwrap_or(0),
+            uid_validity: data.uid_validity.map_or(0, NonZeroU32::get),
+            uid_next: data.uid_next.map_or(0, NonZeroU32::get),
+            keywords_allowed: data
+                .permanent_flags
+                .as_ref()
+                .is_some_and(|flags| flags.iter().any(|flag| matches!(flag, FlagPerm::Asterisk))),
+        })
+    }
+
+    /// Creates `mailbox`, failing if it exists.
+    ///
+    /// # Errors
+    /// Fails when the server refuses.
+    pub async fn create_folder(&mut self, mailbox: &str) -> Result<()> {
+        within(self.imap.create(mailbox)).await
+    }
+
+    /// Deletes `mailbox`.
+    ///
+    /// # Errors
+    /// Fails when the server refuses.
+    pub async fn delete_folder(&mut self, mailbox: &str) -> Result<()> {
+        if self.selected.as_deref() == Some(mailbox) {
+            self.selected = None;
+        }
+        within(self.imap.delete(mailbox)).await
+    }
+
+    /// How a move would be done on this server.
+    #[must_use]
+    pub fn move_method(&self) -> &'static str {
+        if self.supports_move() {
+            "native MOVE"
+        } else if self.supports_uidplus() {
+            "fallback COPY + STORE + UID EXPUNGE"
+        } else {
+            "unsafe: neither MOVE nor UIDPLUS"
+        }
     }
 
     /// Whether the server offers IDLE.

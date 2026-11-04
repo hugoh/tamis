@@ -8,6 +8,7 @@ pub mod health;
 pub mod live;
 pub mod mail;
 pub mod monitor;
+pub mod probe;
 pub mod report;
 pub mod retry;
 pub mod rules;

@@ -116,6 +116,31 @@ struct Cli {
     command: Option<Command>,
 }
 
+#[derive(clap::Args, Debug)]
+pub(crate) struct ProbeArgs {
+    /// IMAP server, e.g. imap.mail.me.com for iCloud
+    #[arg(long)]
+    host: Option<String>,
+    /// IMAP port (implicit TLS)
+    #[arg(long)]
+    port: Option<u16>,
+    /// Login name, usually the full address
+    #[arg(long)]
+    user: Option<String>,
+    /// Also create, fill and delete scratch folders
+    #[arg(long)]
+    write: bool,
+    /// Print the report as JSON
+    #[arg(long)]
+    json: bool,
+    /// How long to wait for an IDLE push
+    #[arg(long, default_value = "30s")]
+    idle_wait: String,
+    /// Connect without TLS (local test servers only)
+    #[arg(long)]
+    plaintext: bool,
+}
+
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Write a starter configuration file
@@ -130,6 +155,11 @@ enum Command {
         #[arg(long)]
         user: String,
     },
+    /// Check which IMAP features a server supports
+    #[command(
+        long_about = "Check which IMAP features a server supports, and list its folders.\n\n--host, --user and --port default to the account in the configuration file.\nThe password (an app-specific one for iCloud) comes from the same places as\nfor `tamis run`."
+    )]
+    Probe(ProbeArgs),
     /// Check the account password and keep it in the system keychain
     #[command(
         long_about = "Ask for the account password (an app-specific one for iCloud), check it\nagainst the server, and store it in the system keychain: the macOS Keychain,\nthe Secret Service (GNOME Keyring, KWallet) or the Windows Credential Manager."
@@ -368,6 +398,7 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
     match command {
         Command::Version => commands::version(app),
         Command::Init { host, user } => commands::init(app, &host, &user),
+        Command::Probe(args) => commands::probe(app, &args).await,
         Command::Login => commands::login(app).await,
         Command::Logout => commands::logout(app),
         Command::Bootstrap(args) => commands::bootstrap(app, &args).await,

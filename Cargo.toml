@@ -8,6 +8,10 @@ repository = "https://github.com/hugoh/tamis"
 license = "AGPL-3.0-only"
 publish = false
 
+[package.metadata.cargo-machete]
+# The crate is imported under its library name, sieve.
+ignored = ["sieve-rs"]
+
 [dependencies]
 fastrand = "2.5.0"
 html5ever = "0.40.1"
@@ -21,6 +25,7 @@ rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_ignored = "0.1.14"
 serde_json = "1.0.154"
+sieve-rs = "0.7.3"
 thiserror = "2.0.21"
 toml = "1.1.8"
 tracing = "0.1.44"

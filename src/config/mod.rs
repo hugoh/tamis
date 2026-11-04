@@ -339,6 +339,10 @@ impl Config {
         cfg.web.tls_key = expand_home(&cfg.web.tls_key, getenv)?;
         if !cfg.rules.script.is_empty() {
             cfg.rules.script = expand_home(&cfg.rules.script, getenv)?;
+            // Compile now, so a mistake stops tamis at startup and not on the
+            // first message that reaches the script.
+            crate::rules::Rules::load(Path::new(&cfg.rules.script))
+                .map_err(|err| Error::Invalid(format!("rules.script: {err}")))?;
         }
 
         Ok(cfg)
@@ -524,5 +528,28 @@ mod tests {
 
         let err = Config::load(&no_env, &path).unwrap_err();
         assert!(matches!(err, Error::NoStateHome));
+    }
+
+    #[test]
+    fn a_filing_script_must_compile() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("rules.sieve");
+        let path = dir.path().join("config.toml");
+        let config = format!(
+            "state = \"{state}\"\n[account]\nhost = \"h\"\nuser = \"u\"\n[rules]\nscript = \"{script}\"\n",
+            state = dir.path().join("s.db").display(),
+            script = script.display(),
+        );
+        fs::write(&path, config).unwrap();
+
+        fs::write(&script, "fileinto \"X\";").unwrap();
+        let err = Config::load(&env, &path).unwrap_err().to_string();
+        assert!(
+            err.starts_with("invalid config: rules.script: parse rules:"),
+            "{err}"
+        );
+
+        fs::write(&script, "require \"fileinto\"; fileinto \"X\";").unwrap();
+        assert!(Config::load(&env, &path).is_ok());
     }
 }

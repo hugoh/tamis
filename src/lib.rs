@@ -3,6 +3,7 @@ pub mod classify;
 pub mod config;
 pub mod report;
 pub mod retry;
+pub mod rules;
 pub mod secret;
 pub mod store;
 

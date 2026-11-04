@@ -197,6 +197,7 @@ impl Keeper {
 
         let _idling = IdleGuard::new(Arc::clone(&self.shared));
         self.over();
+        tracing::debug!(mailbox = %self.mailbox, "idle");
 
         loop {
             let outcome = tokio::select! {
@@ -204,7 +205,10 @@ impl Keeper {
                 outcome = client.idle(&self.mailbox, RENEW_IDLE) => outcome,
             };
             if outcome? {
+                tracing::debug!(mailbox = %self.mailbox, "idle ended: the server reported a change");
                 self.shared.changed.notify_one();
+            } else {
+                tracing::debug!(mailbox = %self.mailbox, "idle renewed");
             }
         }
     }

@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod classify;
 
 #[must_use]

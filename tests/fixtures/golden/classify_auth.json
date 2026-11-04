@@ -1336,30 +1336,47 @@
   "tallies": [
     {
       "name": "icloud-all",
+      "parts": {
+        "auth-icloud-multi.eml": 25
+      },
       "total": 25,
       "domain": "icloud.com",
       "ok": true
     },
     {
       "name": "icloud-nine-in-ten",
+      "parts": {
+        "auth-icloud-multi.eml": 18,
+        "auth-no-header.eml": 2
+      },
       "total": 20,
       "domain": "icloud.com",
       "ok": true
     },
     {
       "name": "too-few",
+      "parts": {
+        "auth-icloud-multi.eml": 19
+      },
       "total": 19,
       "domain": "",
       "ok": false
     },
     {
       "name": "mixed",
+      "parts": {
+        "auth-icloud-multi.eml": 10,
+        "auth-no-header.eml": 15
+      },
       "total": 25,
       "domain": "",
       "ok": false
     },
     {
       "name": "single-provider",
+      "parts": {
+        "auth-dmarc-pass.eml": 20
+      },
       "total": 20,
       "domain": "provider.example",
       "ok": true

@@ -61,10 +61,11 @@ type verified struct {
 }
 
 type tally struct {
-	Name   string `json:"name"`
-	Total  int    `json:"total"`
-	Domain string `json:"domain"`
-	Ok     bool   `json:"ok"`
+	Name   string         `json:"name"`
+	Parts  map[string]int `json:"parts"`
+	Total  int            `json:"total"`
+	Domain string         `json:"domain"`
+	Ok     bool           `json:"ok"`
 }
 
 type golden struct {
@@ -171,7 +172,7 @@ func tallies(raw map[string][]byte) []tally {
 
 		domain, ok := t.Infer()
 
-		return tally{name, t.Total(), domain, ok}
+		return tally{name, parts, t.Total(), domain, ok}
 	}
 
 	return []tally{

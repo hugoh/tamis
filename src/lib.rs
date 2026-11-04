@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod classify;
 pub mod config;
+pub mod mail;
 pub mod report;
 pub mod retry;
 pub mod rules;

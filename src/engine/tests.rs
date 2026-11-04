@@ -1,0 +1,547 @@
+use tempfile::TempDir;
+
+use crate::classify::Label;
+use crate::config::{Account, Config, Mode};
+use crate::mail::fake::Fake;
+use crate::mail::{Error as MailError, Mailbox};
+use crate::rules::Rules;
+use crate::store::{Decision, Store};
+
+use super::*;
+
+const FOLDERS: [&str; 5] = ["INBOX", "Junk", "Sent Messages", "TrainSpam", "TrainGood"];
+
+struct Env {
+    engine: Engine<Fake>,
+    _dir: TempDir,
+}
+
+impl Env {
+    fn new(mode: Mode) -> Self {
+        Self::with(mode, |_| {})
+    }
+
+    fn with(mode: Mode, tweak: impl FnOnce(&mut Config)) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(&dir.path().join("state.db")).unwrap());
+
+        let mut cfg = Config {
+            account: Account {
+                host: "imap.example.org".to_owned(),
+                user: "me@example.org".to_owned(),
+                ..Account::default()
+            },
+            ..Config::default()
+        };
+        cfg.policy.mode = mode;
+        tweak(&mut cfg);
+
+        let engine = Engine::new(Fake::new(&FOLDERS), store, Arc::new(cfg));
+        Self { engine, _dir: dir }
+    }
+
+    fn mail(&mut self) -> &mut Fake {
+        &mut self.engine.mail
+    }
+
+    fn store(&self) -> &Store {
+        &self.engine.store
+    }
+
+    fn train(&self, label: Label, raw: &str, key: &str) {
+        let (tokens, _) = self.engine.features(raw.as_bytes()).unwrap();
+        self.store().train(key, &tokens, label).unwrap();
+    }
+
+    /// A model that knows spam from good mail.
+    fn trained() -> Self {
+        Self::trained_with(Mode::Live, |_| {})
+    }
+
+    fn trained_with(mode: Mode, tweak: impl FnOnce(&mut Config)) -> Self {
+        let env = Self::with(mode, tweak);
+        for n in 0..5 {
+            env.train(
+                Label::Spam,
+                &spam(&format!("t-spam-{n}")),
+                &format!("<t-spam-{n}@x>"),
+            );
+            env.train(
+                Label::Good,
+                &good(&format!("t-good-{n}")),
+                &format!("<t-good-{n}@x>"),
+            );
+        }
+        env
+    }
+
+    /// Starts every watched folder at its current mail, then runs a pass.
+    async fn start(&mut self) {
+        self.engine.run_once().await.unwrap();
+    }
+
+    fn decisions(&self) -> Vec<Decision> {
+        self.store().decisions(100).unwrap()
+    }
+}
+
+fn message(id: &str, from: &str, subject: &str, body: &str, extra: &str) -> String {
+    format!(
+        "From: {from}\r\nTo: me@example.org\r\nSubject: {subject}\r\nMessage-ID: <{id}@x>\r\n{extra}\r\n{body}"
+    )
+}
+
+fn spam(id: &str) -> String {
+    message(
+        id,
+        "Prize <winner@lottery.example>",
+        "Cheap pills winner",
+        "free prize cheap pills winner claim",
+        "",
+    )
+}
+
+fn good(id: &str) -> String {
+    message(
+        id,
+        "Alice <alice@friends.example>",
+        "Lunch on Thursday",
+        "lunch thursday meeting agenda",
+        "",
+    )
+}
+
+fn unknown(id: &str) -> String {
+    message(id, "Zed <zed@nowhere.example>", "Zzyzx", "qqqq wwww", "")
+}
+
+#[tokio::test]
+async fn a_new_folder_starts_at_its_current_mail() {
+    let mut env = Env::trained();
+    env.mail().deliver("INBOX", &spam("old"), &[]);
+
+    assert_eq!(
+        env.engine.run_once().await.unwrap(),
+        Summary::default(),
+        "existing mail is left to bootstrap"
+    );
+    assert_eq!(env.store().cursor("INBOX").unwrap().unwrap().last_uid, 1);
+
+    env.mail().deliver("INBOX", &spam("new"), &[]);
+    let summary = env.engine.run_once().await.unwrap();
+    assert_eq!((summary.scanned, summary.spam), (1, 1));
+}
+
+#[tokio::test]
+async fn a_changed_uid_validity_restarts_the_folder() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("a"), &[]);
+    env.mail().reset_uid_validity("INBOX", 2);
+
+    assert_eq!(env.engine.run_once().await.unwrap().scanned, 0);
+    assert_eq!(
+        env.store().cursor("INBOX").unwrap().unwrap().uid_validity,
+        2
+    );
+}
+
+#[tokio::test]
+async fn spam_is_only_recorded_in_shadow_mode() {
+    let mut env = Env::trained_with(Mode::Shadow, |_| {});
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &spam("s1"), &[]);
+
+    let summary = env.engine.run_once().await.unwrap();
+
+    assert_eq!(summary.spam, 1);
+    assert_eq!(env.mail().uids("INBOX"), [uid], "nothing moved");
+    let decision = &env.decisions()[0];
+    assert_eq!(
+        (
+            decision.verdict.as_str(),
+            decision.action.as_str(),
+            decision.applied
+        ),
+        ("spam", "move:Junk", false)
+    );
+}
+
+#[tokio::test]
+async fn spam_is_moved_and_flagged_in_live_mode() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+
+    env.engine.run_once().await.unwrap();
+
+    assert_eq!(env.mail().uids("INBOX"), Vec::<u32>::new());
+    assert_eq!(
+        env.mail().flags("Junk", 1),
+        Some(vec!["$tamisfiled".to_owned()])
+    );
+    let decision = &env.decisions()[0];
+    assert_eq!(
+        (decision.reason.as_str(), decision.applied),
+        ("bayes", true)
+    );
+    assert!(decision.score >= 0.9);
+}
+
+#[tokio::test]
+async fn doubtful_mail_is_flagged_and_good_mail_is_left_alone() {
+    let mut env = Env::trained();
+    env.start().await;
+    let unsure = env.mail().deliver("INBOX", &unknown("u1"), &[]);
+    let fine = env.mail().deliver("INBOX", &good("g1"), &[]);
+
+    let summary = env.engine.run_once().await.unwrap();
+
+    assert_eq!(
+        (summary.uncertain, summary.good, summary.scanned),
+        (1, 1, 2)
+    );
+    assert_eq!(
+        env.mail().flags("INBOX", unsure),
+        Some(vec!["$tamisuncertain".to_owned()])
+    );
+    assert_eq!(env.mail().flags("INBOX", fine), Some(vec![]));
+    let actions: Vec<String> = env.decisions().iter().map(|d| d.action.clone()).collect();
+    assert_eq!(actions, ["none", "keyword:$TamisUncertain"]);
+}
+
+#[tokio::test]
+async fn a_failed_move_takes_the_keyword_back() {
+    let mut env = Env::trained();
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail().fail("move", MailError::Server("nope".into()));
+
+    let err = env.engine.run_once().await.unwrap_err().to_string();
+
+    assert!(err.contains("file spam"), "{err}");
+    assert_eq!(env.mail().flags("INBOX", uid), Some(vec![]));
+    assert!(
+        env.decisions().is_empty(),
+        "nothing is journalled for what did not happen"
+    );
+}
+
+#[tokio::test]
+async fn a_dropped_connection_is_reported_as_one() {
+    let mut env = Env::new(Mode::Live);
+    env.mail()
+        .fail("state", MailError::Connection("gone".into()));
+
+    assert!(env.engine.run_once().await.unwrap_err().is_connection());
+}
+
+#[tokio::test]
+async fn moving_filed_spam_back_is_a_correction() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.engine.run_once().await.unwrap();
+
+    env.mail()
+        .move_messages("Junk", &[1], "INBOX")
+        .await
+        .unwrap();
+    let summary = env.engine.run_once().await.unwrap();
+
+    assert_eq!((summary.corrected, summary.scanned), (1, 1));
+    assert_eq!(env.store().trained("<s1@x>").unwrap(), Some(Label::Good));
+    assert!(env.store().has_address("winner@lottery.example").unwrap());
+    let uid = env.mail().uids("INBOX")[0];
+    assert_eq!(
+        env.mail().flags("INBOX", uid),
+        Some(vec![]),
+        "the filed keyword is cleared"
+    );
+    assert_eq!(env.decisions()[0].action, "train:good");
+}
+
+#[tokio::test]
+async fn a_filed_keyword_without_a_journalled_move_is_not_believed() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &["$TamisFiled"]);
+
+    let summary = env.engine.run_once().await.unwrap();
+
+    assert_eq!((summary.corrected, summary.spam), (0, 1));
+}
+
+#[tokio::test]
+async fn mail_tamis_already_handled_is_not_judged_again() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail()
+        .deliver("INBOX", &spam("rescued"), &["$TamisRescued"]);
+    env.mail()
+        .deliver("INBOX", &spam("learnt"), &["$TamisTrained"]);
+    env.train(Label::Spam, &spam("learnt"), "<learnt@x>");
+    env.mail()
+        .deliver("INBOX", &spam("reused"), &["$TamisTrained"]);
+
+    let summary = env.engine.run_once().await.unwrap();
+
+    assert_eq!(
+        summary.scanned, 1,
+        "only the Message-ID that was never trained is judged"
+    );
+}
+
+#[tokio::test]
+async fn a_sorted_keyword_counts_only_when_the_journal_shows_the_move() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail()
+        .deliver("INBOX", &good("moved"), &["$TamisSorted"]);
+    env.mail()
+        .deliver("INBOX", &good("failed"), &["$TamisSorted"]);
+    env.engine
+        .record(
+            "INBOX",
+            &Message {
+                message_id: "<moved@x>".into(),
+                ..Message::default()
+            },
+            &Judgement {
+                verdict: Verdict::Good,
+                reason: Reason::Rule,
+                score: 0.0,
+            },
+            &Action::Move("Lists".into()),
+            true,
+        )
+        .unwrap();
+
+    assert_eq!(env.engine.run_once().await.unwrap().scanned, 1);
+}
+
+#[tokio::test]
+async fn a_whitelisted_sender_needs_authentication_when_asked_to() {
+    let cases = [
+        ("no header", "", true, "bayes"),
+        (
+            "passed",
+            "Authentication-Results: mx.example; dmarc=pass header.from=friends.example\r\n",
+            true,
+            "whitelisted",
+        ),
+        ("not required", "", false, "whitelisted"),
+    ];
+    for (name, header, required, want) in cases {
+        let mut env = Env::trained_with(Mode::Live, |cfg| {
+            cfg.policy.whitelist_requires_auth = required;
+        });
+        env.store()
+            .add_address("alice@friends.example", "sent")
+            .unwrap();
+        env.start().await;
+        env.mail().deliver(
+            "INBOX",
+            &message(
+                "w1",
+                "Alice <alice@friends.example>",
+                "Hello",
+                "hello",
+                header,
+            ),
+            &[],
+        );
+
+        env.engine.run_once().await.unwrap();
+
+        assert_eq!(env.decisions()[0].reason, want, "{name}");
+    }
+}
+
+const RULES: &str =
+    r#"require "fileinto"; if header :contains "list-id" "golang" { fileinto "Lists"; }"#;
+
+fn listed() -> String {
+    message(
+        "l1",
+        "Alice <alice@friends.example>",
+        "Go news",
+        "news",
+        "List-Id: <golang-nuts.example>\r\nAuthentication-Results: mx.example; dmarc=pass header.from=friends.example\r\n",
+    )
+}
+
+fn env_with_rules(mode: Mode, tweak: impl FnOnce(&mut Config)) -> Env {
+    let mut env = Env::trained_with(mode, tweak);
+    env.store()
+        .add_address("alice@friends.example", "sent")
+        .unwrap();
+    env.engine
+        .set_rules(Rules::parse(RULES.as_bytes()).unwrap());
+    env.mail().add_folder("Lists");
+    env
+}
+
+#[tokio::test]
+async fn good_mail_is_filed_by_the_rules_in_live_mode() {
+    let mut env = env_with_rules(Mode::Live, |_| {});
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+
+    env.engine.run_once().await.unwrap();
+
+    assert_eq!(env.mail().uids("INBOX"), Vec::<u32>::new());
+    assert_eq!(
+        env.mail().flags("Lists", 1),
+        Some(vec!["$tamissorted".to_owned()])
+    );
+    let decision = &env.decisions()[0];
+    assert_eq!(
+        (
+            decision.reason.as_str(),
+            decision.action.as_str(),
+            decision.applied
+        ),
+        ("rule", "move:Lists", true)
+    );
+}
+
+#[tokio::test]
+async fn the_rules_only_report_in_shadow_mode() {
+    let mut env = env_with_rules(Mode::Shadow, |_| {});
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+
+    env.engine.run_once().await.unwrap();
+
+    assert_eq!(env.mail().uids("INBOX"), [1]);
+    assert!(!env.decisions()[0].applied);
+}
+
+#[tokio::test]
+async fn a_rule_naming_a_missing_folder_leaves_the_mail() {
+    let mut env = env_with_rules(Mode::Live, |_| {});
+    env.mail().remove_folder("Lists");
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+
+    env.engine.run_once().await.unwrap();
+
+    assert_eq!(env.mail().uids("INBOX"), [1], "the mail stays");
+    assert_eq!(env.decisions()[0].action, "none");
+}
+
+#[tokio::test]
+async fn a_rule_may_create_its_folder_when_allowed() {
+    let mut env = env_with_rules(Mode::Live, |cfg| cfg.rules.create_folders = true);
+    env.mail().remove_folder("Lists");
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.mail().exists("Lists").await.unwrap());
+    assert_eq!(env.mail().uids("Lists"), [1]);
+}
+
+#[tokio::test]
+async fn a_failed_rule_move_clears_the_sorted_keyword() {
+    let mut env = env_with_rules(Mode::Live, |_| {});
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &listed(), &[]);
+    env.mail().fail("move", MailError::Server("nope".into()));
+
+    assert!(env.engine.run_once().await.is_err());
+    assert_eq!(env.mail().flags("INBOX", uid), Some(vec![]));
+}
+
+#[tokio::test]
+async fn missing_rule_folders_are_reported_without_failing() {
+    let mut env = env_with_rules(Mode::Live, |_| {});
+    env.mail().remove_folder("Lists");
+    env.engine.warn_missing_rule_folders().await.unwrap();
+
+    let mut quiet = env_with_rules(Mode::Live, |cfg| cfg.rules.create_folders = true);
+    quiet.engine.warn_missing_rule_folders().await.unwrap();
+    assert!(
+        !quiet
+            .mail()
+            .log
+            .iter()
+            .any(|call| call.starts_with("folders")),
+        "nothing to check when folders are created"
+    );
+}
+
+#[test]
+fn the_authserv_id_comes_from_config_then_from_what_was_learnt() {
+    #[allow(clippy::type_complexity, reason = "a table of cases")]
+    let cases: [(&str, &str, Option<(&str, &str)>, &str, AuthSource); 6] = [
+        ("off", "none", None, "", AuthSource::Off),
+        (
+            "configured",
+            "icloud.com",
+            Some(("learnt.example", "imap.example.org")),
+            "icloud.com",
+            AuthSource::Configured,
+        ),
+        ("unset", "", None, "", AuthSource::Unset),
+        (
+            "learnt",
+            "",
+            Some(("icloud.com", "IMAP.example.org")),
+            "icloud.com",
+            AuthSource::Learnt,
+        ),
+        (
+            "learnt before hosts were recorded",
+            "",
+            Some(("icloud.com", "")),
+            "icloud.com",
+            AuthSource::Learnt,
+        ),
+        (
+            "stale",
+            "",
+            Some(("icloud.com", "imap.other.example")),
+            "",
+            AuthSource::Stale,
+        ),
+    ];
+    for (name, configured, learnt, id, source) in cases {
+        let env = Env::with(Mode::Live, |cfg| {
+            cfg.account.auth_server_id = configured.to_owned();
+        });
+        if let Some((domain, host)) = learnt {
+            env.store().set_setting("auth_server_id", domain).unwrap();
+            if !host.is_empty() {
+                env.store()
+                    .set_setting("auth_server_id_host", host)
+                    .unwrap();
+            }
+        }
+
+        let pin = resolve_auth_pin(env.store(), &env.engine.cfg).unwrap();
+
+        assert_eq!((pin.id.as_str(), pin.source), (id, source), "{name}");
+    }
+}
+
+#[test]
+fn training_keys_fall_back_to_a_content_hash() {
+    let with_id = Message {
+        message_id: "<a@x>".into(),
+        raw: b"x".to_vec(),
+        ..Message::default()
+    };
+    let without = Message {
+        raw: b"abc".to_vec(),
+        ..Message::default()
+    };
+
+    assert_eq!(training_key(&with_id), "<a@x>");
+    assert_eq!(
+        training_key(&without),
+        "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+}

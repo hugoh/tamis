@@ -57,6 +57,16 @@ impl Fake {
         fake
     }
 
+    /// Adds an empty folder.
+    pub fn add_folder(&mut self, name: &str) {
+        self.create(name);
+    }
+
+    /// Deletes a folder and its messages.
+    pub fn remove_folder(&mut self, name: &str) {
+        self.folders.remove(name);
+    }
+
     fn create(&mut self, name: &str) {
         self.folders.entry(name.to_owned()).or_insert(Folder {
             uid_validity: 1,

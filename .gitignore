@@ -21,3 +21,4 @@ eval-data/
 
 # Rust
 /target
+!tests/fixtures/golden/state.db

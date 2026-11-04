@@ -60,25 +60,22 @@ pub struct Env {
 }
 
 impl Env {
-    /// Takes the environment for a command that outlives the call, leaving
-    /// one that reads nothing and writes nowhere.
-    pub(crate) fn take(&mut self) -> Self {
-        let getenv = Arc::clone(&self.getenv);
-        std::mem::replace(
-            self,
-            Self {
-                stdin: Box::new(std::io::empty()),
-                stdout: Box::new(std::io::sink()),
-                stderr: Box::new(std::io::sink()),
-                getenv,
-                stdout_is_terminal: false,
-                prompt: None,
-                keyring: None,
-                plaintext_imap: self.plaintext_imap,
-                version: self.version.clone(),
-                logging: None,
-            },
-        )
+    /// Takes what a command that outlives the call needs to find a password
+    /// again later: standard input, the prompt, the keychain and the
+    /// variables. The command keeps its standard output and error.
+    pub(crate) fn take_credentials(&mut self) -> Self {
+        Self {
+            stdin: std::mem::replace(&mut self.stdin, Box::new(std::io::empty())),
+            stdout: Box::new(std::io::sink()),
+            stderr: Box::new(std::io::sink()),
+            getenv: Arc::clone(&self.getenv),
+            stdout_is_terminal: false,
+            prompt: self.prompt.take(),
+            keyring: self.keyring.take(),
+            plaintext_imap: self.plaintext_imap,
+            version: self.version.clone(),
+            logging: None,
+        }
     }
 }
 
@@ -329,6 +326,10 @@ pub async fn run(args: &[String], mut env: Env, shutdown: CancellationToken) -> 
             };
         }
     };
+
+    if let Some(init) = &env.logging {
+        init(cli.verbose, (env.getenv)("JOURNAL_STREAM"));
+    }
 
     let config_path = cli
         .config
@@ -625,6 +626,23 @@ mod tests {
         assert_eq!(code, 1);
         assert!(
             err.text().starts_with("tamis: read config:"),
+            "{}",
+            err.text()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failing_run_still_reports_why() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = config_for(dir.path(), 1);
+
+        let (code, _, err) = Harness::new(&[], "")
+            .run(&["-c", &path, "run", "--once"])
+            .await;
+
+        assert_eq!(code, 1);
+        assert!(
+            err.text().contains("no password: run 'tamis login'"),
             "{}",
             err.text()
         );

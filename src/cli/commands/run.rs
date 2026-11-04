@@ -86,7 +86,7 @@ pub(in super::super) async fn run(app: &mut App, once: bool) -> Result<()> {
     spawn_hangup_listener(Arc::clone(&hangup));
 
     let connector = ImapConnector {
-        env: app.env.take(),
+        env: app.env.take_credentials(),
         finder: std::mem::take(&mut app.finder),
     };
     let beat =

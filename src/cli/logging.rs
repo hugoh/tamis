@@ -6,6 +6,7 @@
 use std::fmt;
 
 use tracing::{Event, Level, Subscriber};
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::fmt::format::{self, FormatEvent, FormatFields, Writer};
 use tracing_subscriber::registry::LookupSpan;
@@ -68,11 +69,25 @@ where
     }
 }
 
+/// The filter: tamis at `info`, or `debug` under `--verbose`, and everything
+/// else at `warn`, so the libraries' own chatter stays out of the way.
+/// `$TAMIS_LOG` replaces it, in the `EnvFilter` syntax.
+fn filter(verbose: bool) -> EnvFilter {
+    EnvFilter::try_from_env("TAMIS_LOG").unwrap_or_else(|_| {
+        EnvFilter::new(if verbose {
+            "warn,tamis=debug"
+        } else {
+            "warn,tamis=info"
+        })
+    })
+}
+
 /// Installs the global logger. A second call does nothing.
 pub fn init(verbose: bool, journal_stream: Option<&str>) {
-    let level = if verbose { Level::DEBUG } else { Level::INFO };
+    use std::io::IsTerminal;
+
     let builder = tracing_subscriber::fmt()
-        .with_max_level(level)
+        .with_env_filter(filter(verbose))
         .with_writer(std::io::stderr)
         .with_target(false);
 
@@ -88,7 +103,9 @@ pub fn init(verbose: bool, journal_stream: Option<&str>) {
             ))
             .try_init()
     } else {
-        builder.try_init()
+        builder
+            .with_ansi(std::io::stderr().is_terminal())
+            .try_init()
     };
     let _ = installed;
 }
@@ -121,5 +138,13 @@ mod tests {
     fn a_stream_naming_another_file_is_not_ours() {
         // stderr under test is a pipe or a file; 0:0 is neither.
         assert!(!under_journal(Some("0:0")) || stderr_stream().is_none());
+    }
+
+    #[test]
+    fn libraries_stay_quiet_whatever_the_verbosity() {
+        for (verbose, ours) in [(false, "tamis=info"), (true, "tamis=debug")] {
+            let text = filter(verbose).to_string();
+            assert!(text.contains(ours) && text.contains("warn"), "{text}");
+        }
     }
 }

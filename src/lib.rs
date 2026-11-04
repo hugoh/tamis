@@ -13,6 +13,7 @@ pub mod retry;
 pub mod rules;
 pub mod secret;
 pub mod store;
+pub mod tls;
 
 #[must_use]
 pub fn version() -> &'static str {

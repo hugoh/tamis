@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    tamis::tls::init();
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     let shutdown = CancellationToken::new();

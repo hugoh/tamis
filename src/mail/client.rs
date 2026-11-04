@@ -115,6 +115,7 @@ impl Client {
     /// [`Error::Login`] when the credentials are rejected, [`Error::Connection`]
     /// when the server can't be reached.
     pub async fn dial(config: &DialConfig) -> Result<Self> {
+        crate::tls::init();
         let connect = async {
             let mut imap = if config.plaintext {
                 Imap::insecure(&config.host, config.port).await

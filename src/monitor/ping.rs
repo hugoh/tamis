@@ -158,6 +158,7 @@ impl Pinger {
             return Ok(Self { inner: None });
         }
 
+        crate::tls::init();
         let base = Url::parse(raw_url).map_err(|err| Error::Url(err.to_string()))?;
         let client = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
@@ -487,6 +488,14 @@ mod tests {
         let err = pinger.test("x").await.unwrap_err().to_string();
 
         assert!(!err.contains("secret-check-id"), "{err}");
+        pinger.close().await;
+    }
+
+    #[tokio::test]
+    async fn an_https_pinger_can_be_built() {
+        let pinger = Pinger::new("https://hc-ping.example.com/abc").unwrap();
+
+        assert!(pinger.is_enabled());
         pinger.close().await;
     }
 

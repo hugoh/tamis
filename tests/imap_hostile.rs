@@ -86,3 +86,66 @@ async fn lines_no_client_understands_fail_the_connection_instead_of_hanging_it()
         assert!(err.is_connection(), "{name}: {err:?}");
     }
 }
+
+/// Serves one connection with the given capabilities and `LOGIN` answer.
+async fn serve_login(listener: TcpListener, capabilities: &'static str, login: &'static str) {
+    let (stream, _) = listener.accept().await.unwrap();
+    let (read, mut write) = stream.into_split();
+    let mut lines = BufReader::new(read).lines();
+
+    write
+        .write_all(format!("* OK [CAPABILITY {capabilities}] ready\r\n").as_bytes())
+        .await
+        .unwrap();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let (tag, command) = line.split_once(' ').unwrap_or((&line, ""));
+        let reply = if command.starts_with("CAPABILITY") {
+            format!("* CAPABILITY {capabilities}\r\n{tag} OK done\r\n")
+        } else if command.starts_with("LOGIN") {
+            format!("{tag} {login}\r\n")
+        } else {
+            format!("{tag} OK done\r\n")
+        };
+        write.write_all(reply.as_bytes()).await.unwrap();
+    }
+}
+
+async fn watcher_for(
+    capabilities: &'static str,
+    login: &'static str,
+) -> tamis::mail::watch::Watcher {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(serve_login(listener, capabilities, login));
+
+    let config = DialConfig {
+        host: "127.0.0.1".to_owned(),
+        port,
+        username: "u".to_owned(),
+        password: "p".to_owned(),
+        plaintext: true,
+    };
+    tamis::mail::watch::Watcher::start(&config, &["INBOX".to_owned()], Duration::from_millis(50))
+}
+
+#[tokio::test]
+async fn a_server_without_idle_is_given_up_on() {
+    let watcher = watcher_for("IMAP4rev1 UIDPLUS MOVE", "OK logged in").await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert_eq!(watcher.idling(), 0);
+    timeout(Duration::from_secs(5), watcher.close())
+        .await
+        .expect("close hung");
+}
+
+#[tokio::test]
+async fn a_rejected_login_is_retried_rarely_and_does_not_block_closing() {
+    let watcher = watcher_for("IMAP4rev1 IDLE", "NO [AUTHENTICATIONFAILED] bad password").await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert_eq!(watcher.idling(), 0);
+    timeout(Duration::from_secs(5), watcher.close())
+        .await
+        .expect("close hung");
+}

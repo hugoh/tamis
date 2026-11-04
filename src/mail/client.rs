@@ -28,6 +28,10 @@ use super::{Error, MAX_MESSAGE_BYTES, Mailbox, Message, ModState, Result, State}
 
 /// How long one command may take before the connection is given up on.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
+/// An IDLE that ends sooner than this was refused, not interrupted.
+const IDLE_MIN: Duration = Duration::from_millis(50);
+/// An IDLE that ended this much before its renewal time was ended by news.
+const IDLE_SLACK: Duration = Duration::from_millis(500);
 /// How long connecting and logging in may take.
 const DIAL_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -171,6 +175,35 @@ impl Client {
             .collect::<Result<Vec<_>>>()?;
         let appended = within(self.imap.appenduid(mailbox, flags, raw)).await?;
         Ok(appended.map(|(uid, _validity)| uid.get()))
+    }
+
+    /// Whether the server offers IDLE.
+    #[must_use]
+    pub fn supports_idle(&self) -> bool {
+        self.imap.state.ext_idle_supported()
+    }
+
+    /// Selects `mailbox` and waits in IDLE until the server reports a change,
+    /// or until `renew` has passed, when IDLE is ended and restarted so it
+    /// stays inside the limit of RFC 2177. Returns whether something changed.
+    ///
+    /// # Errors
+    /// Fails when the connection does, or when IDLE ends at once, which a
+    /// server that refuses it does and which would otherwise spin.
+    pub async fn idle(&mut self, mailbox: &str, renew: Duration) -> Result<bool> {
+        self.select(mailbox).await?;
+        self.imap.state.set_idle_timeout(renew);
+
+        let tag = self.imap.enqueue_idle();
+        let started = std::time::Instant::now();
+        let outcome = self.imap.idle(tag).await;
+        let waited = started.elapsed();
+
+        outcome.map_err(|err| Error::Connection(format!("idle: {err}")))?;
+        if waited < IDLE_MIN {
+            return Err(Error::Server("the server ended IDLE at once".to_owned()));
+        }
+        Ok(waited + IDLE_SLACK < renew)
     }
 
     /// Moves with COPY, `\Deleted` and `UID EXPUNGE` even where the server

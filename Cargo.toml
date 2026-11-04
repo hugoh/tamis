@@ -30,7 +30,8 @@ serde_json = "1.0.154"
 sha2 = "0.11.1"
 sieve-rs = "0.7.3"
 thiserror = "2.0.21"
-tokio = { version = "1.54.1", features = ["macros", "rt", "time"] }
+tokio = { version = "1.54.1", features = ["macros", "rt", "sync", "test-util", "time"] }
+tokio-util = "0.7.20"
 toml = "1.1.8"
 tracing = "0.1.44"
 trait-variant = "0.1.3"

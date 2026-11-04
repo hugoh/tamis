@@ -5,6 +5,20 @@ use std::time::{Duration, SystemTime};
 
 use tracing::Level;
 
+/// Logs an event at a level chosen at run time, such as one from [`level`].
+macro_rules! log_at {
+    ($level:expr, $($rest:tt)*) => {
+        match $level {
+            tracing::Level::ERROR => tracing::error!($($rest)*),
+            tracing::Level::WARN => tracing::warn!($($rest)*),
+            tracing::Level::INFO => tracing::info!($($rest)*),
+            tracing::Level::DEBUG => tracing::debug!($($rest)*),
+            _ => tracing::trace!($($rest)*),
+        }
+    };
+}
+pub(crate) use log_at;
+
 const MULTIPLIER: u32 = 2;
 const JITTER: f64 = 0.2;
 /// Spaces the reminders once a streak is long.

@@ -6,12 +6,14 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
 
 use jiff::Timestamp;
 use tamis::classify::Label;
 use tamis::config::{Account, Config, Mode};
 use tamis::engine::Engine;
 use tamis::mail::client::{Client, DialConfig};
+use tamis::mail::watch::Watcher;
 use tamis::mail::{Error, Mailbox};
 use tamis::store::Store;
 
@@ -418,4 +420,74 @@ async fn the_engine_runs_a_pass_against_a_real_server() {
         filed.has_flag("$tamisfiled") && filed.message_id == "<new@x>",
         "{filed:?}"
     );
+}
+
+async fn wait_until_idling(watcher: &Watcher, folders: usize) {
+    for _ in 0..100 {
+        if watcher.idling() == folders {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the watcher never started idling on {folders} folders");
+}
+
+/// Swallows what has already been reported, so the next wait is for news.
+async fn drain(watcher: &Watcher) {
+    while tokio::time::timeout(Duration::from_millis(300), watcher.changed())
+        .await
+        .is_ok()
+    {}
+}
+
+#[tokio::test]
+async fn a_watcher_hears_of_new_mail_and_flag_changes() {
+    let Some((user, mut writer)) = connect().await else {
+        return;
+    };
+    let watcher = Watcher::start(
+        &config(&user, "secret").unwrap(),
+        &["INBOX".to_owned()],
+        Duration::from_millis(200),
+    );
+    wait_until_idling(&watcher, 1).await;
+    drain(&watcher).await;
+
+    let uid = writer
+        .append("INBOX", mail("w1", "").as_bytes(), &[])
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), watcher.changed())
+        .await
+        .expect("new mail was not reported");
+
+    wait_until_idling(&watcher, 1).await;
+    drain(&watcher).await;
+    writer.add_keyword("INBOX", &[uid], "$Junk").await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), watcher.changed())
+        .await
+        .expect("a flag change was not reported");
+
+    tokio::time::timeout(Duration::from_secs(5), watcher.close())
+        .await
+        .expect("close hung");
+}
+
+#[tokio::test]
+async fn a_watcher_closes_promptly_while_idle() {
+    let Some((user, _)) = connect().await else {
+        return;
+    };
+    let folders = ["INBOX".to_owned(), "Junk".to_owned()];
+    let watcher = Watcher::start(
+        &config(&user, "secret").unwrap(),
+        &folders,
+        Duration::from_millis(200),
+    );
+    wait_until_idling(&watcher, 2).await;
+
+    tokio::time::timeout(Duration::from_secs(5), watcher.close())
+        .await
+        .expect("close hung");
 }

@@ -13,6 +13,28 @@ pub enum Error {
         "{message_id} in {folder}: message not found where tamis left it; was it moved or deleted?"
     )]
     MessageGone { message_id: String, folder: String },
+    /// The decision was only recorded (shadow mode, or a verdict with no action).
+    #[error("nothing to undo: the action was never applied")]
+    NothingToUndo,
+    /// The decision isn't one of tamis's own filings.
+    #[error(
+        "only tamis's own filing can be undone; to retrain, drop the message in the other training folder"
+    )]
+    NotUndoable,
+    /// Tamis acted on the decision, so undo is the way to change it.
+    #[error("the action was applied; use undo to reverse it")]
+    AlreadyApplied,
+    /// The decision isn't one of tamis's own judgements.
+    #[error(
+        "only tamis's own judgements can be learnt from; to retrain, drop the message in a training folder"
+    )]
+    NotLearnable,
+    /// The decision has a later correction; ask for a label to change it again.
+    #[error("already corrected by decision {0}; pass --good or --spam to change it")]
+    AlreadyCorrected(i64),
+    /// An uncertain verdict has no opposite.
+    #[error("an uncertain verdict needs an explicit label: good or spam")]
+    NeedsLabel,
     /// An error with what was being done when it happened.
     #[error("{context}: {source}")]
     Context { context: String, source: Box<Error> },
@@ -28,7 +50,7 @@ impl Error {
         match self {
             Self::Mail(err) => err.is_connection(),
             Self::Context { source, .. } => source.is_connection(),
-            Self::Store(_) | Self::MessageGone { .. } => false,
+            _ => false,
         }
     }
 

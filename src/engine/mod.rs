@@ -9,8 +9,10 @@ mod features;
 mod filing;
 mod junk;
 mod keywords;
+mod learn;
 mod rescue;
 mod train;
+mod undo;
 
 use std::fmt::Write as _;
 use std::sync::Arc;

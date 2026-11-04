@@ -1224,3 +1224,287 @@ async fn keyword_learning_can_be_turned_off() {
             .any(|call| call.starts_with("search_keywords"))
     );
 }
+
+fn decision_where(env: &Env, pick: impl Fn(&Decision) -> bool) -> i64 {
+    env.decisions()
+        .into_iter()
+        .find(|d| pick(d))
+        .map(|d| d.id)
+        .unwrap()
+}
+
+/// A live engine that has filed one spam message into Junk.
+async fn filed_spam() -> (Env, i64) {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let id = decision_where(&env, |d| d.action == "move:Junk");
+    (env, id)
+}
+
+#[tokio::test]
+async fn undoing_filed_spam_brings_it_back_as_good() {
+    let (mut env, id) = filed_spam().await;
+
+    let account = env.engine.undo(id).await.unwrap();
+
+    assert_eq!(
+        account,
+        "moved back to INBOX, learnt as good, sender whitelisted"
+    );
+    assert!(env.mail().uids("Junk").is_empty());
+    assert_eq!(
+        env.mail().flags("INBOX", 2),
+        Some(vec!["$tamistrained".to_owned()])
+    );
+    assert_eq!(env.store().trained("<s1@x>").unwrap(), Some(Label::Good));
+    assert!(env.store().has_address("winner@lottery.example").unwrap());
+    assert!(env.store().decision(id).unwrap().undone);
+    let entry = &env.decisions()[0];
+    assert_eq!(
+        (
+            entry.reason.as_str(),
+            entry.action.as_str(),
+            entry.verdict.as_str()
+        ),
+        ("undo", "move:INBOX", "good")
+    );
+
+    assert!(
+        matches!(env.engine.undo(id).await.unwrap_err().to_string().as_str(), s if s.contains("already undone"))
+    );
+    assert_eq!(
+        env.engine.run_once().await.unwrap().scanned,
+        0,
+        "it is not judged again in the inbox"
+    );
+}
+
+#[tokio::test]
+async fn undoing_a_rescue_sends_it_back_as_spam() {
+    let mut env = Env::trained();
+    env.store()
+        .add_address("alice@friends.example", "sent")
+        .unwrap();
+    env.start().await;
+    env.mail().deliver(
+        "Junk",
+        &authenticated("r1", "Alice <alice@friends.example>"),
+        &[],
+    );
+    env.engine.run_once().await.unwrap();
+    let id = decision_where(&env, |d| d.action == "move:INBOX");
+
+    let account = env.engine.undo(id).await.unwrap();
+
+    assert_eq!(
+        account,
+        "moved back to Junk, learnt as spam, sender removed from whitelist"
+    );
+    assert_eq!(env.mail().uids("Junk").len(), 1);
+    assert_eq!(env.store().trained("<r1@x>").unwrap(), Some(Label::Spam));
+    assert!(!env.store().has_address("alice@friends.example").unwrap());
+}
+
+#[tokio::test]
+async fn undoing_an_uncertain_flag_clears_it() {
+    let mut env = Env::trained();
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &unknown("u1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let id = decision_where(&env, |d| d.action == "keyword:$TamisUncertain");
+
+    assert_eq!(
+        env.engine.undo(id).await.unwrap(),
+        "cleared $TamisUncertain"
+    );
+
+    assert_eq!(env.mail().flags("INBOX", uid), Some(vec![]));
+    assert_eq!(env.decisions()[0].action, "unflag:$TamisUncertain");
+}
+
+#[tokio::test]
+async fn some_decisions_cannot_be_undone() {
+    let mut env = Env::trained_with(Mode::Shadow, |_| {});
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let recorded = decision_where(&env, |d| !d.applied);
+
+    let training = {
+        let message = Message {
+            message_id: "<t@x>".into(),
+            ..Message::default()
+        };
+        let judgement = Judgement {
+            verdict: Verdict::Good,
+            reason: Reason::TrainFolder,
+            score: 0.0,
+        };
+        env.engine
+            .record("INBOX", &message, &judgement, &Action::TrainGood, true)
+            .unwrap();
+        decision_where(&env, |d| d.reason == "train folder")
+    };
+
+    let cases = [
+        (recorded, "nothing to undo"),
+        (training, "only tamis's own filing"),
+        (9999, "not found"),
+    ];
+    for (id, want) in cases {
+        let err = env.engine.undo(id).await.unwrap_err().to_string();
+        assert!(err.contains(want), "{id}: {err}");
+    }
+}
+
+#[tokio::test]
+async fn an_undo_that_cannot_finish_can_be_retried() {
+    let (mut env, id) = filed_spam().await;
+
+    env.mail().fail("move", MailError::Server("nope".into()));
+    assert!(env.engine.undo(id).await.is_err());
+    assert!(!env.store().decision(id).unwrap().undone);
+
+    env.engine.undo(id).await.unwrap();
+    assert!(env.store().decision(id).unwrap().undone);
+}
+
+#[tokio::test]
+async fn undo_needs_the_message_where_tamis_left_it() {
+    let (mut env, id) = filed_spam().await;
+    env.mail()
+        .move_messages("Junk", &[1], "TrainSpam")
+        .await
+        .unwrap();
+
+    let err = env.engine.undo(id).await.unwrap_err();
+
+    assert!(err.is_message_gone(), "{err}");
+    assert!(!env.store().decision(id).unwrap().undone);
+}
+
+#[tokio::test]
+async fn learning_from_a_shadow_decision_teaches_the_opposite() {
+    let cases = [
+        (
+            "spam becomes good",
+            spam("l1"),
+            None,
+            Label::Good,
+            "learnt as good, sender whitelisted",
+        ),
+        (
+            "good becomes spam",
+            good("l1"),
+            None,
+            Label::Spam,
+            "learnt as spam, sender removed from whitelist",
+        ),
+        (
+            "a label overrides",
+            good("l1"),
+            Some(Label::Good),
+            Label::Good,
+            "learnt as good, sender whitelisted",
+        ),
+    ];
+    for (name, raw, label, want, account) in cases {
+        let mut env = Env::trained_with(Mode::Shadow, |_| {});
+        env.start().await;
+        env.mail().deliver("INBOX", &raw, &[]);
+        env.engine.run_once().await.unwrap();
+        let id = env.decisions()[0].id;
+
+        assert_eq!(
+            env.engine.learn(id, label).await.unwrap(),
+            account,
+            "{name}"
+        );
+
+        assert_eq!(env.store().trained("<l1@x>").unwrap(), Some(want), "{name}");
+        let entry = &env.decisions()[0];
+        assert_eq!(entry.reason, "correction", "{name}");
+        assert_eq!(entry.action, format!("train:{}", want.as_str()), "{name}");
+    }
+}
+
+#[tokio::test]
+async fn uncertain_decisions_need_a_label() {
+    let mut env = Env::trained_with(Mode::Shadow, |_| {});
+    env.start().await;
+    env.mail().deliver("INBOX", &unknown("u1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let id = env.decisions()[0].id;
+
+    assert!(
+        env.engine
+            .learn(id, None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("needs an explicit label")
+    );
+    env.engine.learn(id, Some(Label::Spam)).await.unwrap();
+    assert!(
+        env.engine
+            .learn(id, None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("already corrected")
+    );
+    env.engine.learn(id, Some(Label::Good)).await.unwrap();
+}
+
+#[tokio::test]
+async fn learning_refuses_what_is_not_tamis_own_unapplied_judgement() {
+    let (mut env, applied) = filed_spam().await;
+    let message = Message {
+        message_id: "<t@x>".into(),
+        ..Message::default()
+    };
+    let judgement = Judgement {
+        verdict: Verdict::Good,
+        reason: Reason::TrainFolder,
+        score: 0.0,
+    };
+    env.engine
+        .record("INBOX", &message, &judgement, &Action::TrainGood, true)
+        .unwrap();
+    let training = decision_where(&env, |d| d.reason == "train folder");
+
+    let cases = [
+        (applied, "use undo"),
+        (training, "only tamis's own judgements"),
+    ];
+    for (id, want) in cases {
+        let err = env.engine.learn(id, None).await.unwrap_err().to_string();
+        assert!(err.contains(want), "{id}: {err}");
+    }
+}
+
+#[tokio::test]
+async fn learning_looks_in_junk_when_the_message_was_moved_there() {
+    let mut env = Env::trained_with(Mode::Shadow, |_| {});
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &good("l1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let id = env.decisions()[0].id;
+    env.mail()
+        .move_messages("INBOX", &[uid], "Junk")
+        .await
+        .unwrap();
+
+    env.engine.learn(id, None).await.unwrap();
+    assert_eq!(env.decisions()[0].mailbox, "Junk");
+
+    env.mail()
+        .move_messages("Junk", &[1], "TrainSpam")
+        .await
+        .unwrap();
+    let id = env.decisions()[0].id;
+    let err = env.engine.learn(id, Some(Label::Good)).await.unwrap_err();
+    assert!(err.is_message_gone(), "{err}");
+}

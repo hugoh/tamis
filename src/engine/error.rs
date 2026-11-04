@@ -8,6 +8,8 @@ pub enum Error {
     Mail(#[from] mail::Error),
     #[error(transparent)]
     Store(#[from] store::Error),
+    #[error(transparent)]
+    Rules(#[from] crate::rules::Error),
     /// The message is no longer where tamis put it.
     #[error(
         "{message_id} in {folder}: message not found where tamis left it; was it moved or deleted?"
@@ -50,6 +52,16 @@ impl Error {
         match self {
             Self::Mail(err) => err.is_connection(),
             Self::Context { source, .. } => source.is_connection(),
+            _ => false,
+        }
+    }
+
+    /// Whether the server rejected the credentials.
+    #[must_use]
+    pub fn is_login_rejected(&self) -> bool {
+        match self {
+            Self::Mail(mail::Error::Login(_)) => true,
+            Self::Context { source, .. } => source.is_login_rejected(),
             _ => false,
         }
     }

@@ -1,7 +1,9 @@
 pub mod auth;
 pub mod classify;
 pub mod config;
+pub mod report;
 pub mod retry;
+pub mod secret;
 
 #[must_use]
 pub fn version() -> &'static str {

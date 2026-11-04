@@ -1,5 +1,10 @@
 [advisories]
 version = 2
+ignore = [
+  { id = "RUSTSEC-2026-0370", reason = "zvariant was merged into zbus 6; secret-service (via keyring) still pins zbus 5" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names was merged into zbus 6; secret-service (via keyring) still pins zbus 5" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive was merged into zbus 6; secret-service (via keyring) still pins zbus 5" },
+]
 
 [licenses]
 version = 2

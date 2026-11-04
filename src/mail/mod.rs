@@ -3,7 +3,9 @@
 //! (fetches never mark mail as read; moves never fall back to a bare
 //! `EXPUNGE`). [`fake::Fake`] is an in-memory implementation for tests.
 
+pub mod client;
 pub mod fake;
+mod tasks;
 
 use jiff::Timestamp;
 use thiserror::Error;

@@ -3,6 +3,7 @@ pub mod classify;
 pub mod config;
 pub mod daemon;
 pub mod engine;
+pub mod live;
 pub mod mail;
 pub mod monitor;
 pub mod report;

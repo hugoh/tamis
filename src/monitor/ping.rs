@@ -142,6 +142,12 @@ pub struct Pinger {
 }
 
 impl Pinger {
+    /// A pinger that does nothing.
+    #[must_use]
+    pub fn disabled() -> Self {
+        Self { inner: None }
+    }
+
     /// Starts a pinger for the check at `raw_url`, or an inert one when it is
     /// empty. It runs until closed.
     ///

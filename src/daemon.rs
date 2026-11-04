@@ -11,8 +11,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::{self, Config};
 use crate::engine::{self, Engine};
+use crate::live::{Status, Waiting};
 use crate::mail::watch::Watcher;
 use crate::mail::{self, Mailbox};
+use crate::monitor::Pinger;
 use crate::retry::{self, Backoff, Streak, log_at};
 use crate::rules::Rules;
 use crate::store::Store;
@@ -46,6 +48,19 @@ pub trait LocalConnector {
     async fn watch(&mut self, config: &Config) -> Option<Watcher>;
 }
 
+fn summary_text(summary: &engine::Summary) -> String {
+    format!(
+        "scanned {}, spam {}, uncertain {}, good {}, corrected {}, trained {}, rescued {}",
+        summary.scanned,
+        summary.spam,
+        summary.uncertain,
+        summary.good,
+        summary.corrected,
+        summary.trained,
+        summary.rescued
+    )
+}
+
 /// Reads the configuration again, on SIGHUP.
 pub type Reload = Box<dyn FnMut() -> Result<Config, config::Error> + Send>;
 
@@ -64,6 +79,9 @@ pub struct Daemon<C: Connector> {
     check_rules: bool,
     last_prune: Option<tokio::time::Instant>,
     watcher: Option<Watcher>,
+    status: Arc<Status>,
+    /// The heartbeat check; inert when monitoring isn't configured.
+    beat: Pinger,
 }
 
 /// What ended the wait between passes.
@@ -97,7 +115,24 @@ impl<C: Connector> Daemon<C> {
             check_rules,
             last_prune: None,
             watcher: None,
+            status: Arc::new(Status::new(Timestamp::now())),
+            beat: Pinger::disabled(),
         }
+    }
+
+    /// Reports passes and failures to `status`, for the web interface and for
+    /// the commands that run in another process.
+    #[must_use]
+    pub fn with_status(mut self, status: Arc<Status>) -> Self {
+        self.status = status;
+        self
+    }
+
+    /// Pings `beat` after passes that work and when trouble goes on.
+    #[must_use]
+    pub fn with_heartbeat(mut self, beat: Pinger) -> Self {
+        self.beat = beat;
+        self
     }
 
     /// Makes a single pass and returns what it did.
@@ -113,6 +148,7 @@ impl<C: Connector> Daemon<C> {
         loop {
             self.prune_journal();
 
+            self.status.wait(Waiting::Running);
             let outcome = self.pass().await;
             if self.shutdown.is_cancelled() {
                 break;
@@ -120,7 +156,17 @@ impl<C: Connector> Daemon<C> {
 
             let failure_wait = self.after(&outcome);
             let wake = match outcome {
-                Err(_) => self.sleep(failure_wait).await,
+                Err(err) => {
+                    let now = Timestamp::now();
+                    self.status.failed(now, &err.to_string());
+                    if err.is_login_rejected() {
+                        self.status.login_rejected();
+                    }
+                    self.status
+                        .retry_at(now.checked_add(failure_wait).unwrap_or(now));
+                    self.status.wait(Waiting::Polling);
+                    self.sleep(failure_wait).await
+                }
                 Ok(_) => self.wait_for_next_pass().await,
             };
             match wake {
@@ -133,6 +179,8 @@ impl<C: Connector> Daemon<C> {
         if let Some(watcher) = self.watcher.take() {
             watcher.close().await;
         }
+        let beat = std::mem::replace(&mut self.beat, Pinger::disabled());
+        beat.close().await;
     }
 
     /// One pass over the account on a fresh connection.
@@ -167,6 +215,8 @@ impl<C: Connector> Daemon<C> {
             }
         };
 
+        self.status
+            .pass_done(Timestamp::now(), &summary_text(&summary));
         tracing::debug!(
             mode = ?cfg.policy.mode,
             scanned = summary.scanned,
@@ -191,6 +241,7 @@ impl<C: Connector> Daemon<C> {
         };
 
         let failures = self.streak.fail(std::time::SystemTime::now());
+        self.tell(err, failures);
 
         if err.is_login_rejected() {
             self.login = self.login || failures == 1;
@@ -216,9 +267,29 @@ impl<C: Connector> Daemon<C> {
         wait
     }
 
+    /// Reports a failed pass to the monitoring service: a rejected login at
+    /// once, anything else once it has gone on for `fail_after` passes. Fewer
+    /// are left to the check's grace time, so a short outage doesn't page
+    /// anyone.
+    fn tell(&self, err: &engine::Error, failures: u32) {
+        if err.is_login_rejected() {
+            self.beat.fail(&format!("login rejected: {err}"));
+        } else if failures >= self.cfg.monitor.fail_after {
+            let since = self.streak.since().map_or_else(String::new, |at| {
+                Timestamp::try_from(at)
+                    .map(|t| t.to_string())
+                    .unwrap_or_default()
+            });
+            self.beat.fail(&format!(
+                "{failures} passes failed in a row since {since}: {err}"
+            ));
+        }
+    }
+
     /// Ends the trouble after a pass that worked, saying so if there was.
     fn recovered(&mut self) {
         self.pace.reset();
+        self.beat.success(&self.status.snapshot().last_summary);
         if let Some((failures, downtime)) = self.streak.recover(std::time::SystemTime::now()) {
             let message = if self.login {
                 "login accepted again"
@@ -250,6 +321,12 @@ impl<C: Connector> Daemon<C> {
             tracing::info!(folders = ?cfg.folders.watch, "imap loop started");
         }
         let poll = self.cfg.policy.poll_interval;
+        let idling = self.watcher.as_ref().is_some_and(|w| w.idling() > 0);
+        self.status.wait(if idling {
+            Waiting::Idle
+        } else {
+            Waiting::Polling
+        });
 
         let news = async {
             match &self.watcher {
@@ -400,6 +477,7 @@ mod tests {
         shutdown: CancellationToken,
         hangup: Arc<Notify>,
         reloads: Arc<AtomicUsize>,
+        status: Arc<Status>,
         _dir: tempfile::TempDir,
     }
 
@@ -440,6 +518,7 @@ mod tests {
             let reloads = Arc::new(AtomicUsize::new(0));
             let shutdown = CancellationToken::new();
             let hangup = Arc::new(Notify::new());
+            let status = Arc::new(Status::new(Timestamp::now()));
 
             let counted = Arc::clone(&reloads);
             let reload: Reload = Box::new(move || {
@@ -459,9 +538,11 @@ mod tests {
                 reload,
                 shutdown.clone(),
                 Arc::clone(&hangup),
-            );
+            )
+            .with_status(Arc::clone(&status));
             Self {
                 daemon: Some(daemon),
+                status,
                 mail,
                 store,
                 connects,
@@ -722,6 +803,64 @@ mod tests {
         after(20).await;
         assert!(env.connects() >= 4, "and keeps retrying");
 
+        env.stop(handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_status_follows_the_passes() {
+        let mut env = Env::new(|| unreachable!());
+        let handle = env.spawn();
+
+        after(5).await;
+        let snapshot = env.status.snapshot();
+
+        assert_eq!(snapshot.passes, 3);
+        assert_eq!(
+            snapshot.last_summary,
+            "scanned 0, spam 0, uncertain 0, good 0, corrected 0, trained 0, rescued 0"
+        );
+        assert_eq!(
+            (snapshot.failures, snapshot.waiting),
+            (0, Some(Waiting::Polling)),
+            "nothing is idling here"
+        );
+        env.stop(handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_status_records_failures_and_when_the_next_try_is_due() {
+        let mut env = Env::new(|| unreachable!());
+        env.fail_next(mail::Error::Connection("down".into()));
+        let handle = env.spawn();
+        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        let failing = env.status.snapshot();
+        assert_eq!(
+            (failing.passes, failing.failures, failing.rejected),
+            (0, 1, false)
+        );
+        assert!(
+            failing.last_error.contains("down"),
+            "{}",
+            failing.last_error
+        );
+        assert!(failing.retry_at.is_some() && failing.failing_since.is_some());
+
+        after(5).await;
+        let recovered = env.status.snapshot();
+        assert_eq!((recovered.failures, recovered.retry_at), (0, None));
+        assert!(recovered.recovered_at.is_some());
+        env.stop(handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_rejected_login_is_marked_in_the_status() {
+        let mut env = Env::new(|| unreachable!());
+        env.fail_next(mail::Error::Login("nope".into()));
+        let handle = env.spawn();
+        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        assert!(env.status.snapshot().rejected);
         env.stop(handle).await;
     }
 }

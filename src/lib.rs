@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod classify;
+pub mod retry;
 
 #[must_use]
 pub fn version() -> &'static str {

@@ -9,10 +9,12 @@ license = "MIT"
 publish = false
 
 [dependencies]
+fastrand = "2.5.0"
 html5ever = "0.40.1"
 mail-parser = "0.11.9"
 psl = "2.1.246"
 regex = "1.13.1"
+tracing = "0.1.44"
 unicode-general-category = "1.1.0"
 url = "2.5.8"
 

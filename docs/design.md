@@ -115,17 +115,18 @@ path.
 ## Learning and corrections
 
 The daemon runs remotely, so training must come from what the user already
-does in their mail client. Three channels, all on by default:
+does in their mail client. Three channels, all on by default and all built:
 
-1. **Train folders**: `TrainSpam` and `TrainGood` per account (configurable).
-   Messages dropped there are trained, then moved to Junk or back to the
-   Inbox.
-2. **Inferred moves**: every message tamis touches is recorded (Message-ID,
-   content hash, verdict) and tagged with a `$TamisFiled` keyword.
-   - Filed as spam, later back in the Inbox: false positive, train good.
-   - Left in the Inbox, later in Junk: missed spam, train spam.
-3. **Client junk keywords**: `$Junk` / `$NotJunk`, plus Apple Mail's
-   `Junk` / `NotJunk`.
+1. **Train folders**: `TrainSpam` and `TrainGood` per account. See
+   [Where messages go](engine.md#where-messages-go) and
+   [Learn](engine.md#learn).
+2. **Inferred moves**: every message tamis touches is journalled and tagged
+   with a `$TamisFiled` keyword, so a message filed as spam and later back in
+   the Inbox is a false positive (train good), and one left in the Inbox and
+   later in Junk is missed spam (train spam). See
+   [Missed spam](engine.md#missed-spam) and [Rescue](engine.md#rescue).
+3. **Client junk keywords**: `$Junk` / `$NotJunk`, plus Apple Mail's `Junk` /
+   `NotJunk`. See [Junk and Not Junk marks](engine.md#junk-and-not-junk-marks).
 
 ### Open question: should learned tokens age out?
 
@@ -164,18 +165,16 @@ training can be compared with today's behaviour on real mail. See
 
 ## Actions and safety
 
-- Spam tier: move to Junk.
-- Uncertain tier: flag in place with `$TamisUncertain`; nothing moves. (A
-  `Junk/Uncertain` folder and a flag-only option for spam were planned and
-  not built.)
-- Rescue: whitelisted sender with DKIM/DMARC pass, or a strong good score,
-  in the provider's Junk gets moved back to the Inbox (or a `Rescued` folder).
-- Never delete. Every action goes into a journal and can be undone.
-- All actions are idempotent: a move can be repeated after a failure. Moves
-  are not rate-limited.
-- **Shadow mode** for the first one to two weeks: report what would have
-  happened, act on nothing.
-- Always fetch with `BODY.PEEK` so scanning never marks mail as read.
+Built, and described in [engine.md](engine.md): [actions](engine.md#actions)
+(spam to Junk, uncertain flagged in place with `$TamisUncertain`, good mail
+filed by [rules](rules.md)), [rescue](engine.md#rescue) from the provider's
+Junk, [undo](engine.md#undo), shadow mode for the first one to two weeks,
+and the [safety rules](engine.md#safety-rules): never delete, always journal,
+always fetch with `BODY.PEEK`.
+
+Not built: a `Junk/Uncertain` folder, a flag-only option for spam, and rate
+limiting of moves. Actions are idempotent, so a move can be repeated after a
+failure.
 
 ## Feedback
 
@@ -189,13 +188,10 @@ than the mailbox.
 
 ## Onboarding
 
-1. Connect: server auto-discovery plus an app-specific password.
-2. Discover folders via SPECIAL-USE (`\Junk`, `\Sent`); user confirms which to
-   watch.
-3. Build the whitelist from Sent recipients (last ~2 years) and contacts.
-4. Seed the corpus: Junk as spam; read-and-kept Inbox/Archive mail and mail
-   from whitelisted senders as good. A few hundred of each, balanced.
-5. Shadow mode, then go live, with an accuracy page.
+[Bootstrap](engine.md#bootstrap) does the seeding: the whitelist from Sent
+recipients, Junk as spam, read-and-kept mail as good, then shadow mode and
+going live. Server auto-discovery and a folder-confirmation step were planned
+and are not built; the folders come from the configuration.
 
 ## iCloud notes
 
@@ -203,21 +199,18 @@ The first target account is iCloud, the most constrained of the big
 providers:
 
 - IMAP only (`imap.mail.me.com:993`), app-specific password, no OAuth, no JMAP.
-- CONDSTORE/QRESYNC are advertised but have been buggy, and iCloud never
-  confirms `ENABLE QRESYNC`. tamis doesn't use them: it searches
-  each pass instead of tracking flag changes. The IMAP client (`imap-next`) would
-  handle VANISHED, but tamis never asks for it.
-- MOVE is missing. `tamis probe` measures what the extensions tamis relies on
-  (IDLE, UIDPLUS, MOVE, SPECIAL-USE, custom keywords) actually do.
+- No MOVE, and CONDSTORE/QRESYNC are advertised but have been buggy: how
+  tamis copes is in [imap.md](imap.md#server-behaviour-tamis-relies-on) and
+  [capabilities](imap.md#capabilities). `tamis probe` measures what a given
+  server's extensions actually do.
 - Measured with `tamis probe --write` on a real account (2026-11-03): IDLE,
   UIDPLUS and custom keywords (`PERMANENTFLAGS` includes `\*`) work;
   APPENDUID is returned; `BODY.PEEK` leaves mail unread; two concurrent
   connections are accepted; an IDLE push arrives in about 4 seconds; MOVE and
   SPECIAL-USE are absent, so the Junk folder is found by name, not by
-  `\Junk`; the COPY fallback below works.
-- Without MOVE, use COPY + `\Deleted` + `UID EXPUNGE`; never plain `EXPUNGE`
-  without UIDPLUS.
-- Connection limits are undocumented: IDLE on the watched folders only, poll the rest.
+  `\Junk`; the COPY + STORE + UID EXPUNGE fallback works.
+- Connection limits are undocumented: IDLE on the watched folders only, poll the
+  rest ([Idle and polling](imap.md#idle-and-polling)).
 - Apple's server filter, Mail.app's local filter and SpamSieve all move mail
   too; tamis must tolerate other actors.
 - No server-side Sieve, which is part of why this project exists. Good mail is

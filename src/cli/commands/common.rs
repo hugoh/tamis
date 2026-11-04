@@ -1,4 +1,6 @@
 use std::fs;
+use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use jiff::Timestamp;
@@ -8,7 +10,9 @@ use super::super::App;
 use super::super::password::Who;
 use super::super::style::Palette;
 use crate::config::Config;
+use crate::engine::Engine;
 use crate::mail::client::{Client, DialConfig};
+use crate::rules::Rules;
 use crate::store::Store;
 
 /// Loads the configuration and opens the state database.
@@ -54,4 +58,18 @@ pub(super) async fn connect(app: &mut App, cfg: &Config) -> Result<Client> {
         plaintext: app.env.plaintext_imap,
     };
     Client::dial(&dial).await.context("connect")
+}
+
+/// An engine on a fresh connection, with the filing rules if any.
+pub(super) async fn engine_for(
+    app: &mut App,
+    cfg: &Arc<Config>,
+    store: &Arc<Store>,
+) -> Result<Engine<Client>> {
+    let client = connect(app, cfg).await?;
+    let mut engine = Engine::new(client, Arc::clone(store), Arc::clone(cfg));
+    if !cfg.rules.script.is_empty() {
+        engine.set_rules(Rules::load(Path::new(&cfg.rules.script))?);
+    }
+    Ok(engine)
 }

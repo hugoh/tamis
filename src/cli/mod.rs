@@ -1,6 +1,7 @@
 //! The tamis command-line interface.
 
 mod commands;
+pub mod logging;
 mod password;
 pub mod style;
 #[cfg(test)]
@@ -14,6 +15,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use tokio_util::sync::CancellationToken;
 
+use crate::classify::Label;
 use crate::config;
 use crate::secret::Keyring;
 use password::PasswordFinder;
@@ -34,7 +36,9 @@ pub enum PromptError {
 
 /// Asks for a secret without echoing it.
 pub type Prompt = Box<dyn Fn(&str) -> Result<String, PromptError> + Send + Sync>;
-pub type Getenv = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
+pub type Getenv = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+/// Starts logging: whether `--verbose` was given, and `$JOURNAL_STREAM`.
+pub type LogInit = Box<dyn Fn(bool, Option<String>) + Send + Sync>;
 
 /// The process environment [`run`] works against.
 pub struct Env {
@@ -51,6 +55,31 @@ pub struct Env {
     /// Dials IMAP without TLS. Only for local test servers.
     pub plaintext_imap: bool,
     pub version: String,
+    /// Sets up logging once the command line is read; `None` logs nowhere.
+    pub logging: Option<LogInit>,
+}
+
+impl Env {
+    /// Takes the environment for a command that outlives the call, leaving
+    /// one that reads nothing and writes nowhere.
+    pub(crate) fn take(&mut self) -> Self {
+        let getenv = Arc::clone(&self.getenv);
+        std::mem::replace(
+            self,
+            Self {
+                stdin: Box::new(std::io::empty()),
+                stdout: Box::new(std::io::sink()),
+                stderr: Box::new(std::io::sink()),
+                getenv,
+                stdout_is_terminal: false,
+                prompt: None,
+                keyring: None,
+                plaintext_imap: self.plaintext_imap,
+                version: self.version.clone(),
+                logging: None,
+            },
+        )
+    }
 }
 
 /// Marks an error the command already told the user about.
@@ -111,6 +140,42 @@ enum Command {
     Login,
     /// Remove the account password from the system keychain
     Logout,
+    /// Seed the whitelist and the filter from existing mail
+    #[command(
+        long_about = "Seed the whitelist from Sent recipients and the filter from Junk (as spam) and\nold read inbox mail (as good), then start watching from current mail."
+    )]
+    Bootstrap(BootstrapArgs),
+    /// Judge new mail, then keep watching
+    #[command(
+        long_about = "Train from the training folders and judge new mail in the watched folders,\nevery policy.poll_interval until interrupted. In shadow mode decisions are only\nrecorded; see them with 'tamis log'."
+    )]
+    Run {
+        /// Make a single pass and exit
+        #[arg(long)]
+        once: bool,
+    },
+    /// Reverse decisions tamis applied
+    #[command(
+        long_about = "Reverse decisions tamis applied, by the IDs 'tamis log' shows. Mail filed\nto Junk is moved back, learnt as good and its sender whitelisted; an\nuncertain flag is cleared."
+    )]
+    Undo {
+        #[arg(required = true)]
+        ids: Vec<i64>,
+    },
+    /// Teach tamis the right answer for decisions it only recorded
+    #[command(
+        long_about = "Teach tamis the right answer for decisions it recorded without acting on, by\nthe IDs 'tamis log' shows (shadow mode). With no flag it learns the opposite\nof the verdict. The mail stays where it is, in its folder or in Junk. A\ncorrection can be learnt again to change it. Use 'tamis undo' for other\ndecisions that were applied."
+    )]
+    Learn {
+        #[arg(required = true)]
+        ids: Vec<i64>,
+        /// Learn as good
+        #[arg(long, conflicts_with = "spam")]
+        good: bool,
+        /// Learn as spam
+        #[arg(long)]
+        spam: bool,
+    },
     /// Show recent decisions
     #[command(
         long_about = "Show recent decisions, newest first. In shadow mode, actions read\n\"would ...\": what live mode would have done."
@@ -160,6 +225,26 @@ enum Command {
     },
     /// Print the version
     Version,
+}
+
+/// What `bootstrap` learns from.
+#[derive(clap::Args, Debug)]
+pub(crate) struct BootstrapArgs {
+    /// Recent sent messages to whitelist recipients from
+    #[arg(long)]
+    pub sent: Option<usize>,
+    /// FOLDER=N: train the latest N messages as spam (default: junk folder=500)
+    #[arg(short = 's', long = "spam")]
+    pub spam: Vec<String>,
+    /// FOLDER=N: train the latest N read messages as good (default: first watched folder=500)
+    #[arg(short = 'g', long = "good")]
+    pub good: Vec<String>,
+    /// Only train read mail at least this old as good
+    #[arg(long, default_value = "168h")]
+    pub good_min_age: String,
+    /// Learn already-learnt mail again with the current tokenizer; leaves the whitelist and watch position alone
+    #[arg(long)]
+    pub refresh: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -284,6 +369,19 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
         Command::Init { host, user } => commands::init(app, &host, &user),
         Command::Login => commands::login(app).await,
         Command::Logout => commands::logout(app),
+        Command::Bootstrap(args) => commands::bootstrap(app, &args).await,
+        Command::Run { once } => commands::run(app, once).await,
+        Command::Undo { ids } => commands::undo(app, &ids).await,
+        Command::Learn { ids, good, spam } => {
+            let label = if good {
+                Some(Label::Good)
+            } else if spam {
+                Some(Label::Spam)
+            } else {
+                None
+            };
+            commands::learn(app, &ids, label).await
+        }
         Command::Log { number } => commands::log(app, number),
         Command::Status => commands::status(app),
         Command::Doctor { json } => commands::doctor(app, json),

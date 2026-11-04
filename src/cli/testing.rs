@@ -51,7 +51,7 @@ impl Harness {
             stdin: Box::new(std::io::Cursor::new(stdin.as_bytes().to_vec())),
             stdout: Box::new(out.clone()),
             stderr: Box::new(err.clone()),
-            getenv: Box::new(move |key| {
+            getenv: Arc::new(move |key| {
                 vars.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
             }),
             stdout_is_terminal: false,
@@ -59,6 +59,7 @@ impl Harness {
             keyring: Some(Arc::clone(&keyring) as Arc<dyn Keyring>),
             plaintext_imap: true,
             version: "1.2.3".to_owned(),
+            logging: None,
         };
         Self {
             env,

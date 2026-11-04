@@ -20,4 +20,4 @@ for _ in {1..60}; do
   sleep 0.5
 done
 
-TAMIS_TEST_IMAP="$ip:143" cargo nextest run --test imap_dovecot "$@"
+TAMIS_TEST_IMAP="$ip:143" cargo nextest run --test imap_dovecot --test cli_dovecot "$@"

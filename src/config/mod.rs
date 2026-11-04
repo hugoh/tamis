@@ -3,6 +3,8 @@
 mod duration;
 mod web;
 
+pub use duration::parse as parse_duration;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;

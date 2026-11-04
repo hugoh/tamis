@@ -18,7 +18,7 @@ async fn main() -> ExitCode {
         stdin: Box::new(BufReader::new(std::io::stdin())),
         stdout: Box::new(std::io::stdout()),
         stderr: Box::new(std::io::stderr()),
-        getenv: Box::new(|key| std::env::var(key).ok()),
+        getenv: Arc::new(|key| std::env::var(key).ok()),
         stdout_is_terminal: std::io::stdout().is_terminal(),
         prompt: Some(Box::new(move |prompt| {
             if stdin_is_terminal {
@@ -32,6 +32,9 @@ async fn main() -> ExitCode {
             .ok()
             .map(|system| Arc::new(system) as Arc<dyn Keyring>),
         plaintext_imap: false,
+        logging: Some(Box::new(|verbose, journal| {
+            cli::logging::init(verbose, journal.as_deref());
+        })),
         version: option_env!("TAMIS_VERSION")
             .unwrap_or(env!("CARGO_PKG_VERSION"))
             .to_owned(),

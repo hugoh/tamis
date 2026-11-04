@@ -64,6 +64,11 @@ impl<M: Mailbox> Engine<M> {
         }
     }
 
+    /// Gives the connection back, to close it politely.
+    pub fn into_mailbox(self) -> M {
+        self.mail
+    }
+
     /// Files good mail into the folders `rules` picks; without it nothing is
     /// filed.
     pub fn set_rules(&mut self, rules: Rules) {

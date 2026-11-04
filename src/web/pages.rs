@@ -15,11 +15,10 @@ use tracing::warn;
 use super::listing::{Column, PAGE_SIZE, SortChoice, TableState, count_label};
 use super::{App, Job, fail};
 use crate::classify::Label;
+use crate::journal::{Reason, Verdict};
 use crate::live::Waiting;
 use crate::store::{self, Decision, DecisionQuery, DecisionSort};
 use crate::{health, rules};
-
-const VERDICTS: [&str; 3] = ["spam", "uncertain", "good"];
 
 pub(super) fn local_time(at: Timestamp) -> String {
     at.to_zoned(TimeZone::system())
@@ -199,7 +198,7 @@ const DECISION_SORTS: [SortChoice; 9] = [
 ];
 
 fn own_judgement(decision: &Decision) -> bool {
-    matches!(decision.reason.as_str(), "bayes" | "whitelisted")
+    decision.reason.is_own_judgement()
 }
 
 fn undoable(decision: &Decision) -> bool {
@@ -208,14 +207,14 @@ fn undoable(decision: &Decision) -> bool {
 
 fn learnable(decision: &Decision) -> bool {
     decision.corrected_by == 0
-        && ((!decision.applied && own_judgement(decision)) || decision.reason == "correction")
+        && ((!decision.applied && own_judgement(decision)) || decision.reason == Reason::Correction)
 }
 
 fn action_label(decision: &Decision) -> String {
-    if decision.action != "none" && !decision.applied {
+    if !decision.action.is_none() && !decision.applied {
         format!("would {}", decision.action)
     } else {
-        decision.action.clone()
+        decision.action.to_string()
     }
 }
 
@@ -223,8 +222,8 @@ fn decision_row(decision: &Decision) -> DecisionRow {
     DecisionRow {
         id: decision.id,
         when: local_time(decision.at),
-        verdict: decision.verdict.clone(),
-        reason: decision.reason.clone(),
+        verdict: decision.verdict.to_string(),
+        reason: decision.reason.to_string(),
         score: format!("{:.2}", decision.score),
         action: action_label(decision),
         folder: decision.mailbox.clone(),
@@ -248,11 +247,8 @@ pub(super) async fn decisions(
 ) -> Response {
     let query = params(query);
     let mut state = TableState::parse("/", &query, &DECISION_SORTS);
-    let verdict = query
-        .get("verdict")
-        .filter(|v| VERDICTS.contains(&v.as_str()))
-        .cloned()
-        .unwrap_or_default();
+    let chosen: Option<Verdict> = query.get("verdict").and_then(|v| v.parse().ok());
+    let verdict = chosen.map_or_else(String::new, |v| v.to_string());
     state.filters.insert("verdict", verdict.clone());
     let only_id = query
         .get("id")
@@ -265,7 +261,7 @@ pub(super) async fn decisions(
 
     let (found, total) = match app.db.query_decisions(&DecisionQuery {
         id: only_id,
-        verdict: verdict.clone(),
+        verdict: chosen,
         search: state.search.clone(),
         sort: DecisionSort::from_name(state.sort),
         asc: state.asc,
@@ -278,7 +274,7 @@ pub(super) async fn decisions(
 
     let rows: Vec<DecisionRow> = found.iter().map(decision_row).collect();
     let verdicts = std::iter::once(("", "All"))
-        .chain(VERDICTS.iter().map(|v| (*v, *v)))
+        .chain(Verdict::ALL.map(|v| (v.as_str(), v.as_str())))
         .map(|(value, label)| VerdictChoice {
             value,
             label,

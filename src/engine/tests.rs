@@ -160,7 +160,7 @@ async fn spam_is_only_recorded_in_shadow_mode() {
     assert_eq!(
         (
             decision.verdict.as_str(),
-            decision.action.as_str(),
+            decision.action.to_string().as_str(),
             decision.applied
         ),
         ("spam", "move:Junk", false)
@@ -206,7 +206,11 @@ async fn doubtful_mail_is_flagged_and_good_mail_is_left_alone() {
         Some(vec!["$tamisuncertain".to_owned()])
     );
     assert_eq!(env.mail().flags("INBOX", fine), Some(vec![]));
-    let actions: Vec<String> = env.decisions().iter().map(|d| d.action.clone()).collect();
+    let actions: Vec<String> = env
+        .decisions()
+        .iter()
+        .map(|d| d.action.to_string())
+        .collect();
     assert_eq!(actions, ["none", "keyword:$TamisUncertain"]);
 }
 
@@ -399,7 +403,7 @@ async fn good_mail_is_filed_by_the_rules_in_live_mode() {
     assert_eq!(
         (
             decision.reason.as_str(),
-            decision.action.as_str(),
+            decision.action.to_string().as_str(),
             decision.applied
         ),
         ("rule", "move:Lists", true)
@@ -573,7 +577,7 @@ async fn a_message_dropped_in_a_training_folder_is_learnt_and_moved_on() {
         let reasons: Vec<(String, String, bool)> = env
             .decisions()
             .iter()
-            .map(|d| (d.reason.clone(), d.action.clone(), d.applied))
+            .map(|d| (d.reason.to_string(), d.action.to_string(), d.applied))
             .collect();
         assert!(
             reasons.contains(&("train folder".into(), "train:spam".into(), true)),
@@ -989,7 +993,7 @@ async fn whitelisted_authenticated_mail_is_rescued_from_junk() {
     assert_eq!(
         (
             decision.reason.as_str(),
-            decision.action.as_str(),
+            decision.action.to_string().as_str(),
             decision.applied
         ),
         ("whitelisted", "move:INBOX", true)
@@ -1265,7 +1269,7 @@ async fn undoing_filed_spam_brings_it_back_as_good() {
     assert_eq!(
         (
             entry.reason.as_str(),
-            entry.action.as_str(),
+            entry.action.to_string().as_str(),
             entry.verdict.as_str()
         ),
         ("undo", "move:INBOX", "good")
@@ -1426,7 +1430,11 @@ async fn learning_from_a_shadow_decision_teaches_the_opposite() {
         assert_eq!(env.store().trained("<l1@x>").unwrap(), Some(want), "{name}");
         let entry = &env.decisions()[0];
         assert_eq!(entry.reason, "correction", "{name}");
-        assert_eq!(entry.action, format!("train:{}", want.as_str()), "{name}");
+        assert_eq!(
+            entry.action.to_string(),
+            format!("train:{}", want.as_str()),
+            "{name}"
+        );
     }
 }
 

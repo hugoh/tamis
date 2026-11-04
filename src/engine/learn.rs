@@ -19,8 +19,8 @@ fn learnt_label(decision: &Decision, label: Option<Label>) -> Result<Label> {
 /// Says why a decision can't be learnt from. A correction is already applied
 /// by nature, so it stays learnable to change one's mind.
 fn refuse_learning(decision: &Decision, label: Option<Label>) -> Result<()> {
-    let correction = decision.reason == Reason::Correction.as_str();
-    if !matches!(decision.reason.as_str(), "bayes" | "whitelisted") && !correction {
+    let correction = decision.reason == Reason::Correction;
+    if !decision.reason.is_own_judgement() && !correction {
         Err(Error::NotLearnable)
     } else if decision.applied && !correction {
         Err(Error::AlreadyApplied)

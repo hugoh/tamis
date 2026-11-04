@@ -3,6 +3,7 @@ use rusqlite::types::Value;
 use rusqlite::{OptionalExtension, Row, params, params_from_iter};
 
 use super::{DEFAULT_QUERY_LIMIT, Error, Result, Store, unix};
+use crate::journal::{Action, Reason, Verdict};
 
 /// One journal entry: what tamis concluded about a message and what it did
 /// (or, in shadow mode, would have done).
@@ -17,9 +18,9 @@ pub struct Decision {
     pub from: String,
     pub subject: String,
     pub score: f64,
-    pub verdict: String,
-    pub reason: String,
-    pub action: String,
+    pub verdict: Verdict,
+    pub reason: Reason,
+    pub action: Action,
     pub applied: bool,
     /// Set once the action has been reversed with an undo.
     pub undone: bool,
@@ -101,8 +102,8 @@ impl DecisionSort {
 pub struct DecisionQuery {
     /// Keeps one decision; zero keeps all.
     pub id: i64,
-    /// Keeps one verdict; empty keeps all.
-    pub verdict: String,
+    /// Keeps one verdict; `None` keeps all.
+    pub verdict: Option<Verdict>,
     /// Keeps decisions whose sender, subject, reason, action or folder contain
     /// it, ignoring ASCII case.
     pub search: String,
@@ -123,9 +124,9 @@ impl DecisionQuery {
             conditions.push("id = ?".to_owned());
             args.push(Value::Integer(self.id));
         }
-        if !self.verdict.is_empty() {
+        if let Some(verdict) = self.verdict {
             conditions.push("verdict = ?".to_owned());
-            args.push(Value::Text(self.verdict.clone()));
+            args.push(Value::Text(verdict.to_string()));
         }
         if !self.search.is_empty() {
             let pattern = like_pattern(&self.search);
@@ -208,14 +209,25 @@ fn read_decision(row: &Row<'_>) -> rusqlite::Result<Decision> {
         from: row.get(5)?,
         subject: row.get(6)?,
         score: row.get(7)?,
-        verdict: row.get(8)?,
-        reason: row.get(9)?,
-        action: row.get(10)?,
+        verdict: word(row, 8)?,
+        reason: word(row, 9)?,
+        action: word(row, 10)?,
         applied: row.get(11)?,
         undone: row.get(12)?,
         corrected_by: row.get(13)?,
         undone_by: row.get(14)?,
         corrects,
+    })
+}
+
+/// A column holding one of the journal's words.
+fn word<T: std::str::FromStr>(row: &Row<'_>, index: usize) -> rusqlite::Result<T>
+where
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    let text: String = row.get(index)?;
+    text.parse().map_err(|err| {
+        rusqlite::Error::FromSqlConversionFailure(index, rusqlite::types::Type::Text, Box::new(err))
     })
 }
 
@@ -239,9 +251,9 @@ impl Store {
                 decision.from,
                 decision.subject,
                 decision.score,
-                decision.verdict,
-                decision.reason,
-                decision.action,
+                decision.verdict.as_str(),
+                decision.reason.as_str(),
+                decision.action.to_string(),
                 decision.applied,
             ],
         )?;

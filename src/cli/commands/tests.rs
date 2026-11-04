@@ -39,9 +39,9 @@ fn decision(
         from: "zed@nowhere.example".into(),
         subject: "Hello".into(),
         score: 0.987,
-        verdict: verdict.into(),
-        reason: reason.into(),
-        action: action.into(),
+        verdict: verdict.parse().unwrap(),
+        reason: reason.parse().unwrap(),
+        action: action.parse().unwrap(),
         applied,
         ..Decision::default()
     }

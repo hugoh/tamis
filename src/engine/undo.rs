@@ -19,12 +19,12 @@ fn undoer_for(decision: &Decision) -> Result<Undoer> {
     if !decision.applied {
         return Err(Error::NothingToUndo);
     }
-    if !matches!(decision.reason.as_str(), "bayes" | "whitelisted") {
+    if !decision.reason.is_own_judgement() {
         return Err(Error::NotUndoable);
     }
-    if decision.action.starts_with("move:") {
+    if matches!(decision.action, Action::Move(_)) {
         Ok(Undoer::Move)
-    } else if decision.action == format!("keyword:{}", keyword::UNCERTAIN) {
+    } else if decision.action == Action::Keyword(keyword::UNCERTAIN.to_owned()) {
         Ok(Undoer::Uncertain)
     } else {
         Err(Error::NotUndoable)
@@ -71,8 +71,10 @@ impl<M: Mailbox> Engine<M> {
     /// whitelisted; a rescue is learnt as spam and its sender dropped from the
     /// whitelist.
     async fn undo_move(&mut self, decision: &Decision) -> Result<String> {
-        let moved_to = decision.action.trim_start_matches("move:");
-        let reversal = if decision.verdict == Verdict::Good.as_str() {
+        let Action::Move(moved_to) = &decision.action else {
+            return Err(Error::NotUndoable);
+        };
+        let reversal = if decision.verdict == Verdict::Good {
             Reversal {
                 keyword: keyword::RESCUED,
                 label: Label::Spam,

@@ -332,7 +332,7 @@ impl<M: Mailbox> Engine<M> {
             .latest_decision(&message.message_id)
             .context("look up decision")?;
         Ok(decision.is_some_and(|d| {
-            d.applied && d.verdict == verdict.as_str() && d.action.starts_with("move:")
+            d.applied && d.verdict == verdict && matches!(d.action, Action::Move(_))
         }))
     }
 
@@ -468,9 +468,9 @@ impl<M: Mailbox> Engine<M> {
                 from: message.from.clone(),
                 subject: message.subject.clone(),
                 score: verdict.score,
-                verdict: verdict.verdict.as_str().to_owned(),
-                reason: verdict.reason.as_str().to_owned(),
-                action: action.to_string(),
+                verdict: verdict.verdict,
+                reason: verdict.reason,
+                action: action.clone(),
                 applied,
                 ..Decision::default()
             })

@@ -460,8 +460,8 @@ mod tests {
         Decision {
             at: at(seconds),
             message_id: message_id.to_owned(),
-            reason: reason.to_owned(),
-            verdict: "good".to_owned(),
+            reason: reason.parse().unwrap(),
+            verdict: crate::journal::Verdict::Good,
             ..Decision::default()
         }
     }
@@ -738,5 +738,21 @@ mod tests {
             !store.consume_enrollment("fresh", at(2_000)).unwrap(),
             "a token works once"
         );
+    }
+
+    #[test]
+    fn a_journal_row_with_an_unknown_word_is_an_error_not_a_guess() {
+        let (_dir, store) = open();
+        store
+            .record_decision(&decision("<a>", "bayes", 10))
+            .unwrap();
+        store
+            .conn()
+            .execute("UPDATE decisions SET verdict = 'maybe'", [])
+            .unwrap();
+
+        let err = store.decisions(10).unwrap_err().to_string();
+
+        assert!(err.contains("maybe"), "{err}");
     }
 }

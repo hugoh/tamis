@@ -274,8 +274,8 @@ mod tests {
     fn decision(verdict: &str, reason: &str, corrected_by: i64, age_minutes: i64) -> Decision {
         Decision {
             at: at(NOW - age_minutes * 60),
-            verdict: verdict.to_owned(),
-            reason: reason.to_owned(),
+            verdict: verdict.parse().unwrap(),
+            reason: reason.parse().unwrap(),
             corrected_by,
             ..Decision::default()
         }
@@ -787,8 +787,8 @@ mod tests {
         store
             .record_decision(&Decision {
                 at: Timestamp::now(),
-                reason: "bayes".into(),
-                verdict: "good".into(),
+                reason: crate::journal::Reason::Bayes,
+                verdict: crate::journal::Verdict::Good,
                 ..Decision::default()
             })
             .unwrap();

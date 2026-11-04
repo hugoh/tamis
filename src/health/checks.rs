@@ -1,3 +1,4 @@
+use crate::journal::Verdict;
 use std::time::Duration;
 
 use jiff::Timestamp;
@@ -20,7 +21,7 @@ const STALE_AFTER: Duration = Duration::from_hours(24);
 pub(super) fn judgements(recent: &[Decision]) -> Vec<&Decision> {
     recent
         .iter()
-        .filter(|d| matches!(d.reason.as_str(), "bayes" | "whitelisted"))
+        .filter(|d| d.reason.is_own_judgement())
         .collect()
 }
 
@@ -134,7 +135,10 @@ pub(super) fn uncertain_rate(judged: &[&Decision]) -> Check {
     if judged.len() < MIN_SAMPLE {
         return too_few(name::UNCERTAIN, judged.len());
     }
-    let uncertain = judged.iter().filter(|d| d.verdict == "uncertain").count();
+    let uncertain = judged
+        .iter()
+        .filter(|d| d.verdict == Verdict::Uncertain)
+        .count();
     rate(
         name::UNCERTAIN,
         uncertain,
@@ -265,16 +269,16 @@ pub(super) fn recent_verdicts(recent: &[Decision], judged: &[&Decision]) -> Chec
     if recent.is_empty() {
         return Check::new(name::RECENT, Status::Skip, "no decisions yet");
     }
-    let count = |verdict: &str| judged.iter().filter(|d| d.verdict == verdict).count();
+    let count = |verdict: Verdict| judged.iter().filter(|d| d.verdict == verdict).count();
     Check::new(
         name::RECENT,
         Status::Ok,
         format!(
             "last {}: {} good, {} spam, {} uncertain; {} corrected",
             recent.len(),
-            count("good"),
-            count("spam"),
-            count("uncertain"),
+            count(Verdict::Good),
+            count(Verdict::Spam),
+            count(Verdict::Uncertain),
             corrected_count(judged.iter().copied()),
         ),
     )

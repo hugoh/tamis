@@ -771,9 +771,6 @@ mod tests {
         Decision {
             at: Timestamp::now() - Duration::from_secs(seconds_ago),
             message_id: "<old@x>".to_owned(),
-            verdict: "good".to_owned(),
-            reason: "bayes".to_owned(),
-            action: "none".to_owned(),
             ..Decision::default()
         }
     }

@@ -6,6 +6,7 @@ pub mod daemon;
 pub mod engine;
 pub mod eval;
 pub mod health;
+pub mod journal;
 pub mod live;
 pub mod mail;
 pub mod monitor;

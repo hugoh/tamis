@@ -5,6 +5,7 @@ use anyhow::Result;
 use super::super::App;
 use super::super::style::{BOLD, Cell, DIM, GREEN, MAGENTA, RED, Style, YELLOW, cell, write_table};
 use super::common::{local, open, palette};
+use crate::journal::Verdict;
 use crate::store::Decision;
 
 pub(in super::super) fn log(app: &mut App, number: i64) -> Result<()> {
@@ -13,12 +14,11 @@ pub(in super::super) fn log(app: &mut App, number: i64) -> Result<()> {
     write_decisions(app, &decisions)
 }
 
-fn verdict_style(verdict: &str) -> Style {
+fn verdict_style(verdict: Verdict) -> Style {
     match verdict {
-        "spam" => RED,
-        "uncertain" => YELLOW,
-        "good" => GREEN,
-        _ => "",
+        Verdict::Spam => RED,
+        Verdict::Uncertain => YELLOW,
+        Verdict::Good => GREEN,
     }
 }
 
@@ -38,12 +38,12 @@ fn write_decisions(app: &mut App, decisions: &[Decision]) -> Result<()> {
         .collect(),
     ];
     for decision in decisions {
-        let style = verdict_style(&decision.verdict);
+        let style = verdict_style(decision.verdict);
         rows.push(vec![
             cell(&decision.id.to_string(), ""),
             cell(&local(decision.at), DIM),
-            cell(&decision.verdict, style),
-            cell(&decision.reason, DIM),
+            cell(decision.verdict.as_str(), style),
+            cell(decision.reason.as_str(), DIM),
             cell(&format!("{:.2}", decision.score), style),
             action_cell(decision),
             cell(&decision.mailbox, ""),
@@ -57,12 +57,13 @@ fn write_decisions(app: &mut App, decisions: &[Decision]) -> Result<()> {
 /// Shows what was done; what live mode would do, and nothing, are dimmed, and
 /// a later undo or correction stands out.
 fn action_cell(decision: &Decision) -> Cell {
-    let mut action = if decision.action == "none" {
-        cell(&decision.action, DIM)
+    let text = decision.action.to_string();
+    let mut action = if decision.action.is_none() {
+        cell(&text, DIM)
     } else if !decision.applied {
-        cell(&format!("would {}", decision.action), DIM)
+        cell(&format!("would {text}"), DIM)
     } else {
-        cell(&decision.action, "")
+        cell(&text, "")
     };
 
     if decision.undone {

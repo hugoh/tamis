@@ -151,8 +151,16 @@ fn reads_a_database_the_go_version_wrote() {
         assert_eq!(got.subject, want.subject, "{label}");
         assert!((got.score - want.score).abs() < f64::EPSILON, "{label}");
         assert_eq!(
-            (&got.verdict, &got.reason, &got.action),
-            (&want.verdict, &want.reason, &want.action),
+            (
+                got.verdict.as_str(),
+                got.reason.as_str(),
+                got.action.to_string()
+            ),
+            (
+                want.verdict.as_str(),
+                want.reason.as_str(),
+                want.action.clone()
+            ),
             "{label}"
         );
         assert_eq!(
@@ -295,7 +303,7 @@ fn queries_match_the_go_store() {
         } else {
             let query = DecisionQuery {
                 id: case.id,
-                verdict: case.verdict.clone(),
+                verdict: case.verdict.parse().ok(),
                 search: case.search.clone(),
                 sort: DecisionSort::from_name(&case.sort),
                 asc: case.asc,

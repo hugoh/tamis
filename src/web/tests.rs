@@ -115,9 +115,9 @@ fn record(site: &Site, subject: &str, reason: &str, applied: bool) -> i64 {
             from: "alice@example.org".into(),
             subject: subject.into(),
             score: 0.97,
-            verdict: "spam".into(),
-            reason: reason.into(),
-            action: "move:Junk".into(),
+            verdict: crate::journal::Verdict::Spam,
+            reason: reason.parse().unwrap(),
+            action: crate::journal::Action::Move("Junk".into()),
             applied,
             ..Decision::default()
         })

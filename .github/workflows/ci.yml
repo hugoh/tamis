@@ -26,7 +26,7 @@ jobs:
     uses: hugoh/gh-workflows/.github/workflows/hk.yml@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
     with:
       fetch-depth: "0"
-      pre-hk: mise run prebuild
+      pre-hk: rustup toolchain install && mise run prebuild
       extra-cache-key-cmd: cat Cargo.lock
       extra-cache-paths: |
         ~/.cargo/registry

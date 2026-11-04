@@ -121,6 +121,41 @@ does in their mail client. Three channels, all on by default:
 3. **Client junk keywords**: `$Junk` / `$NotJunk`, plus Apple Mail's
    `Junk` / `NotJunk`.
 
+### Open question: should learned tokens age out?
+
+Nothing ages today. Each token has one spam count and one good count, each
+trained message is recorded once, and only `undo` or `learn` on a specific
+message takes its counts back out. A spam message from today scores the same
+ten years from now. Only the decision journal has a retention
+(`policy.journal_retention`), and that doesn't touch scoring.
+
+Reasons to age:
+
+- Spam changes quickly. The words, domains and senders of this year's spam
+  say little about next year's, and a long history of old counts makes the
+  model slow to notice a new kind of junk.
+- Good mail drifts too, more slowly: correspondents, signatures, formats.
+
+Reasons not to:
+
+- A rare token with few observations gets noisy when old counts expire, and
+  a hard cutoff throws away rare but strong signals.
+- The whitelist and recipient status already carry the stable part of the
+  signal, so aging may matter less than it seems.
+
+Sketch, if it earns its place:
+
+1. Keep the counts as they are.
+2. Record when each message was trained: the `trained` table stores no time
+   today, so this is a schema step.
+3. Weight old training down, or let `bootstrap --refresh` rebuild from only
+   the last N months of the mailbox.
+
+Decide with data, not by argument: `tamis-eval` replays a corpus oldest first,
+scoring each message before learning it, so a variant that downweights old
+training can be compared with today's behaviour on real mail. See
+[evaluation.md](evaluation.md).
+
 ## Actions and safety
 
 - Spam tier: move to Junk (or flag only, configurable).

@@ -101,6 +101,22 @@ pub(super) async fn register_begin(
     headers: HeaderMap,
     Query(query): Query<BTreeMap<String, String>>,
 ) -> Response {
+    let keys = match load_passkeys(&app) {
+        Ok(keys) => keys,
+        Err(err) => return fail("begin registration", &err),
+    };
+    let exclude = keys.iter().map(|(_, key)| key.cred_id().clone()).collect();
+    let (mut creation, state) = match app.webauthn.start_passkey_registration(
+        owner_id(),
+        OWNER_NAME,
+        OWNER_NAME,
+        Some(exclude),
+    ) {
+        Ok(started) => started,
+        Err(err) => return fail("begin registration", &err),
+    };
+
+    // Last, so a failure above leaves the link usable.
     if !super::signed_in(&app, &headers) {
         let token = query.get("token").map_or("", String::as_str);
         match app
@@ -118,24 +134,12 @@ pub(super) async fn register_begin(
             Err(err) => return fail("check enrollment token", &err),
         }
     }
-    let keys = match load_passkeys(&app) {
-        Ok(keys) => keys,
-        Err(err) => return fail("begin registration", &err),
-    };
-    let exclude = keys.iter().map(|(_, key)| key.cred_id().clone()).collect();
-    match app
-        .webauthn
-        .start_passkey_registration(owner_id(), OWNER_NAME, OWNER_NAME, Some(exclude))
-    {
-        Ok((mut creation, state)) => {
-            if let Some(selection) = creation.public_key.authenticator_selection.as_mut() {
-                selection.resident_key = Some(ResidentKeyRequirement::Required);
-                selection.require_resident_key = true;
-            }
-            json_with_cookie(&app, Ceremony::Register(Box::new(state)), &creation)
-        }
-        Err(err) => fail("begin registration", &err),
+
+    if let Some(selection) = creation.public_key.authenticator_selection.as_mut() {
+        selection.resident_key = Some(ResidentKeyRequirement::Required);
+        selection.require_resident_key = true;
     }
+    json_with_cookie(&app, Ceremony::Register(Box::new(state)), &creation)
 }
 
 pub(super) async fn register_finish(

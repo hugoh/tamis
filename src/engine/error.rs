@@ -56,6 +56,17 @@ impl Error {
         }
     }
 
+    /// Whether the server answered that a command failed, which says nothing
+    /// about the connection or about any other message.
+    #[must_use]
+    pub fn is_server_refusal(&self) -> bool {
+        match self {
+            Self::Mail(mail::Error::Server(_)) => true,
+            Self::Context { source, .. } => source.is_server_refusal(),
+            _ => false,
+        }
+    }
+
     /// Whether the server rejected the credentials.
     #[must_use]
     pub fn is_login_rejected(&self) -> bool {

@@ -178,12 +178,18 @@ impl<M: Mailbox> Engine<M> {
         let messages = self.mail.fetch(folder, batch).await.context(&context)?;
 
         for message in &messages {
-            match kind {
+            let handled = match kind {
                 Kind::Watched => self.handle(folder, message, summary).await,
                 Kind::Sent => self.handle_sent(folder, message).await,
                 Kind::Junk => self.handle_junk(message, summary).await,
             }
-            .context(format!("{folder} UID {}", message.uid))?;
+            .context(format!("{folder} UID {}", message.uid));
+            match handled {
+                Err(err) if err.is_server_refusal() => {
+                    tracing::warn!(%err, "skipping a message the server refused to act on");
+                }
+                other => other?,
+            }
 
             cursor.last_uid = cursor.last_uid.max(message.uid);
             self.store.set_cursor(folder, *cursor).context(&context)?;

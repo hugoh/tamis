@@ -221,14 +221,42 @@ async fn a_failed_move_takes_the_keyword_back() {
     let uid = env.mail().deliver("INBOX", &spam("s1"), &[]);
     env.mail().fail("move", MailError::Server("nope".into()));
 
-    let err = env.engine.run_once().await.unwrap_err().to_string();
+    env.engine.run_once().await.unwrap();
 
-    assert!(err.contains("file spam"), "{err}");
     assert_eq!(env.mail().flags("INBOX", uid), Some(vec![]));
     assert!(
         env.decisions().is_empty(),
         "nothing is journalled for what did not happen"
     );
+}
+
+#[tokio::test]
+async fn a_message_the_server_refuses_to_move_does_not_block_the_ones_after_it() {
+    let mut env = Env::trained();
+    env.start().await;
+    let stuck = env.mail().deliver("INBOX", &spam("s1"), &[]);
+    let next = env.mail().deliver("INBOX", &spam("s2"), &[]);
+    env.mail().fail("move", MailError::Server("nope".into()));
+
+    env.engine.run_once().await.unwrap();
+
+    assert_eq!(env.mail().uids("INBOX"), [stuck]);
+    assert_eq!(env.mail().uids("Junk").len(), 1, "UID {next} was filed");
+    env.engine.run_once().await.unwrap();
+    assert_eq!(env.mail().uids("INBOX"), [stuck], "it is not retried");
+}
+
+#[tokio::test]
+async fn a_dropped_connection_mid_batch_keeps_the_cursor_behind_the_message() {
+    let mut env = Env::trained();
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail()
+        .fail("move", MailError::Connection("gone".into()));
+
+    assert!(env.engine.run_once().await.unwrap_err().is_connection());
+    env.engine.run_once().await.unwrap();
+    assert!(!env.mail().uids("INBOX").contains(&uid));
 }
 
 #[tokio::test]
@@ -478,7 +506,7 @@ async fn a_failed_rule_move_clears_the_sorted_keyword() {
     let uid = env.mail().deliver("INBOX", &listed(), &[]);
     env.mail().fail("move", MailError::Server("nope".into()));
 
-    assert!(env.engine.run_once().await.is_err());
+    env.engine.run_once().await.unwrap();
     assert_eq!(env.mail().flags("INBOX", uid), Some(vec![]));
 }
 
@@ -1110,7 +1138,7 @@ async fn a_failed_rescue_move_clears_its_keyword() {
     );
     env.mail().fail("move", MailError::Server("nope".into()));
 
-    assert!(env.engine.run_once().await.is_err());
+    env.engine.run_once().await.unwrap();
     assert_eq!(env.mail().flags("Junk", uid), Some(vec![]));
 }
 

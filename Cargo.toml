@@ -1,0 +1,26 @@
+[package]
+name = "tamis"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.96"
+description = "A second-opinion spam filter and mail sorter for remote mailboxes"
+repository = "https://github.com/hugoh/tamis"
+license = "MIT"
+publish = false
+
+[dependencies]
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "deny"
+expect_used = "deny"
+pedantic = { level = "warn", priority = -1 }
+todo = "deny"
+unwrap_used = "deny"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+strip = true
+lto = "thin"

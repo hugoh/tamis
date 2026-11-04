@@ -432,8 +432,7 @@ folders named `tamis-probe-<timestamp>`, appends a test message, exercises
 
 ## Development
 
-Tooling is managed by [mise](https://mise.jdx.dev) and the shared
-[`hugoh/go-tools`](https://github.com/hugoh/go-tools) Copier template.
+Tooling is managed by [mise](https://mise.jdx.dev).
 
 ```sh
 mise install

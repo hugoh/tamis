@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DO NOT EDIT — managed by hugoh/go-tools via copier.
-#MISE description="Check test coverage"
-#MISE depends=["test"]
-go-test-coverage -config .testcoverage.yml
+#MISE description="Run tests and check coverage"
+#MISE depends=["prebuild"]
+cargo llvm-cov nextest --all-features --fail-under-lines 90 \
+  --ignore-filename-regex '(^|/)main\.rs$' --lcov --output-path "$COVEROUT"

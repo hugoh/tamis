@@ -1,4 +1,3 @@
-# DO NOT EDIT — managed by hugoh/go-tools via copier.
 ---
 name: CI
 
@@ -24,24 +23,111 @@ concurrency:
 
 jobs:
   hk:
-    uses: hugoh/go-tools/.github/workflows/go-hk.yml@1ee51c88e61250737a297d25817b6b2d93eb65b3 # v1.31.0
+    uses: hugoh/gh-workflows/.github/workflows/hk.yml@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
+    with:
+      fetch-depth: "0"
+      pre-hk: mise run prebuild
+      extra-cache-key-cmd: cat Cargo.lock
+      extra-cache-paths: |
+        ~/.cargo/registry
+        target
     permissions:
       contents: read
+      packages: read
+      statuses: write
 
-  goci:
-    uses: hugoh/go-tools/.github/workflows/go-ci.yml@1ee51c88e61250737a297d25817b6b2d93eb65b3 # v1.31.0
+  test:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      MISE_ENV: ci
+    steps:
+      - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
+        with:
+          extra-cache-key-cmd: cat Cargo.lock
+          extra-cache-paths: |
+            ~/.cargo/registry
+            target
+      - name: Tests and coverage
+        run: mise run ci-core
 
   release:
-    needs: [hk, goci]
-    uses: hugoh/go-tools/.github/workflows/go-release.yml@1ee51c88e61250737a297d25817b6b2d93eb65b3 # v1.31.0
+    needs: [hk, test]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
     permissions:
       contents: write
-    with:
-      bump_type: ${{ inputs.bump_type || 'auto' }}
-      has_goreleaser: true
-    secrets:
-      gh_token: ${{ secrets.GITHUB_TOKEN }}
-      tap_github_token: ${{ secrets.TAP_GITHUB_TOKEN }}
-      cloudsmith_api_key: ${{ secrets.CLOUDSMITH_API_KEY }}
+    env:
+      MISE_ENV: ci
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
+        with:
+          fetch-depth: "0"
+          extra-cache-key-cmd: cat Cargo.lock
+          extra-cache-paths: |
+            ~/.cargo/registry
+            target
+      - name: Guard manual dispatch to main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        env:
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          echo "::error::Manual bump_type dispatch must run on main (got ${GITHUB_REF})"
+          exit 1
+      - name: Check Cloudsmith repos exist
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: |
+          repos=$(grep -oE 'cloudsmith push [a-z]+ [^/ ]+/[^/ ]+' .goreleaser.yml | awk '{print $4}' | sort -u)
+          for repo in $repos; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Api-Key: ${CLOUDSMITH_API_KEY}" "https://api.cloudsmith.io/v1/repos/${repo}/")
+            if [ "$code" != "200" ]; then
+              echo "::error::Cloudsmith repo ${repo} not reachable (HTTP ${code})"
+              exit 1
+            fi
+          done
+      - name: Semver release
+        env:
+          BUMP_TYPE: ${{ inputs.bump_type || 'auto' }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ "$BUMP_TYPE" = auto ]; then cog bump --auto; else cog bump "--$BUMP_TYPE"; fi
+      - name: Validate release
+        id: validate
+        run: |
+          mise run lint-release
+          TAG=$(git tag --points-at HEAD | head -1)
+          if [ -z "$TAG" ]; then
+            echo "No tag at HEAD — skipping release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      - name: Push tag and release
+        if: steps.validate.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.validate.outputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          git push origin "${TAG}"
+          goreleaser release --clean
+      - name: Merge Homebrew tap PR
+        if: steps.validate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAG: ${{ steps.validate.outputs.tag }}
+        run: |
+          BRANCH="${GITHUB_REPOSITORY#*/}-${TAG#v}"
+          PR_URL=$(gh pr list --repo hugoh/homebrew-tap --head "$BRANCH" --state open --json url -q '.[0].url')
+          [ -n "$PR_URL" ] || { echo "No open homebrew-tap PR for ${BRANCH}"; exit 0; }
+          gh pr merge "$PR_URL" --repo hugoh/homebrew-tap --squash --delete-branch --auto

@@ -1,5 +1,3 @@
-<!-- DO NOT EDIT — managed by hugoh/go-tools via copier. -->
-
 # Installing tamis
 
 ## Homebrew (macOS/Linux)

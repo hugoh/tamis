@@ -1,9 +1,4 @@
 {
-  // DO NOT EDIT — managed by hugoh/go-tools via copier.
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "github>hugoh/go-tools:go-renovaterc",
-    "github>hugoh/go-tools//presets/binary",
-    "github>hugoh/go-tools//presets/copier-owned-files"
-  ]
+  "extends": ["config:recommended"]
 }

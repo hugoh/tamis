@@ -406,3 +406,74 @@ async fn probe_without_write_touches_nothing() {
         "{out}"
     );
 }
+
+#[tokio::test]
+async fn run_serves_the_web_interface_and_stops_it_on_shutdown() {
+    let dir = tempfile::tempdir().unwrap();
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let web = format!(
+        "[web]\nenabled = true\nlisten = \"127.0.0.1:{port}\"\norigin = \"http://localhost:{port}\"\n"
+    );
+    let Some(account) = account(dir.path(), "shadow", &web) else {
+        return;
+    };
+
+    let shutdown = CancellationToken::new();
+    let (out, err) = (Capture::default(), Capture::default());
+    let argv = vec!["-c".to_owned(), account.config.clone(), "run".to_owned()];
+    let running = tokio::spawn({
+        let (env, shutdown) = (env(&out, &err), shutdown.clone());
+        async move { cli::run(&argv, env, shutdown).await }
+    });
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let mut login = None;
+    for _ in 0..50 {
+        if let Ok(response) = client
+            .get(format!("http://127.0.0.1:{port}/auth/login"))
+            .send()
+            .await
+        {
+            login = Some(response);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let login = login.expect("the web interface did not come up");
+    let home = client
+        .get(format!("http://127.0.0.1:{port}/"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(login.status(), 200);
+    assert_eq!(home.status(), 303);
+    assert!(
+        login
+            .text()
+            .await
+            .unwrap()
+            .contains("Sign in with a passkey")
+    );
+
+    shutdown.cancel();
+    let code = tokio::time::timeout(Duration::from_secs(15), running)
+        .await
+        .expect("run did not stop")
+        .unwrap();
+    assert_eq!((code, err.text()), (0, String::new()));
+    assert!(
+        client
+            .get(format!("http://127.0.0.1:{port}/auth/login"))
+            .send()
+            .await
+            .is_err()
+    );
+}

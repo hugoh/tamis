@@ -378,3 +378,62 @@ async fn rules_commands_without_a_script_say_so() {
         "{err}"
     );
 }
+
+const WEB: &str = "[web]\nenabled = true\norigin = \"https://tamis.example.org/\"\n";
+
+#[tokio::test]
+async fn the_web_commands_need_the_web_interface_enabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = setup(dir.path(), "");
+
+    let (code, _, err) = run(&["-c", &config, "web", "enroll"]).await;
+
+    assert_eq!(code, 1);
+    assert!(err.contains("web is not enabled"), "{err}");
+}
+
+#[tokio::test]
+async fn enroll_prints_a_link_that_works_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, store) = setup(dir.path(), WEB);
+
+    let (code, out, _) = run(&["-c", &config, "web", "enroll"]).await;
+
+    assert_eq!(code, 0, "{out}");
+    let link = out.lines().last().unwrap();
+    let token = link
+        .strip_prefix("https://tamis.example.org/auth/enroll?token=")
+        .unwrap();
+    assert!(out.contains("within 15 minutes"), "{out}");
+    assert!(
+        store
+            .consume_enrollment(&crate::web::hash_token(token), Timestamp::now())
+            .unwrap()
+    );
+    assert!(
+        !store
+            .consume_enrollment(&crate::web::hash_token(token), Timestamp::now())
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn passkeys_are_listed_and_revoked() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, store) = setup(dir.path(), WEB);
+    let (_, none, _) = run(&["-c", &config, "web", "passkeys"]).await;
+    store.add_passkey("abc", "laptop", b"{}").unwrap();
+    let id = store.passkeys().unwrap()[0].id;
+
+    let (code, listed, _) = run(&["-c", &config, "--color", "never", "web", "passkeys"]).await;
+    let (_, revoked, _) = run(&["-c", &config, "web", "revoke", &id.to_string()]).await;
+
+    assert!(none.contains("No passkeys enrolled"), "{none}");
+    assert_eq!(code, 0);
+    assert!(
+        listed.contains("laptop") && listed.contains("never"),
+        "{listed}"
+    );
+    assert_eq!(revoked, format!("revoked passkey {id}\n"));
+    assert!(store.passkeys().unwrap().is_empty());
+}

@@ -234,6 +234,14 @@ enum Command {
         #[command(subcommand)]
         action: Option<MonitorAction>,
     },
+    /// Manage passkeys for the web interface
+    #[command(
+        long_about = "The web interface (the [web] config section, served by `tamis run`) signs in\nwith passkeys. Enroll the first one with `tamis web enroll`."
+    )]
+    Web {
+        #[command(subcommand)]
+        action: WebAction,
+    },
     /// View and edit the whitelist
     #[command(
         long_about = "The whitelist holds senders tamis trusts. Recipients you write to are\nadded automatically; these commands add and remove addresses by hand."
@@ -278,6 +286,19 @@ pub(crate) struct BootstrapArgs {
 enum MonitorAction {
     /// Send one ping to each configured check, to see that the URLs work
     Test,
+}
+
+#[derive(Subcommand, Debug)]
+enum WebAction {
+    /// Print a one-time link to enroll a passkey
+    Enroll,
+    /// List enrolled passkeys
+    Passkeys,
+    /// Remove enrolled passkeys
+    Revoke {
+        #[arg(required = true, value_name = "ID")]
+        ids: Vec<i64>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -422,6 +443,11 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
             action: Some(MonitorAction::Test),
             ..
         } => commands::monitor_test(app).await,
+        Command::Web { action } => match action {
+            WebAction::Enroll => commands::web_enroll(app),
+            WebAction::Passkeys => commands::web_passkeys(app),
+            WebAction::Revoke { ids } => commands::web_revoke(app, &ids),
+        },
         Command::Whitelist { action } => match action {
             WhitelistAction::List => commands::whitelist_list(app),
             WhitelistAction::Add { addresses } => commands::whitelist_add(app, &addresses),

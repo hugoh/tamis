@@ -22,7 +22,7 @@ use crate::store::Store;
 
 /// A pass lasts at most this long, and when it ends the connection is
 /// dropped, so a server that stops answering can't stall the loop.
-const PASS_TIMEOUT: Duration = Duration::from_mins(10);
+pub const PASS_TIMEOUT: Duration = Duration::from_mins(10);
 /// How long to wait after the watcher hears of news, so a burst of mail is
 /// handled by one pass.
 const NEW_MAIL_SETTLE: Duration = Duration::from_secs(1);

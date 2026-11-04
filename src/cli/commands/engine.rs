@@ -11,11 +11,11 @@ use super::super::{App, BootstrapArgs, Reported};
 use super::common::{engine_for, open};
 use crate::classify::Label;
 use crate::config::{Config, parse_duration};
+use crate::daemon::PASS_TIMEOUT;
 use crate::engine::{BootstrapOptions, BootstrapSummary, Source};
 
 const DEFAULT_SENT_LIMIT: usize = 2000;
 const DEFAULT_CORPUS_SIZE: usize = 500;
-const PASS_TIMEOUT: Duration = Duration::from_mins(10);
 const BOOTSTRAP_TIMEOUT: Duration = Duration::from_hours(1);
 
 pub(in super::super) async fn bootstrap(app: &mut App, args: &BootstrapArgs) -> Result<()> {

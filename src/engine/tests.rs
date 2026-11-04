@@ -266,6 +266,29 @@ async fn moving_filed_spam_back_is_a_correction() {
 }
 
 #[tokio::test]
+async fn a_stale_filed_keyword_is_cleared_so_a_later_move_to_junk_is_missed_spam() {
+    let mut env = Env::trained();
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &good("g1"), &["$TamisFiled"]);
+
+    env.engine.run_once().await.unwrap();
+    assert_eq!(
+        env.mail().flags("INBOX", uid),
+        Some(vec![]),
+        "the stale keyword is cleared"
+    );
+
+    env.mail()
+        .move_messages("INBOX", &[uid], "Junk")
+        .await
+        .unwrap();
+    let summary = env.engine.run_once().await.unwrap();
+
+    assert_eq!(summary.corrected, 1);
+    assert_eq!(env.store().trained("<g1@x>").unwrap(), Some(Label::Spam));
+}
+
+#[tokio::test]
 async fn a_filed_keyword_without_a_journalled_move_is_not_believed() {
     let mut env = Env::trained();
     env.start().await;

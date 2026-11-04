@@ -252,16 +252,20 @@ impl<M: Mailbox> Engine<M> {
         tokens: &[String],
         summary: &mut Summary,
     ) -> Result<bool> {
-        if !message.has_flag(keyword::FILED) || !self.moved_by_tamis(message, Verdict::Spam)? {
+        if !message.has_flag(keyword::FILED) {
             return Ok(false);
         }
 
         // Left on, the keyword would hide a later move back to Junk from the
-        // missed-spam check.
+        // missed-spam check. It is stale, and just as harmful, on a message the
+        // journal shows tamis no longer holds in Junk: one already corrected.
         self.mail
             .remove_keyword(folder, &[message.uid], keyword::FILED)
             .await
             .context("clear filed keyword")?;
+        if !self.moved_by_tamis(message, Verdict::Spam)? {
+            return Ok(false);
+        }
 
         summary.scanned += 1;
         summary.corrected += 1;

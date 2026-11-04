@@ -7,19 +7,11 @@ min_hk_version = Base.min_hk_version
 local linters = new Mapping<String, Step> {
   ...Base.base
   ...Base.shell
-  ["cargo_fmt"] {
-    glob = List("**/*.rs")
-    check = "cargo fmt --check"
-    fix = "cargo fmt"
-  }
-  ["cargo_clippy"] {
-    glob = List("**/*.rs", "Cargo.toml", "Cargo.lock")
+  ["cargo_fmt"] = Builtins.cargo_fmt
+  ["cargo_clippy"] = (Builtins.cargo_clippy) {
     check = "cargo clippy --all-targets --all-features -- -D warnings"
   }
-  ["cargo_deny"] {
-    glob = List("Cargo.toml", "Cargo.lock", "deny.toml")
-    check = "cargo deny check"
-  }
+  ["cargo_deny"] = Builtins.cargo_deny
   ["cargo_machete"] {
     glob = List("**/*.rs", "Cargo.toml")
     check = "cargo machete"

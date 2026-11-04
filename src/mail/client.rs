@@ -26,6 +26,7 @@ use mail_parser::MessageParser;
 use tokio::time::timeout;
 
 use super::tasks::{StatusTask, StatusValues, UidExpungeTask};
+use super::utf7;
 use super::{Error, MAX_MESSAGE_BYTES, Mailbox, Message, ModState, Result, State};
 
 /// How long one command may take before the connection is given up on.
@@ -212,7 +213,7 @@ impl Client {
             .iter()
             .map(|f| keyword_flag(f))
             .collect::<Result<Vec<_>>>()?;
-        let appended = within(self.imap.appenduid(mailbox, flags, raw)).await?;
+        let appended = within(self.imap.appenduid(utf7::encode(mailbox), flags, raw)).await?;
         Ok(appended.map(|(uid, _validity)| uid.get()))
     }
 
@@ -249,7 +250,7 @@ impl Client {
     /// Fails when the folder can't be opened.
     pub async fn examine(&mut self, mailbox: &str) -> Result<Examined> {
         self.selected = None;
-        let data = within(self.imap.examine(mailbox)).await?;
+        let data = within(self.imap.examine(utf7::encode(mailbox))).await?;
         Ok(Examined {
             messages: data.exists.unwrap_or(0),
             uid_validity: data.uid_validity.map_or(0, NonZeroU32::get),
@@ -266,7 +267,7 @@ impl Client {
     /// # Errors
     /// Fails when the server refuses.
     pub async fn create_folder(&mut self, mailbox: &str) -> Result<()> {
-        within(self.imap.create(mailbox)).await
+        within(self.imap.create(utf7::encode(mailbox))).await
     }
 
     /// Deletes `mailbox`.
@@ -277,7 +278,7 @@ impl Client {
         if self.selected.as_deref() == Some(mailbox) {
             self.selected = None;
         }
-        within(self.imap.delete(mailbox)).await
+        within(self.imap.delete(utf7::encode(mailbox))).await
     }
 
     /// How a move would be done on this server.
@@ -341,7 +342,7 @@ impl Client {
             return Ok(());
         }
         self.selected = None;
-        within(self.imap.select(mailbox)).await?;
+        within(self.imap.select(utf7::encode(mailbox))).await?;
         self.selected = Some(mailbox.to_owned());
         Ok(())
     }
@@ -351,7 +352,7 @@ impl Client {
         mailbox: &str,
         items: Vec<StatusDataItemName>,
     ) -> Result<StatusValues> {
-        let mailbox = ImapMailbox::try_from(mailbox)
+        let mailbox = ImapMailbox::try_from(utf7::encode(mailbox))
             .map_err(invalid)?
             .into_static();
         let task = StatusTask::new(mailbox, items);
@@ -689,7 +690,7 @@ impl Mailbox for Client {
 
         if self.supports_move() {
             let set = uid_set(uids)?;
-            return within(self.imap.uid_move(set, dest)).await;
+            return within(self.imap.uid_move(set, utf7::encode(dest))).await;
         }
         self.copy_delete(mailbox, uids, dest).await
     }
@@ -708,11 +709,11 @@ impl Mailbox for Client {
         if self.exists(mailbox).await? {
             return Ok(());
         }
-        within(self.imap.create(mailbox)).await
+        within(self.imap.create(utf7::encode(mailbox))).await
     }
 
     async fn exists(&mut self, mailbox: &str) -> Result<bool> {
-        let listed = within(self.imap.list("", mailbox)).await?;
+        let listed = within(self.imap.list("", utf7::encode(mailbox))).await?;
         Ok(!listed.is_empty())
     }
 
@@ -728,7 +729,7 @@ impl Mailbox for Client {
 fn mailbox_name(mailbox: &ImapMailbox<'_>) -> String {
     match mailbox {
         ImapMailbox::Inbox => "INBOX".to_owned(),
-        ImapMailbox::Other(other) => String::from_utf8_lossy(other.inner().as_ref()).into_owned(),
+        ImapMailbox::Other(other) => utf7::decode(&String::from_utf8_lossy(other.inner().as_ref())),
     }
 }
 
@@ -768,7 +769,7 @@ impl Client {
         self.select(mailbox).await?;
         if !missing.is_empty() {
             let set = uid_set(&missing)?;
-            within(self.imap.uid_copy(set, dest)).await?;
+            within(self.imap.uid_copy(set, utf7::encode(dest))).await?;
         }
 
         let gone: Vec<u32> = held.iter().map(|m| m.uid).collect();

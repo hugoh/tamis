@@ -491,3 +491,35 @@ async fn a_watcher_closes_promptly_while_idle() {
         .await
         .expect("close hung");
 }
+
+#[tokio::test]
+async fn folders_with_accents_and_emoji_round_trip() {
+    let Some((_, mut client)) = connect().await else {
+        return;
+    };
+    let names = ["Réunions", "🛍\u{fe0f} shopping", "Tom & Jerry"];
+
+    for name in names {
+        client.ensure(name).await.unwrap();
+        client
+            .append(
+                name,
+                mail(name.len().to_string().as_str(), "").as_bytes(),
+                &[],
+            )
+            .await
+            .unwrap();
+        assert_eq!(client.messages(name).await.unwrap(), 1, "{name}");
+    }
+
+    let listed: Vec<String> = client
+        .list_with_attributes()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    for name in names {
+        assert!(listed.iter().any(|l| l == name), "{name} in {listed:?}");
+    }
+}

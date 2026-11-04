@@ -6,6 +6,7 @@
 pub mod client;
 pub mod fake;
 mod tasks;
+pub mod utf7;
 pub mod watch;
 
 use jiff::Timestamp;

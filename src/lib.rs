@@ -4,6 +4,7 @@ pub mod cli;
 pub mod config;
 pub mod daemon;
 pub mod engine;
+pub mod eval;
 pub mod health;
 pub mod live;
 pub mod mail;

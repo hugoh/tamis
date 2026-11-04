@@ -28,7 +28,11 @@ pub fn recipient_status_tokens() -> [&'static str; 3] {
 /// shortcut: counts since the model began, with no memory of when; an alias
 /// you retire stays expected. Upgrade by keeping recent counts.
 #[must_use]
-pub fn with_recipient_status(tokens: &[String], model: &impl Model, own: &[String]) -> Vec<String> {
+pub fn with_recipient_status(
+    tokens: &[String],
+    model: &(impl Model + ?Sized),
+    own: &[String],
+) -> Vec<String> {
     let mut status = STATUS_NONE;
 
     for address in tokens
@@ -47,7 +51,7 @@ pub fn with_recipient_status(tokens: &[String], model: &impl Model, own: &[Strin
     out
 }
 
-fn expected(address: &str, model: &impl Model, own: &[String]) -> bool {
+fn expected(address: &str, model: &(impl Model + ?Sized), own: &[String]) -> bool {
     own.iter().any(|mine| mine.eq_ignore_ascii_case(address))
         || model.counts(&format!("{RECIPIENT_PREFIX}{address}")).1 >= MIN_SEEN_RECIPIENT
 }

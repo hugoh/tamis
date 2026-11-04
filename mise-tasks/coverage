@@ -2,4 +2,4 @@
 #MISE description="Run tests and check coverage"
 #MISE depends=["prebuild"]
 cargo llvm-cov nextest --all-features --fail-under-lines 90 \
-  --ignore-filename-regex '(^|/)main\.rs$|src/mail/(client|tasks)\.rs$|src/probe/live\.rs$|src/cli/commands/probe\.rs$' --lcov --output-path "$COVEROUT"
+  --ignore-filename-regex '(^|/)(main|tamis-eval)\.rs$|src/eval/net\.rs$|src/mail/(client|tasks)\.rs$|src/probe/live\.rs$|src/cli/commands/probe\.rs$' --lcov --output-path "$COVEROUT"

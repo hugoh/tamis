@@ -33,7 +33,7 @@ use webauthn_rs::prelude::{
 
 use crate::classify::Label;
 use crate::config::Config;
-use crate::live::Status;
+use crate::live::{DebugSwitch, Ring, Status};
 use crate::store::Store;
 
 pub use token::{hash_token, new_token};
@@ -96,6 +96,8 @@ pub type RunJobs = Arc<dyn Fn(Job) -> JobFuture + Send + Sync>;
 pub struct Options {
     pub run: Option<RunJobs>,
     pub status: Option<Arc<Status>>,
+    pub logs: Option<Arc<Ring>>,
+    pub debug: Option<Arc<DebugSwitch>>,
     pub version: String,
 }
 

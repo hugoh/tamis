@@ -199,6 +199,7 @@ pub(in super::super) async fn run(app: &mut App, once: bool) -> Result<()> {
     let web = if once {
         None
     } else {
+        let live = super::super::logging::live();
         let options = Options {
             run: Some(job_runner(
                 Arc::clone(&connector),
@@ -206,6 +207,8 @@ pub(in super::super) async fn run(app: &mut App, once: bool) -> Result<()> {
                 Arc::clone(&store),
             )),
             status: Some(Arc::clone(&status)),
+            logs: live.map(|l| Arc::clone(&l.ring)),
+            debug: live.map(|l| Arc::clone(&l.debug)),
             version: app.env.version.clone(),
         };
         start_web(&cfg, &store, options, app.shutdown.clone()).await?

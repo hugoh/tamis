@@ -4,12 +4,17 @@
 //! timestamp, since the journal adds its own.
 
 use std::fmt;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use tracing::{Event, Level, Subscriber};
-use tracing_subscriber::EnvFilter;
+
+use crate::live::{DebugSwitch, Ring, RingLayer};
 use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::fmt::format::{self, FormatEvent, FormatFields, Writer};
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::{EnvFilter, Layer, Registry, reload};
 
 /// The syslog priority marker the journal reads (sd-daemon(3)) for a level:
 /// err, warning, info, debug.
@@ -84,17 +89,31 @@ fn filter(verbose: bool) -> EnvFilter {
     })
 }
 
+/// What the web interface shows and controls of the log.
+pub struct Live {
+    pub ring: Arc<Ring>,
+    pub debug: Arc<DebugSwitch>,
+}
+
+static LIVE: OnceLock<Live> = OnceLock::new();
+
+/// The log's ring and debug switch, once [`init`] has installed the logger.
+#[must_use]
+pub fn live() -> Option<&'static Live> {
+    LIVE.get()
+}
+
+const RING_SIZE: usize = 1000;
+const DEBUG_SPAN: Duration = Duration::from_mins(15);
+
 /// Installs the global logger. A second call does nothing.
 pub fn init(verbose: bool, journal_stream: Option<&str>) {
     use std::io::IsTerminal;
 
-    let builder = tracing_subscriber::fmt()
-        .with_env_filter(filter(verbose))
-        .with_writer(std::io::stderr)
-        .with_target(false);
-
-    let installed = if under_journal(journal_stream) {
-        builder
+    let fmt_layer: Box<dyn Layer<Registry> + Send + Sync> = if under_journal(journal_stream) {
+        tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stderr)
+            .with_target(false)
             .with_ansi(false)
             .event_format(Journal(
                 format::format()
@@ -103,13 +122,38 @@ pub fn init(verbose: bool, journal_stream: Option<&str>) {
                     .with_target(false)
                     .with_ansi(false),
             ))
-            .try_init()
+            .boxed()
     } else {
-        builder
+        tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stderr)
+            .with_target(false)
             .with_ansi(std::io::stderr().is_terminal())
-            .try_init()
+            .boxed()
     };
-    let _ = installed;
+
+    let ring = Arc::new(Ring::new(RING_SIZE));
+    let (filter_layer, handle) = reload::Layer::new(filter(verbose));
+    let installed = tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(RingLayer(Arc::clone(&ring)))
+        .with(filter_layer)
+        .try_init();
+    if installed.is_err() {
+        return;
+    }
+
+    let debug = DebugSwitch::new(verbose, DEBUG_SPAN, Arc::clone(&ring), move |on| {
+        let next = if on {
+            EnvFilter::new("warn,tamis=debug")
+        } else {
+            filter(verbose)
+        };
+        let _ = handle.reload(next);
+    });
+    let _ = LIVE.set(Live {
+        ring,
+        debug: Arc::new(debug),
+    });
 }
 
 #[cfg(test)]

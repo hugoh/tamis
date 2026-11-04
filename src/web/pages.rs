@@ -584,9 +584,54 @@ struct LogsEntries {
     body: LogsBody,
 }
 
-pub(super) async fn logs(State(app): State<App>, headers: HeaderMap) -> Response {
-    let body = LogsBody::default();
-    if is_htmx(&headers) {
+fn debug_view(app: &App) -> DebugView {
+    let Some(debug) = &app.options.debug else {
+        return DebugView::default();
+    };
+    let (on, until) = debug.status();
+    DebugView {
+        available: true,
+        locked: debug.locked(),
+        on,
+        until: until.filter(|_| on).map_or_else(String::new, local_clock),
+        span: minutes(debug.span()),
+    }
+}
+
+fn minutes(span: std::time::Duration) -> String {
+    let count = span.as_secs().div_ceil(60);
+    if count == 1 {
+        "1 minute".to_owned()
+    } else {
+        format!("{count} minutes")
+    }
+}
+
+fn logs_body(app: &App) -> LogsBody {
+    let rows = app
+        .options
+        .logs
+        .as_ref()
+        .map(|ring| {
+            ring.entries()
+                .into_iter()
+                .map(|entry| LogRow {
+                    when: local_clock(entry.at),
+                    level: entry.level.to_string(),
+                    text: entry.text,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    LogsBody {
+        rows,
+        debug: debug_view(app),
+    }
+}
+
+fn render_logs(app: &App, entries_only: bool) -> Response {
+    let body = logs_body(app);
+    if entries_only {
         return render(&LogsEntries { body });
     }
     render(&LogsPage {
@@ -597,11 +642,26 @@ pub(super) async fn logs(State(app): State<App>, headers: HeaderMap) -> Response
     })
 }
 
-pub(super) async fn set_debug() -> Response {
-    (
-        StatusCode::NOT_FOUND,
-        [(header::CONTENT_TYPE, "text/plain")],
-        "not found",
-    )
-        .into_response()
+pub(super) async fn logs(State(app): State<App>, headers: HeaderMap) -> Response {
+    render_logs(&app, is_htmx(&headers))
+}
+
+pub(super) async fn set_debug(
+    State(app): State<App>,
+    query: Query<BTreeMap<String, String>>,
+) -> Response {
+    let Some(debug) = &app.options.debug else {
+        return (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain")],
+            "not found",
+        )
+            .into_response();
+    };
+    match query.get("state").map(String::as_str) {
+        Some("on") => debug.on(),
+        Some("off") => debug.off(),
+        _ => {}
+    }
+    render_logs(&app, true)
 }

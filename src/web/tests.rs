@@ -414,7 +414,10 @@ async fn health_and_rules_pages_render() {
         tried.contains("No rules script configured (rules.script)."),
         "{tried}"
     );
-    assert!(logs.contains("No log lines"), "{logs}");
+    assert!(
+        logs.contains("No log lines") && !logs.contains("Debug logging"),
+        "{logs}"
+    );
 }
 
 #[tokio::test]
@@ -467,6 +470,10 @@ async fn finishing_a_ceremony_that_was_never_started_is_refused() {
 
     assert!(response.status().is_client_error());
     assert_eq!(site.app.sessions.take("nothing"), None);
+    assert_eq!(
+        site.post("/logs/debug?state=on", "").await.status(),
+        StatusCode::NOT_FOUND
+    );
 }
 
 #[tokio::test]
@@ -484,4 +491,74 @@ async fn signing_out_ends_the_session() {
             .contains("Max-Age=0")
     );
     assert_eq!(after.status(), StatusCode::SEE_OTHER);
+}
+
+fn logging(locked: bool) -> (Options, Arc<crate::live::Ring>) {
+    let ring = Arc::new(crate::live::Ring::new(10));
+    let debug = Arc::new(crate::live::DebugSwitch::new(
+        locked,
+        std::time::Duration::from_mins(15),
+        Arc::clone(&ring),
+        |_| {},
+    ));
+    (
+        Options {
+            logs: Some(Arc::clone(&ring)),
+            debug: Some(debug),
+            ..Options::default()
+        },
+        ring,
+    )
+}
+
+fn log_line(ring: &crate::live::Ring, text: &str) {
+    ring.add(crate::live::Entry {
+        at: Timestamp::now(),
+        level: tracing::Level::WARN,
+        text: text.to_owned(),
+    });
+}
+
+#[tokio::test]
+async fn the_debug_switch_turns_logging_on_and_off_from_the_logs_page() {
+    let (options, ring) = logging(false);
+    let site = site_with(options);
+
+    let off = text(site.get("/logs").await).await;
+    let on = text(site.post("/logs/debug?state=on", "").await).await;
+    log_line(&ring, "<b>pass failed</b> uid=7");
+    let shown = text(site.get_htmx("/logs").await).await;
+    let back = text(site.post("/logs/debug?state=off", "").await).await;
+
+    assert!(
+        off.contains("Debug logging off") && off.contains("Turn on for 15 minutes"),
+        "{off}"
+    );
+    assert!(
+        on.contains("Debug logging on until") && on.contains("Turn off"),
+        "{on}"
+    );
+    assert!(
+        shown.contains("&#60;b&#62;pass failed") && shown.contains("badge-warning"),
+        "{shown}"
+    );
+    assert!(
+        back.contains("Debug logging off") && back.contains("No log lines"),
+        "{back}"
+    );
+}
+
+#[tokio::test]
+async fn a_verbose_daemon_shows_that_debug_is_locked_on() {
+    let (options, ring) = logging(true);
+    let site = site_with(options);
+    log_line(&ring, "idle mailbox=INBOX");
+
+    let page = text(site.get("/logs").await).await;
+
+    assert!(
+        page.contains("the daemon runs with --verbose") && page.contains("idle mailbox=INBOX"),
+        "{page}"
+    );
+    assert!(!page.contains("Turn on for"), "{page}");
 }

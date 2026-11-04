@@ -1,0 +1,2 @@
+{% for row in body.rows %}{% include "decision_row.html" %}
+{% endfor %}{% if !body.more_href.is_empty() %}<tr hx-get="{{ body.more_href }}" hx-trigger="intersect once" hx-swap="outerHTML"><td colspan="10" class="text-center"><span class="loading loading-dots loading-sm"></span></td></tr>{% endif %}

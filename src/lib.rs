@@ -15,6 +15,7 @@ pub mod rules;
 pub mod secret;
 pub mod store;
 pub mod tls;
+pub mod web;
 
 #[must_use]
 pub fn version() -> &'static str {

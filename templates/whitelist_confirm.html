@@ -1,0 +1,18 @@
+<div id="confirm">{% if !confirm.error.is_empty() %}<div role="alert" class="alert alert-warning alert-soft my-2"><span>{{ confirm.error }}</span></div>{% endif %}{% if !confirm.title.is_empty() %}<dialog class="modal modal-open" aria-labelledby="confirm-title">
+<div class="modal-box">
+<h3 id="confirm-title" class="text-lg font-bold">{{ confirm.title }}</h3>
+<ul class="my-4 max-h-60 overflow-y-auto font-mono text-sm">
+{% for address in confirm.shown %}<li>{{ address }}</li>
+{% endfor %}</ul>
+{% if confirm.more > 0 %}<p class="text-sm opacity-70">…and {{ confirm.more }} more</p>{% endif %}
+<div class="modal-action">
+<button type="button" class="btn" hx-get="/whitelist/remove/cancel" hx-target="#confirm" hx-swap="outerHTML">Cancel</button>
+<form hx-post="/whitelist/remove" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar">
+{% for address in confirm.selected %}<input type="hidden" name="address" value="{{ address }}">
+{% endfor %}{% if confirm.all %}<input type="hidden" name="scope" value="all"><input type="hidden" name="q" value="{{ confirm.search }}"><input type="hidden" name="count" value="{{ confirm.count }}">{% endif %}
+<button class="btn btn-error">Remove {{ confirm.count }}</button>
+</form>
+</div>
+</div>
+<div class="modal-backdrop"></div>
+</dialog>{% endif %}</div>

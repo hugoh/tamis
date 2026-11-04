@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card bg-base-200 shadow-sm max-w-sm mx-auto mt-16">
+<div class="card-body items-center text-center">
+<h1 class="card-title">Enroll a passkey</h1>
+<label class="input flex items-center gap-2">Name <input id="name" class="grow" value="passkey" maxlength="64"></label>
+<button id="enroll" class="btn btn-primary">Create passkey</button>
+<p id="status" role="status" class="text-error min-h-6"></p>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/webauthn.js"></script>{% endblock %}

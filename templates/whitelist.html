@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Whitelist</h1>
+<div class="flex flex-wrap items-center gap-3 mb-2">
+{% include "whitelist_addform.html" %}
+<form id="toolbar" hx-get="/whitelist" hx-target="#results" hx-swap="outerHTML" hx-push-url="true" hx-include="#toolbar">
+<input type="search" name="q" value="{{ body.search }}" placeholder="Search addresses…" aria-label="Search" class="input input-sm w-72" hx-get="/whitelist" hx-trigger="input changed delay:300ms, search">
+</form>
+</div>
+<div id="confirm"></div>
+{% include "whitelist_results.html" %}
+{% endblock %}
+{% block scripts %}<script src="/static/whitelist.js"></script>{% endblock %}

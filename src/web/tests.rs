@@ -1,0 +1,487 @@
+#![allow(clippy::unwrap_used, reason = "a failing call should fail the test")]
+
+use std::sync::{Arc, Mutex};
+
+use axum::Router;
+use axum::body::Body;
+use axum::http::{HeaderValue, Request, StatusCode, header};
+use axum::response::Response;
+use http_body_util::BodyExt;
+use jiff::Timestamp;
+use tower::ServiceExt;
+
+use super::{App, Job, Options, RunJobs, SESSION_COOKIE, build, hash_token};
+use crate::config::Config;
+use crate::store::{Decision, Store};
+
+const ORIGIN: &str = "http://localhost:8484";
+
+struct Site {
+    router: Router,
+    app: App,
+    db: Arc<Store>,
+    session: String,
+    _dir: tempfile::TempDir,
+}
+
+fn site_with(options: Options) -> Site {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("config.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "state = \"{}\"\n[account]\nhost = \"imap.example.org\"\nuser = \"me@example.org\"\n[web]\nenabled = true\norigin = \"{ORIGIN}\"\n",
+            dir.path().join("state.db").display()
+        ),
+    )
+    .unwrap();
+    let cfg = Arc::new(Config::load(&|_| None, &config).unwrap());
+    let db = Arc::new(Store::open(&dir.path().join("state.db")).unwrap());
+    let (router, app) = build(cfg, Arc::clone(&db), options).unwrap();
+    let session = app
+        .sessions
+        .put((), std::time::Duration::from_secs(60))
+        .unwrap();
+    Site {
+        router,
+        app,
+        db,
+        session,
+        _dir: dir,
+    }
+}
+
+fn site() -> Site {
+    site_with(Options::default())
+}
+
+impl Site {
+    async fn send(&self, mut request: Request<Body>, signed_in: bool) -> Response {
+        if signed_in {
+            let cookie = format!("{SESSION_COOKIE}={}", self.session);
+            request
+                .headers_mut()
+                .insert(header::COOKIE, HeaderValue::from_str(&cookie).unwrap());
+        }
+        self.router.clone().oneshot(request).await.unwrap()
+    }
+
+    async fn get(&self, uri: &str) -> Response {
+        self.send(Request::get(uri).body(Body::empty()).unwrap(), true)
+            .await
+    }
+
+    async fn get_htmx(&self, uri: &str) -> Response {
+        self.send(
+            Request::get(uri)
+                .header("hx-request", "true")
+                .body(Body::empty())
+                .unwrap(),
+            true,
+        )
+        .await
+    }
+
+    async fn post(&self, uri: &str, body: &str) -> Response {
+        let request = Request::post(uri)
+            .header(header::ORIGIN, ORIGIN)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(body.to_owned()))
+            .unwrap();
+        self.send(request, true).await
+    }
+}
+
+async fn text(response: Response) -> String {
+    String::from_utf8(
+        response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap()
+}
+
+fn record(site: &Site, subject: &str, reason: &str, applied: bool) -> i64 {
+    site.db
+        .record_decision(&Decision {
+            at: Timestamp::now(),
+            mailbox: "INBOX".into(),
+            uid: 1,
+            message_id: format!("<{subject}@x>"),
+            from: "alice@example.org".into(),
+            subject: subject.into(),
+            score: 0.97,
+            verdict: "spam".into(),
+            reason: reason.into(),
+            action: "move:Junk".into(),
+            applied,
+            ..Decision::default()
+        })
+        .unwrap()
+}
+
+#[tokio::test]
+async fn pages_need_a_session() {
+    let site = site();
+
+    let page = site
+        .send(Request::get("/").body(Body::empty()).unwrap(), false)
+        .await;
+    let change = site
+        .send(
+            Request::post("/whitelist")
+                .header(header::ORIGIN, ORIGIN)
+                .body(Body::empty())
+                .unwrap(),
+            false,
+        )
+        .await;
+
+    assert_eq!(
+        (
+            page.status(),
+            page.headers()[header::LOCATION].to_str().unwrap()
+        ),
+        (StatusCode::SEE_OTHER, "/auth/login")
+    );
+    assert_eq!(change.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn changes_from_another_origin_are_refused_even_when_signed_in() {
+    let site = site();
+    for origin in [Some("https://evil.example"), None] {
+        let mut request = Request::post("/whitelist")
+            .body(Body::from("address=a@b.org"))
+            .unwrap();
+        if let Some(origin) = origin {
+            request
+                .headers_mut()
+                .insert(header::ORIGIN, HeaderValue::from_static(origin));
+        }
+
+        let response = site.send(request, true).await;
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{origin:?}");
+    }
+    assert!(site.db.addresses().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn every_response_carries_the_security_headers() {
+    let site = site();
+
+    let response = site
+        .send(
+            Request::get("/auth/login").body(Body::empty()).unwrap(),
+            false,
+        )
+        .await;
+
+    let headers = response.headers();
+    assert!(
+        headers[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .starts_with("default-src 'self'")
+    );
+    assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    assert!(text(response).await.contains("Sign in with a passkey"));
+}
+
+#[tokio::test]
+async fn the_decisions_page_lists_filters_and_escapes() {
+    let site = site();
+    record(&site, "<script>alert(1)</script>", "bayes", true);
+    record(&site, "lunch", "bayes", true);
+
+    let page = text(site.get("/").await).await;
+    let found = text(site.get_htmx("/?q=lunch").await).await;
+
+    assert!(
+        page.contains("<title>tamis · decisions</title>") && page.contains("2 decisions"),
+        "{page}"
+    );
+    assert!(
+        page.contains("&#60;script&#62;") && !page.contains("<script>alert"),
+        "{page}"
+    );
+    assert!(
+        found.starts_with("<div id=\"results\">")
+            && found.contains("1 decision match")
+            && !found.contains("script&#62;"),
+        "{found}"
+    );
+}
+
+#[tokio::test]
+async fn a_decision_offers_undo_only_when_it_can_be_undone() {
+    let site = site();
+    let applied = record(&site, "applied", "bayes", true);
+    let shadow = record(&site, "shadow", "bayes", false);
+
+    let applied_row = text(site.get_htmx(&format!("/?id={applied}")).await).await;
+    let shadow_row = text(site.get_htmx(&format!("/?id={shadow}")).await).await;
+
+    assert!(
+        applied_row.contains("/undo\"") && !applied_row.contains("label=spam"),
+        "{applied_row}"
+    );
+    assert!(
+        shadow_row.contains("would move:Junk")
+            && shadow_row.contains("label=spam")
+            && !shadow_row.contains("/undo\""),
+        "{shadow_row}"
+    );
+}
+
+#[tokio::test]
+async fn undo_runs_the_job_and_shows_what_it_did() {
+    let jobs = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&jobs);
+    let run: RunJobs = Arc::new(move |job| {
+        seen.lock().unwrap().push(format!("{job:?}"));
+        Box::pin(async { Ok("moved back to INBOX".to_owned()) })
+    });
+    let site = site_with(Options {
+        run: Some(run),
+        ..Options::default()
+    });
+    let id = record(&site, "oops", "bayes", true);
+
+    let response = site.post(&format!("/decisions/{id}/undo"), "").await;
+    let row = text(response).await;
+
+    assert_eq!(jobs.lock().unwrap().as_slice(), [format!("Undo({id})")]);
+    assert!(
+        row.contains("moved back to INBOX") && row.contains("text-success"),
+        "{row}"
+    );
+}
+
+#[tokio::test]
+async fn a_failed_action_says_so_and_a_missing_decision_is_not_found() {
+    let run: RunJobs = Arc::new(|_| Box::pin(async { Err("the mailbox moved on".to_owned()) }));
+    let site = site_with(Options {
+        run: Some(run),
+        ..Options::default()
+    });
+    let id = record(&site, "oops", "bayes", false);
+
+    let failed = text(
+        site.post(&format!("/decisions/{id}/learn?label=good"), "")
+            .await,
+    )
+    .await;
+    let missing = site.post("/decisions/999/undo", "").await;
+    let bad_label = site
+        .post(&format!("/decisions/{id}/learn?label=maybe"), "")
+        .await;
+    let bad_id = site.post("/decisions/x/undo", "").await;
+
+    assert!(
+        failed.contains("the mailbox moved on") && failed.contains("text-error"),
+        "{failed}"
+    );
+    assert_eq!(
+        (missing.status(), bad_label.status(), bad_id.status()),
+        (
+            StatusCode::NOT_FOUND,
+            StatusCode::BAD_REQUEST,
+            StatusCode::BAD_REQUEST
+        )
+    );
+}
+
+#[tokio::test]
+async fn learning_passes_the_chosen_label_to_the_job() {
+    let jobs = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&jobs);
+    let run: RunJobs = Arc::new(move |job: Job| {
+        seen.lock().unwrap().push(format!("{job:?}"));
+        Box::pin(async { Ok(String::new()) })
+    });
+    let site = site_with(Options {
+        run: Some(run),
+        ..Options::default()
+    });
+    let id = record(&site, "x", "bayes", false);
+
+    site.post(&format!("/decisions/{id}/learn?label=spam"), "")
+        .await;
+    site.post(&format!("/decisions/{id}/learn"), "").await;
+
+    assert_eq!(
+        jobs.lock().unwrap().as_slice(),
+        [
+            format!("Learn({id}, Some(Spam))"),
+            format!("Learn({id}, None)")
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_whitelist_adds_searches_and_removes() {
+    let site = site();
+
+    let added = text(
+        site.post("/whitelist", "address=Alice+%3Calice%40Example.org%3E")
+            .await,
+    )
+    .await;
+    let rejected = text(site.post("/whitelist", "address=not+an+address").await).await;
+    site.db.add_address("bob@example.org", "learned").unwrap();
+    let found = text(site.get_htmx("/whitelist?q=bob").await).await;
+
+    assert!(
+        added.contains("1 address") && added.contains("alice@example.org"),
+        "{added}"
+    );
+    assert!(rejected.contains("alert-error"), "{rejected}");
+    assert!(
+        found.contains("bob@example.org") && !found.contains("alice@example.org"),
+        "{found}"
+    );
+
+    let confirm = text(
+        site.post("/whitelist/remove/confirm", "address=alice%40example.org")
+            .await,
+    )
+    .await;
+    assert!(confirm.contains("Remove 1 address?"), "{confirm}");
+    let removed = text(
+        site.post("/whitelist/remove", "address=alice%40example.org")
+            .await,
+    )
+    .await;
+    assert!(
+        removed.contains("Removed 1 address") && !removed.contains("alice@example.org"),
+        "{removed}"
+    );
+}
+
+#[tokio::test]
+async fn removing_every_match_checks_the_list_has_not_changed() {
+    let site = site();
+    for name in ["a", "b", "c"] {
+        site.db
+            .add_address(&format!("{name}@example.org"), "manual")
+            .unwrap();
+    }
+
+    let stale = text(site.post("/whitelist/remove", "scope=all&q=&count=2").await).await;
+    assert!(
+        stale.contains("the list changed") && site.db.addresses().unwrap().len() == 3,
+        "{stale}"
+    );
+
+    let confirm = text(site.post("/whitelist/remove/confirm", "scope=all&q=").await).await;
+    assert!(confirm.contains("Remove all 3 addresses?"), "{confirm}");
+    let done = text(site.post("/whitelist/remove", "scope=all&q=&count=3").await).await;
+    assert!(
+        done.contains("Removed 3 addresses") && site.db.addresses().unwrap().is_empty(),
+        "{done}"
+    );
+
+    let nothing = text(site.post("/whitelist/remove/confirm", "").await).await;
+    assert!(nothing.contains("select at least one address"), "{nothing}");
+}
+
+#[tokio::test]
+async fn health_and_rules_pages_render() {
+    let site = site();
+
+    let health = text(site.get("/health").await).await;
+    let rules = text(site.get("/rules").await).await;
+    let tried = text(
+        site.post("/rules/test", "message=From%3A+a%40b.org%0D%0A%0D%0Ahi")
+            .await,
+    )
+    .await;
+    let logs = text(site.get("/logs").await).await;
+
+    assert!(
+        health.contains("<h1 class=\"text-2xl font-semibold mb-4\">Health</h1>"),
+        "{health}"
+    );
+    assert!(rules.contains("No rules script configured"), "{rules}");
+    assert!(
+        tried.contains("No rules script configured (rules.script)."),
+        "{tried}"
+    );
+    assert!(logs.contains("No log lines"), "{logs}");
+}
+
+#[tokio::test]
+async fn enrolling_needs_a_link_that_works_once() {
+    let site = site();
+    site.db
+        .add_enrollment(
+            &hash_token("secret-link"),
+            Timestamp::now() + std::time::Duration::from_secs(300),
+        )
+        .unwrap();
+    let begin = |token: &str| {
+        let request = Request::post(format!("/auth/register/begin?token={token}"))
+            .header(header::ORIGIN, ORIGIN)
+            .body(Body::empty())
+            .unwrap();
+        site.send(request, false)
+    };
+
+    let wrong = begin("guess").await;
+    let first = begin("secret-link").await;
+    let reused = begin("secret-link").await;
+
+    assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(first.status(), StatusCode::OK);
+    assert!(
+        first.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .contains("HttpOnly; SameSite=Strict")
+    );
+    let options = text(first).await;
+    assert!(
+        options.contains("\"challenge\"") && options.contains("\"requireResidentKey\":true"),
+        "{options}"
+    );
+    assert_eq!(reused.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn finishing_a_ceremony_that_was_never_started_is_refused() {
+    let site = site();
+    let request = Request::post("/auth/login/finish")
+        .header(header::ORIGIN, ORIGIN)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from("{}"))
+        .unwrap();
+
+    let response = site.send(request, false).await;
+
+    assert!(response.status().is_client_error());
+    assert_eq!(site.app.sessions.take("nothing"), None);
+}
+
+#[tokio::test]
+async fn signing_out_ends_the_session() {
+    let site = site();
+
+    let response = site.post("/auth/logout", "").await;
+    let after = site.get("/").await;
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert!(
+        response.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .contains("Max-Age=0")
+    );
+    assert_eq!(after.status(), StatusCode::SEE_OTHER);
+}

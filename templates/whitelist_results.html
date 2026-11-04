@@ -1,0 +1,23 @@
+<div id="results">
+<input type="hidden" form="toolbar" name="sort" value="{{ body.sort }}">
+<input type="hidden" form="toolbar" name="dir" value="{{ body.dir }}">
+{% if body.reset_form %}{% include "whitelist_addform.html" %}{% endif %}
+{% if body.clear_confirm %}<div id="confirm" hx-swap-oob="true"></div>{% endif %}
+{% if !body.error.is_empty() %}<div role="alert" class="alert alert-error alert-soft my-2"><span>{{ body.error }}</span></div>{% endif %}
+{% if !body.note.is_empty() %}<div role="alert" class="alert alert-success alert-soft my-2"><span>{{ body.note }}</span></div>{% endif %}
+<div class="flex flex-wrap items-center gap-3 my-2">
+<p class="text-sm opacity-70">{{ body.count }}</p>
+<form id="bulk" class="flex flex-wrap items-center gap-2">
+<button type="button" class="btn btn-sm btn-outline btn-error" hx-post="/whitelist/remove/confirm" hx-include="#bulk, #toolbar" hx-target="#confirm" hx-swap="outerHTML">Remove selected…</button>
+{% if !body.remove_all.is_empty() %}<button type="button" class="btn btn-sm btn-outline" hx-post="/whitelist/remove/confirm?scope=all" hx-include="#toolbar" hx-target="#confirm" hx-swap="outerHTML">{{ body.remove_all }}</button>{% endif %}
+</form>
+</div>
+{% if !body.rows.is_empty() %}<div class="overflow-x-auto">
+<table class="table table-sm table-zebra table-pin-rows">
+<thead><tr><th><input type="checkbox" id="select-all" class="checkbox checkbox-sm" aria-label="Select all loaded addresses"></th>{% for column in body.columns %}<th aria-sort="{{ column.aria_sort }}"><a class="link link-hover" href="{{ column.href }}" hx-get="{{ column.href }}" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">{{ column.label }}{% if !column.arrow.is_empty() %} {{ column.arrow }}{% endif %}</a></th>{% endfor %}</tr></thead>
+<tbody>
+{% include "whitelist_rows.html" %}
+</tbody>
+</table>
+</div>{% else %}<p class="py-8 text-center opacity-70">{% if !body.search.is_empty() %}No addresses match.{% else %}No addresses whitelisted.{% endif %}</p>{% endif %}
+</div>

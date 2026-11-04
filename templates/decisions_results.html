@@ -1,0 +1,14 @@
+<div id="results">
+<input type="hidden" form="toolbar" name="sort" value="{{ body.sort }}">
+<input type="hidden" form="toolbar" name="dir" value="{{ body.dir }}">
+{% if body.only_id != 0 %}<div role="status" class="alert alert-info alert-soft my-2"><span>Showing decision #{{ body.only_id }} only.</span><a class="link" href="/">Show all</a></div>{% endif %}
+<p class="text-sm opacity-70 my-2">{{ body.count }}</p>
+{% if !body.rows.is_empty() %}<div class="overflow-x-auto">
+<table class="table table-xs table-zebra table-pin-rows">
+<thead><tr>{% for column in body.columns %}<th aria-sort="{{ column.aria_sort }}"><a class="link link-hover" href="{{ column.href }}" hx-get="{{ column.href }}" hx-target="#results" hx-swap="outerHTML" hx-push-url="true">{{ column.label }}{% if !column.arrow.is_empty() %} {{ column.arrow }}{% endif %}</a></th>{% endfor %}<th></th></tr></thead>
+<tbody>
+{% include "decisions_rows.html" %}
+</tbody>
+</table>
+</div>{% else %}<p class="py-8 text-center opacity-70">No decisions {% if !body.search.is_empty() || !body.verdict.is_empty() || body.only_id != 0 %}match{% else %}yet{% endif %}.</p>{% endif %}
+</div>

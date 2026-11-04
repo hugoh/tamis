@@ -1,0 +1,21 @@
+<div id="logs" hx-get="/logs" hx-trigger="every 10s" hx-swap="outerHTML">
+{% if body.debug.available %}<div class="flex flex-wrap items-center gap-3 mb-3">
+{% if body.debug.locked %}<span class="badge badge-warning">Debug logging is on: the daemon runs with --verbose</span>
+{% else if body.debug.on %}<span class="badge badge-warning">Debug logging on until {{ body.debug.until }}</span>
+<button class="btn btn-xs" hx-post="/logs/debug?state=off" hx-target="#logs" hx-swap="outerHTML">Turn off</button>
+{% else %}<span class="badge badge-ghost">Debug logging off</span>
+<button class="btn btn-xs btn-outline" hx-post="/logs/debug?state=on" hx-target="#logs" hx-swap="outerHTML">Turn on for {{ body.debug.span }}</button>{% endif %}
+</div>{% endif %}
+{% if !body.rows.is_empty() %}<div class="overflow-x-auto">
+<table class="table table-xs table-zebra table-pin-rows">
+<thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
+<tbody>
+{% for row in body.rows %}<tr>
+<td class="whitespace-nowrap">{{ row.when }}</td>
+<td><span class="badge badge-sm {% if row.level == "ERROR" %}badge-error{% else if row.level == "WARN" %}badge-warning{% else %}badge-ghost{% endif %}">{{ row.level }}</span></td>
+<td class="font-mono">{{ row.text }}</td>
+</tr>
+{% endfor %}</tbody>
+</table>
+</div>{% else %}<p class="py-8 text-center opacity-70">No log lines: they are kept only while debug logging is on.</p>{% endif %}
+</div>

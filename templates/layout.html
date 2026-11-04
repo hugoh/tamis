@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}'>
+<title>tamis · {{ title }}</title>
+<link rel="stylesheet" href="/static/vendor/theme.css">
+</head>
+<body class="min-h-screen">
+<div class="navbar bg-base-200 shadow-sm px-4">
+<div class="flex-1"><span class="text-xl font-semibold">tamis</span></div>
+{% if !nav.is_empty() %}<div class="flex-none flex items-center gap-2">
+<ul class="menu menu-horizontal">
+<li><a href="/"{% if nav == "decisions" %} class="menu-active"{% endif %}>Decisions</a></li>
+<li><a href="/health"{% if nav == "health" %} class="menu-active"{% endif %}>Health</a></li>
+<li><a href="/whitelist"{% if nav == "whitelist" %} class="menu-active"{% endif %}>Whitelist</a></li>
+<li><a href="/rules"{% if nav == "rules" %} class="menu-active"{% endif %}>Rules</a></li>
+<li><a href="/logs"{% if nav == "logs" %} class="menu-active"{% endif %}>Logs</a></li>
+</ul>
+<form method="post" action="/auth/logout"><button class="btn btn-ghost btn-sm">Sign out</button></form>
+</div>{% endif %}
+</div>
+<main class="mx-auto max-w-screen-2xl p-4">
+{% block content %}{% endblock %}
+</main>
+{% if !version.is_empty() %}<footer class="p-4 text-center text-xs opacity-60">tamis {{ version }}</footer>{% endif %}
+<script src="/static/vendor/htmx.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

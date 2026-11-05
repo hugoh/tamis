@@ -38,9 +38,10 @@ fn site_with(options: Options) -> Site {
     let cfg = Arc::new(Config::load(&|_| None, &config).unwrap());
     let db = Arc::new(Store::open(&dir.path().join("state.db")).unwrap());
     let (router, app) = build(cfg, Arc::clone(&db), options).unwrap();
+    db.add_passkey("session-key", "test", &[]).unwrap();
     let session = app
         .sessions
-        .put((), std::time::Duration::from_secs(60))
+        .put("session-key".to_owned(), std::time::Duration::from_secs(60))
         .unwrap();
     Site {
         router,
@@ -683,4 +684,15 @@ async fn a_verbose_daemon_shows_that_debug_is_locked_on() {
         "{page}"
     );
     assert!(!page.contains("Turn on for"), "{page}");
+}
+
+#[tokio::test]
+async fn revoking_a_passkey_ends_its_sessions() {
+    let site = site();
+    assert_eq!(site.get("/").await.status(), StatusCode::OK);
+
+    let key = site.db.passkeys().unwrap().remove(0);
+    site.db.remove_passkey(key.id).unwrap();
+
+    assert_eq!(site.get("/").await.status(), StatusCode::SEE_OTHER);
 }

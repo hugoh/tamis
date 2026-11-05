@@ -175,6 +175,7 @@ pub struct ConfigInfo {
     pub mode: String,
     pub watch: String,
     pub train: String,
+    pub state: String,
 }
 
 /// What compiling the filing rules found. `script` is empty when none are
@@ -314,6 +315,7 @@ mod tests {
                 mode: "live".into(),
                 watch: "INBOX".into(),
                 train: "TrainSpam, TrainGood".into(),
+                state: "/state.db".into(),
             },
             rules: RulesInfo::default(),
             daemon: DaemonInfo {

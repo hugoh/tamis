@@ -73,6 +73,18 @@ impl Store {
         found_one(changed, &format!("passkey {credential_id}"))
     }
 
+    /// Whether a passkey with this credential id is still registered.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn has_passkey(&self, credential_id: &str) -> Result<bool> {
+        Ok(self.conn().query_row(
+            "SELECT EXISTS (SELECT 1 FROM passkeys WHERE credential_id = ?)",
+            [credential_id],
+            |row| row.get(0),
+        )?)
+    }
+
     /// Deletes the passkey with the given id.
     ///
     /// # Errors

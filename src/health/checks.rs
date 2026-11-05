@@ -29,7 +29,10 @@ pub(super) fn config_file(info: &ConfigInfo) -> Check {
     Check::new(
         name::CONFIG,
         Status::Ok,
-        format!("{}: {}, {} mode", info.path, info.account, info.mode),
+        format!(
+            "{}: {}, {} mode; state {}",
+            info.path, info.account, info.mode, info.state
+        ),
     )
 }
 

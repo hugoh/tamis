@@ -260,7 +260,9 @@ default the server speaks plain HTTP. So either:
 - **Behind a TLS reverse proxy** (Caddy, nginx, `tailscale serve`...): proxy
   your `origin` to `listen`, which can stay on loopback. The proxy must pass the
   browser's `Origin` header through. If `listen` is not a loopback address,
-  tamis refuses to start unless `origin` is `https://`.
+  tamis refuses to start unless `origin` is `https://`. Sign-in has no rate
+  limit of its own: if the port is reachable from the internet, limit `/auth/`
+  requests in the proxy.
 - **Over an SSH tunnel**, with nothing else set up: use
   `origin = "http://localhost:8484"`, run `ssh -L 8484:127.0.0.1:8484 yourserver`
   on the machine with the browser, and browse `http://localhost:8484`.

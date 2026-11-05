@@ -1,6 +1,6 @@
-//! The TLS crypto provider. Two providers end up compiled in through our
-//! dependencies, and rustls refuses to guess between them, so tamis picks
-//! `ring` once, before any connection is made.
+//! The TLS crypto provider. `ring` is the only one compiled in, and reqwest is
+//! built without a provider of its own, so tamis installs it once, before any
+//! connection is made.
 
 use std::sync::Once;
 

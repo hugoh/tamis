@@ -137,9 +137,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn the_password_command_comes_first_and_is_remembered() {
-        let mut harness = Harness::new(&[("TAMIS_PASSWORD", "from env")], "typed\n");
+    fn keychain_holds_a_password(harness: &Harness) {
         harness
             .keyring
             .set(
@@ -148,6 +146,19 @@ mod tests {
                 "from keychain",
             )
             .unwrap();
+    }
+
+    async fn found(harness: &mut Harness) -> String {
+        PasswordFinder::default()
+            .find(&mut harness.env, &who(&[]))
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_password_command_comes_first_and_is_remembered() {
+        let mut harness = Harness::new(&[("TAMIS_PASSWORD", "from env")], "typed\n");
+        keychain_holds_a_password(&harness);
         let mut finder = PasswordFinder::default();
         let command = ["printf".to_owned(), "from command".to_owned()];
 
@@ -188,68 +199,23 @@ mod tests {
         let credentials = dir.path().to_string_lossy().into_owned();
 
         let mut harness = Harness::new(&[("CREDENTIALS_DIRECTORY", &credentials)], "");
-        harness
-            .keyring
-            .set(
-                &secret::service("imap.example.org"),
-                "me@example.org",
-                "from keychain",
-            )
-            .unwrap();
-        assert_eq!(
-            PasswordFinder::default()
-                .find(&mut harness.env, &who(&[]))
-                .await
-                .unwrap(),
-            "from systemd"
-        );
+        keychain_holds_a_password(&harness);
+        assert_eq!(found(&mut harness).await, "from systemd");
 
         let empty = tempfile::tempdir().unwrap();
         let credentials = empty.path().to_string_lossy().into_owned();
         let mut harness = Harness::new(&[("CREDENTIALS_DIRECTORY", &credentials)], "");
-        harness
-            .keyring
-            .set(
-                &secret::service("imap.example.org"),
-                "me@example.org",
-                "from keychain",
-            )
-            .unwrap();
-        assert_eq!(
-            PasswordFinder::default()
-                .find(&mut harness.env, &who(&[]))
-                .await
-                .unwrap(),
-            "from keychain"
-        );
+        keychain_holds_a_password(&harness);
+        assert_eq!(found(&mut harness).await, "from keychain");
     }
 
     #[tokio::test]
     async fn the_keychain_beats_the_environment_which_beats_typing() {
         let mut harness = Harness::new(&[("TAMIS_PASSWORD", "from env")], "typed\n");
-        assert_eq!(
-            PasswordFinder::default()
-                .find(&mut harness.env, &who(&[]))
-                .await
-                .unwrap(),
-            "from env"
-        );
+        assert_eq!(found(&mut harness).await, "from env");
 
-        harness
-            .keyring
-            .set(
-                &secret::service("imap.example.org"),
-                "me@example.org",
-                "from keychain",
-            )
-            .unwrap();
-        assert_eq!(
-            PasswordFinder::default()
-                .find(&mut harness.env, &who(&[]))
-                .await
-                .unwrap(),
-            "from keychain"
-        );
+        keychain_holds_a_password(&harness);
+        assert_eq!(found(&mut harness).await, "from keychain");
     }
 
     #[tokio::test]
@@ -274,22 +240,10 @@ mod tests {
             assert_eq!(text, "Password for me@example.org: ");
             Ok("from prompt".to_owned())
         }));
-        assert_eq!(
-            PasswordFinder::default()
-                .find(&mut harness.env, &who(&[]))
-                .await
-                .unwrap(),
-            "from prompt"
-        );
+        assert_eq!(found(&mut harness).await, "from prompt");
 
         harness.env.prompt = Some(Box::new(|_| Err(PromptError::NotTerminal)));
-        assert_eq!(
-            PasswordFinder::default()
-                .find(&mut harness.env, &who(&[]))
-                .await
-                .unwrap(),
-            "from stdin"
-        );
+        assert_eq!(found(&mut harness).await, "from stdin");
 
         harness.env.prompt = Some(Box::new(|_| Err(PromptError::Other("broken".into()))));
         let err = PasswordFinder::default()

@@ -15,7 +15,7 @@ use tracing::warn;
 use super::listing::{Column, PAGE_SIZE, SortChoice, TableState, count_label};
 use super::{App, Job, fail};
 use crate::classify::Label;
-use crate::engine::keyword;
+use crate::engine;
 use crate::journal::{Action, Reason, Verdict};
 use crate::live::Waiting;
 use crate::store::{self, Decision, DecisionQuery, DecisionSort};
@@ -205,28 +205,6 @@ const DECISION_SORTS: [SortChoice; 9] = [
     },
 ];
 
-fn own_judgement(decision: &Decision) -> bool {
-    decision.reason.is_own_judgement()
-}
-
-fn undoable(decision: &Decision) -> bool {
-    decision.applied
-        && !decision.undone
-        && own_judgement(decision)
-        && !(flagged_uncertain(decision) && decision.corrected_by > 0)
-}
-
-fn flagged_uncertain(decision: &Decision) -> bool {
-    decision.action == Action::Keyword(keyword::UNCERTAIN.to_owned())
-}
-
-fn learnable(decision: &Decision) -> bool {
-    decision.corrected_by == 0
-        && ((!decision.applied && own_judgement(decision))
-            || flagged_uncertain(decision)
-            || decision.reason == Reason::Correction)
-}
-
 fn action_label(decision: &Decision) -> String {
     if !decision.action.is_none() && !decision.applied {
         format!("would {}", decision.action)
@@ -249,8 +227,8 @@ fn decision_row(decision: &Decision) -> DecisionRow {
         },
         from: decision.from.clone(),
         subject: decision.subject.clone(),
-        can_undo: undoable(decision),
-        can_learn: learnable(decision),
+        can_undo: engine::can_undo(decision),
+        can_learn: engine::can_learn(decision),
         undone: decision.undone,
         undone_by: decision.undone_by,
         corrected_by: decision.corrected_by,

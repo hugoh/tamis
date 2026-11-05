@@ -24,6 +24,8 @@ pub use authid::{AuthPin, AuthSource, NO_AUTH_SERVER_ID, resolve_auth_pin};
 pub use bootstrap::{BootstrapOptions, BootstrapSummary, Source};
 pub use domain::{Action, Judgement, Reason, Summary, Verdict, keyword};
 pub use error::{Context, Error, Result};
+pub use learn::can_learn;
+pub use undo::can_undo;
 
 use crate::auth;
 use crate::classify::{self, Label};

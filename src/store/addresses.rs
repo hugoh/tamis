@@ -111,7 +111,72 @@ pub fn parse_address(input: &str) -> Result<String> {
     }
 }
 
+/// The source recorded for addresses a person whitelisted by hand.
+pub const MANUAL_SOURCE: &str = "manual";
+
+/// Parses addresses the user named, returning them sorted and without
+/// repeats.
+///
+/// # Errors
+/// [`Error::NoAddresses`] when none are given, or [`Error::InvalidAddress`]
+/// for the first that is not exactly one address.
+pub fn parse_addresses(given: &[String]) -> Result<Vec<String>> {
+    let mut addresses = given
+        .iter()
+        .map(|input| parse_address(input))
+        .collect::<Result<Vec<_>>>()?;
+    addresses.sort();
+    addresses.dedup();
+    if addresses.is_empty() {
+        return Err(Error::NoAddresses);
+    }
+    Ok(addresses)
+}
+
 impl Store {
+    /// Whitelists the address in `given`, as a person would by hand, and
+    /// returns it as stored.
+    ///
+    /// # Errors
+    /// [`Error::InvalidAddress`] when `given` is not exactly one address, or a
+    /// database error.
+    pub fn whitelist(&self, given: &str) -> Result<String> {
+        let address = parse_address(given)?;
+        self.add_address(&address, MANUAL_SOURCE)?;
+        Ok(address)
+    }
+
+    /// Counts the entries a search matches.
+    ///
+    /// # Errors
+    /// [`Error::NoMatch`] when there are none, or a database error.
+    pub fn count_matching(&self, search: &str) -> Result<i64> {
+        let (_, total) = self.query_addresses(&AddressQuery {
+            search: search.to_owned(),
+            limit: 1,
+            ..AddressQuery::default()
+        })?;
+        if total == 0 {
+            return Err(Error::NoMatch);
+        }
+        Ok(total)
+    }
+
+    /// Takes the given (already parsed) addresses off the whitelist, if all
+    /// of them are on it, and returns how many were removed.
+    ///
+    /// # Errors
+    /// [`Error::NotWhitelisted`] for the first that is not on the whitelist,
+    /// removing none, or a database error.
+    pub fn remove_listed(&self, addresses: &[String]) -> Result<usize> {
+        for address in addresses {
+            if !self.has_address(address)? {
+                return Err(Error::NotWhitelisted(address.clone()));
+            }
+        }
+        self.remove_addresses(addresses)
+    }
+
     /// Adds an address to the whitelist. Addresses compare case-insensitively.
     ///
     /// # Errors

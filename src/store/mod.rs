@@ -19,7 +19,9 @@ use rusqlite::{
 };
 use thiserror::Error;
 
-pub use addresses::{Address, AddressQuery, AddressSort, parse_address};
+pub use addresses::{
+    Address, AddressQuery, AddressSort, MANUAL_SOURCE, parse_address, parse_addresses,
+};
 pub use decisions::{Decision, DecisionQuery, DecisionSort, PendingMove, Stats};
 pub use web::Passkey;
 
@@ -40,6 +42,12 @@ pub enum Error {
     Exists(String),
     #[error("invalid address {0:?}")]
     InvalidAddress(String),
+    #[error("{0} is not whitelisted")]
+    NotWhitelisted(String),
+    #[error("select at least one address")]
+    NoAddresses,
+    #[error("no addresses match")]
+    NoMatch,
     #[error("{path}: {source}")]
     Io {
         path: PathBuf,
@@ -49,6 +57,17 @@ pub enum Error {
     Sql(#[from] rusqlite::Error),
     #[error("encode tokens: {0}")]
     Json(#[from] serde_json::Error),
+}
+
+impl Error {
+    /// Whether the error is the caller's input to fix, not a fault.
+    #[must_use]
+    pub fn is_user_error(&self) -> bool {
+        matches!(
+            self,
+            Self::InvalidAddress(_) | Self::NoAddresses | Self::NoMatch | Self::NotWhitelisted(_)
+        )
+    }
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -733,6 +752,65 @@ mod tests {
                 "{input:?}"
             );
         }
+    }
+
+    #[test]
+    fn whitelisting_parses_and_records_the_manual_source() {
+        let (_dir, store) = open();
+        assert_eq!(
+            store.whitelist("Alice <Alice@Example.org>").unwrap(),
+            "alice@example.org"
+        );
+        let listed = store.addresses().unwrap();
+        assert_eq!(listed[0].source, MANUAL_SOURCE);
+        assert!(matches!(
+            store.whitelist("nope"),
+            Err(Error::InvalidAddress(_))
+        ));
+    }
+
+    #[test]
+    fn listed_addresses_are_parsed_sorted_and_deduplicated() {
+        let given = ["B@x.org", "a@x.org", "b@x.org"].map(str::to_owned);
+        assert_eq!(parse_addresses(&given).unwrap(), ["a@x.org", "b@x.org"]);
+        assert!(matches!(parse_addresses(&[]), Err(Error::NoAddresses)));
+        assert!(matches!(
+            parse_addresses(&["bad".to_owned()]),
+            Err(Error::InvalidAddress(_))
+        ));
+    }
+
+    #[test]
+    fn removing_listed_addresses_refuses_any_not_whitelisted() {
+        let (_dir, store) = open();
+        store.whitelist("a@x.org").unwrap();
+        store.whitelist("b@x.org").unwrap();
+
+        let err = store
+            .remove_listed(&["a@x.org".to_owned(), "c@x.org".to_owned()])
+            .unwrap_err();
+        assert!(matches!(err, Error::NotWhitelisted(a) if a == "c@x.org"));
+        assert_eq!(store.addresses().unwrap().len(), 2);
+
+        assert_eq!(store.remove_listed(&["a@x.org".to_owned()]).unwrap(), 1);
+        assert_eq!(store.addresses().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn counting_matches_refuses_an_empty_result() {
+        let (_dir, store) = open();
+        store.whitelist("a@x.org").unwrap();
+        store.whitelist("b@y.org").unwrap();
+        assert_eq!(store.count_matching("").unwrap(), 2);
+        assert_eq!(store.count_matching("y.org").unwrap(), 1);
+        assert!(matches!(store.count_matching("zzz"), Err(Error::NoMatch)));
+    }
+
+    #[test]
+    fn user_errors_are_told_apart_from_internal_ones() {
+        assert!(Error::NoMatch.is_user_error());
+        assert!(Error::InvalidAddress(String::new()).is_user_error());
+        assert!(!Error::NotFound(String::new()).is_user_error());
     }
 
     #[test]

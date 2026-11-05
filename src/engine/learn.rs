@@ -18,7 +18,7 @@ fn learnt_label(decision: &Decision, label: Option<Label>) -> Result<Label> {
 
 /// Whether the decision's only effect was flagging the message uncertain,
 /// which learning replaces.
-fn flagged_uncertain(decision: &Decision) -> bool {
+pub(super) fn flagged_uncertain(decision: &Decision) -> bool {
     decision.action == Action::Keyword(keyword::UNCERTAIN.to_owned())
 }
 
@@ -35,6 +35,12 @@ fn refuse_learning(decision: &Decision, label: Option<Label>) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+/// Whether the decision can be learnt from without choosing a label.
+#[must_use]
+pub fn can_learn(decision: &Decision) -> bool {
+    refuse_learning(decision, None).is_ok()
 }
 
 impl<M: Mailbox> Engine<M> {

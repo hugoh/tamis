@@ -12,9 +12,8 @@ use url::form_urlencoded;
 use super::listing::{Column, PAGE_SIZE, SortChoice, TableState, count_label};
 use super::pages::{is_htmx, local_time, params, render};
 use super::{App, fail};
-use crate::store::{self, AddressQuery, AddressSort, parse_address};
+use crate::store::{self, AddressQuery, AddressSort, parse_addresses};
 
-const MANUAL_SOURCE: &str = "manual";
 const CONFIRM_SHOWN: usize = 200;
 
 const SORTS: [SortChoice; 3] = [
@@ -190,10 +189,8 @@ fn results(app: &App, form: &[(String, String)], edit: Edit) -> Response {
 
 pub(super) async fn add(State(app): State<App>, body: Bytes) -> Response {
     let form = form(&body);
-    let outcome = parse_address(field(&form, "address"))
-        .and_then(|address| app.db.add_address(&address, MANUAL_SOURCE));
-    let edit = match outcome {
-        Ok(()) => Edit {
+    let edit = match app.db.whitelist(field(&form, "address")) {
+        Ok(_) => Edit {
             reset_form: true,
             ..Edit::default()
         },
@@ -220,9 +217,10 @@ enum Refusal {
 
 impl From<store::Error> for Refusal {
     fn from(err: store::Error) -> Self {
-        match err {
-            store::Error::InvalidAddress(_) => Self::User(err.to_string()),
-            other => Self::Internal(other),
+        if err.is_user_error() {
+            Self::User(err.to_string())
+        } else {
+            Self::Internal(err)
         }
     }
 }
@@ -230,14 +228,7 @@ impl From<store::Error> for Refusal {
 fn parse_removal(app: &App, form: &[(String, String)]) -> Result<Removal, Refusal> {
     if field(form, "scope") == "all" {
         let search = field(form, "q").trim().to_owned();
-        let (_, total) = app.db.query_addresses(&AddressQuery {
-            search: search.clone(),
-            limit: 1,
-            ..AddressQuery::default()
-        })?;
-        if total == 0 {
-            return Err(Refusal::User("no addresses match".to_owned()));
-        }
+        let total = app.db.count_matching(&search)?;
         return Ok(Removal {
             all: true,
             search,
@@ -245,17 +236,12 @@ fn parse_removal(app: &App, form: &[(String, String)]) -> Result<Removal, Refusa
             count: total,
         });
     }
-    let mut addresses = Vec::new();
-    for (name, value) in form {
-        if name == "address" {
-            addresses.push(parse_address(value)?);
-        }
-    }
-    addresses.sort();
-    addresses.dedup();
-    if addresses.is_empty() {
-        return Err(Refusal::User("select at least one address".to_owned()));
-    }
+    let given: Vec<String> = form
+        .iter()
+        .filter(|(name, _)| name == "address")
+        .map(|(_, value)| value.clone())
+        .collect();
+    let addresses = parse_addresses(&given)?;
     let count = i64::try_from(addresses.len()).unwrap_or(i64::MAX);
     Ok(Removal {
         all: false,
@@ -368,7 +354,7 @@ pub(super) async fn remove(State(app): State<App>, body: Bytes) -> Response {
         }
         app.db.remove_addresses_matching(&removal.search)
     } else {
-        app.db.remove_addresses(&removal.addresses)
+        app.db.remove_listed(&removal.addresses)
     };
     match removed {
         Ok(removed) => {
@@ -386,6 +372,15 @@ pub(super) async fn remove(State(app): State<App>, body: Bytes) -> Response {
                 },
             )
         }
+        Err(err) if err.is_user_error() => results(
+            &app,
+            &form,
+            Edit {
+                error: err.to_string(),
+                clear_confirm: true,
+                ..Edit::default()
+            },
+        ),
         Err(err) => fail("remove addresses", &err),
     }
 }

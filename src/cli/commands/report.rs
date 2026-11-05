@@ -6,15 +6,15 @@ use std::time::Duration;
 use anyhow::{Result, anyhow};
 use serde::Serialize;
 
-use super::super::style::{
-    BOLD, BOLD_RED, BOLD_YELLOW, Cell, DIM, GREEN, Style, cell, write_table,
-};
 use super::super::{App, Reported};
 use super::common::{open, palette};
 use crate::config::Config;
 use crate::health::{self, Report, Status};
 use crate::monitor::{self, Check as MonitorCheck, Inputs, Pinger};
-use crate::report::{write_json, write_table as write_plain_table};
+use crate::output::style::{
+    BOLD, BOLD_RED, BOLD_YELLOW, Cell, DIM, GREEN, Style, cell, write_table,
+};
+use crate::output::{write_json, write_table as write_plain_table};
 
 /// A pass is cut off after this long; the heartbeat's grace allows for it.
 const PASS_TIMEOUT: Duration = Duration::from_mins(10);

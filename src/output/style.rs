@@ -50,6 +50,11 @@ impl Palette {
     }
 
     #[must_use]
+    pub const fn off() -> Self {
+        Self { on: false }
+    }
+
+    #[must_use]
     pub fn paint(self, text: &str, style: Style) -> String {
         if !self.on || style.is_empty() || text.is_empty() {
             text.to_owned()

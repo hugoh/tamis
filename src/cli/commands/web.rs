@@ -8,9 +8,9 @@ use anyhow::{Result, anyhow, bail};
 use jiff::Timestamp;
 
 use super::super::App;
-use super::super::style::{BOLD, Cell, DIM, cell, write_table};
 use super::common::{local, open, palette};
 use crate::config::Config;
+use crate::output::style::{BOLD, Cell, DIM, cell, write_table};
 use crate::web::{hash_token, new_token};
 
 const ENROLL_TTL: Duration = Duration::from_mins(15);

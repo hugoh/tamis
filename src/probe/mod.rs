@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 
 use crate::mail::client::DialConfig;
-use crate::report::write_table;
+use crate::output::write_table;
 
 mod live;
 

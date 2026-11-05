@@ -3,7 +3,6 @@
 mod commands;
 pub mod logging;
 mod password;
-pub mod style;
 #[cfg(test)]
 mod testing;
 

@@ -66,7 +66,7 @@ pub(in super::super) async fn probe(app: &mut App, args: &ProbeArgs) -> Result<(
     .map_err(|err| anyhow!("probe: {err}"))?;
 
     if args.json {
-        crate::report::write_json(&mut app.env.stdout, &report)?;
+        crate::output::write_json(&mut app.env.stdout, &report)?;
     } else {
         report.write_text(&mut app.env.stdout)?;
     }

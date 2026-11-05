@@ -3,8 +3,8 @@ use std::io::Write;
 use anyhow::{Result, bail};
 
 use super::super::App;
-use super::super::style::{BOLD, Cell, DIM, cell, write_table};
 use super::common::{local, open, palette};
+use crate::output::style::{BOLD, Cell, DIM, cell, write_table};
 use crate::store::{Address, AddressQuery, Store, parse_address};
 
 const MANUAL_SOURCE: &str = "manual";

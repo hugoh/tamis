@@ -3,11 +3,11 @@ use std::io::Write;
 use anyhow::Result;
 
 use super::super::App;
-use super::super::style::{
-    BLUE, BOLD, Cell, DIM, GREEN, MAGENTA, RED, Style, YELLOW, cell, write_table,
-};
 use super::common::{local, open, palette};
 use crate::journal::{Action, Reason, Verdict};
+use crate::output::style::{
+    BLUE, BOLD, Cell, DIM, GREEN, MAGENTA, RED, Style, YELLOW, cell, write_table,
+};
 use crate::store::Decision;
 
 pub(in super::super) fn log(app: &mut App, number: i64) -> Result<()> {

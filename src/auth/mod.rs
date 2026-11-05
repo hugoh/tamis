@@ -7,7 +7,7 @@ mod results;
 
 use std::collections::HashSet;
 
-use mail_parser::{Addr, MessageParser};
+use mail_parser::MessageParser;
 
 pub use infer::Tally;
 use results::{Method, parse};
@@ -69,7 +69,7 @@ fn from_provider(authserv_id: &str, server_id: &str) -> bool {
 
 fn from_domain(raw: &[u8]) -> Option<String> {
     let message = MessageParser::default().parse_headers(raw)?;
-    let address = message.from()?.iter().next().and_then(Addr::address)?;
+    let address = message.from()?.first()?.address()?;
     address
         .to_lowercase()
         .split_once('@')

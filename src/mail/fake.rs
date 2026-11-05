@@ -15,7 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use jiff::Timestamp;
-use mail_parser::{Addr, Address, MessageParser};
+use mail_parser::{AddressList, MessageParser};
 
 use super::{Error, Mailbox, Message, ModState, Result, State};
 
@@ -226,13 +226,7 @@ fn envelope(stored: &Stored, with_source: bool) -> Message {
     let parsed = MessageParser::default().parse_headers(&stored.raw);
     let from = parsed
         .as_ref()
-        .and_then(|m| {
-            m.from()?
-                .iter()
-                .next()
-                .and_then(Addr::address)
-                .map(str::to_lowercase)
-        })
+        .and_then(|m| m.from()?.first()?.address().map(str::to_lowercase))
         .unwrap_or_default();
     let message_id = parsed
         .as_ref()
@@ -264,11 +258,11 @@ fn envelope(stored: &Stored, with_source: bool) -> Message {
     }
 }
 
-fn addresses(address: Option<&Address<'_>>) -> Vec<String> {
+fn addresses(address: Option<AddressList<'_>>) -> Vec<String> {
     address
         .into_iter()
-        .flat_map(Address::iter)
-        .filter_map(Addr::address)
+        .flat_map(|list| list.mailboxes())
+        .filter_map(|mailbox| mailbox.address())
         .map(str::to_lowercase)
         .collect()
 }

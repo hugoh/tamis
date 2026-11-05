@@ -71,7 +71,7 @@ fn collect(dir: &Path, found: &mut Vec<Dated>) -> Result<(), Error> {
 fn sent(raw: &[u8]) -> i64 {
     MessageParser::default()
         .parse(raw)
-        .and_then(|message| message.date().map(mail_parser::DateTime::to_timestamp))
+        .and_then(|message| message.date().map(|date| date.to_timestamp()))
         .and_then(|seconds| Timestamp::from_second(seconds).ok())
         .map_or(i64::MIN, Timestamp::as_second)
 }

@@ -1,5 +1,5 @@
 use jiff::Timestamp;
-use mail_parser::{Address as ParsedAddress, MessageParser};
+use mail_parser::MessageParser;
 use rusqlite::types::Value;
 use rusqlite::{Row, params, params_from_iter};
 
@@ -91,12 +91,13 @@ pub fn parse_address(input: &str) -> Result<String> {
     let message = MessageParser::default()
         .parse(header.as_bytes())
         .ok_or_else(invalid)?;
-    let Some(ParsedAddress::List(list)) = message.to() else {
+    let Some(list) = message.to().filter(|list| !list.has_groups()) else {
         return Err(invalid());
     };
 
-    match list.as_slice() {
-        [one] => one
+    let mut mailboxes = list.mailboxes();
+    match (mailboxes.next(), mailboxes.next()) {
+        (Some(one), None) => one
             .address()
             .filter(|address| {
                 address

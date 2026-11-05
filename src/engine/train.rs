@@ -1,4 +1,4 @@
-use mail_parser::{Addr, Address, MessageParser};
+use mail_parser::MessageParser;
 
 use crate::classify::Label;
 use crate::mail::{Mailbox, Message};
@@ -123,13 +123,14 @@ impl<M: Mailbox> Engine<M> {
 
         let addresses: Vec<String> = [parsed.to(), parsed.cc()]
             .into_iter()
-            .flat_map(|list| list.into_iter().flat_map(Address::iter))
-            .filter_map(Addr::address)
+            .flatten()
+            .flat_map(|list| list.mailboxes())
+            .filter_map(|mailbox| mailbox.address())
             .map(str::to_lowercase)
             .collect();
         self.whitelist_recipients(&addresses)?;
 
-        let Some(replied) = parsed.in_reply_to().as_text() else {
+        let Some(replied) = parsed.in_reply_to().and_then(|ids| ids.last()) else {
             return Ok(());
         };
         let replied = format!("<{}>", replied.trim_matches(['<', '>']));

@@ -3,7 +3,6 @@
 "aqua:taiki-e/cargo-llvm-cov" = "0.9.1"
 "aqua:EmbarkStudios/cargo-deny" = "0.20.2"
 "github:bnjbvr/cargo-machete" = "0.9.2"
-"cargo:cargo-edit" = "0.13.14"
 "aqua:rust-cross/cargo-zigbuild" = "0.24.1"
 zig = "0.17.1"
 jq = "1.8.2"

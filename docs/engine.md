@@ -256,17 +256,22 @@ move back fails) can simply be run again.
 ## Learn
 
 `tamis learn [--good|--spam] ID...` teaches tamis the right answer for a
-decision it only recorded, which is what shadow mode produces. With no flag it
-learns the opposite of the verdict; an uncertain verdict needs a flag. It
-trains the message and updates the whitelist like an undo would, but moves
-nothing and sets no keyword, and journals the result as a `correction`.
+decision it only recorded, which is what shadow mode produces, or one that
+flagged the message uncertain. With no flag it learns the opposite of the
+verdict; an uncertain verdict needs a flag. It trains the message and updates
+the whitelist like an undo would, and journals the result as a `correction`.
+It moves nothing and sets no keyword, with one exception: for a message
+flagged `$TamisUncertain` it clears the flag, and learning it as spam also
+moves it to Junk. That makes `learn` the way to answer an uncertain flag,
+where `undo` only clears it and teaches nothing. The web UI offers Spam and
+Good on those rows, and drops Undo once one is chosen.
 
 It also changes a `correction`, for when the move that taught tamis was a
 mistake: with no flag it learns the opposite, so correction #167 (good) becomes
 spam. The message is looked for in the folder the decision names, then in Junk,
 since it may have been moved since.
 
-It refuses decisions that were applied (use `undo`) and anything that isn't
+It refuses other decisions that were applied (use `undo`) and anything that isn't
 tamis's own judgement or a correction, such as training.
 
 ## Rescue

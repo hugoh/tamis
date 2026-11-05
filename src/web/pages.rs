@@ -15,6 +15,7 @@ use tracing::warn;
 use super::listing::{Column, PAGE_SIZE, SortChoice, TableState, count_label};
 use super::{App, Job, fail};
 use crate::classify::Label;
+use crate::engine::keyword;
 use crate::journal::{Action, Reason, Verdict};
 use crate::live::Waiting;
 use crate::store::{self, Decision, DecisionQuery, DecisionSort};
@@ -209,12 +210,21 @@ fn own_judgement(decision: &Decision) -> bool {
 }
 
 fn undoable(decision: &Decision) -> bool {
-    decision.applied && !decision.undone && own_judgement(decision)
+    decision.applied
+        && !decision.undone
+        && own_judgement(decision)
+        && !(flagged_uncertain(decision) && decision.corrected_by > 0)
+}
+
+fn flagged_uncertain(decision: &Decision) -> bool {
+    decision.action == Action::Keyword(keyword::UNCERTAIN.to_owned())
 }
 
 fn learnable(decision: &Decision) -> bool {
     decision.corrected_by == 0
-        && ((!decision.applied && own_judgement(decision)) || decision.reason == Reason::Correction)
+        && ((!decision.applied && own_judgement(decision))
+            || flagged_uncertain(decision)
+            || decision.reason == Reason::Correction)
 }
 
 fn action_label(decision: &Decision) -> String {

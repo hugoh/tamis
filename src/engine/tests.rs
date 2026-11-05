@@ -1429,6 +1429,37 @@ async fn undoing_an_uncertain_flag_clears_it() {
 }
 
 #[tokio::test]
+async fn learning_an_uncertain_flag_as_spam_clears_it_and_moves_to_junk() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &unknown("u1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let id = decision_where(&env, |d| d.action == "keyword:$TamisUncertain");
+
+    assert!(env.engine.learn(id, None).await.is_err());
+    env.engine.learn(id, Some(Label::Spam)).await.unwrap();
+
+    assert_eq!(env.mail().uids("Junk").len(), 1);
+    assert!(env.mail().uids("INBOX").is_empty());
+    assert_eq!(env.mail().flags("Junk", 1), Some(vec![]));
+    assert_eq!(env.store().trained("<u1@x>").unwrap(), Some(Label::Spam));
+}
+
+#[tokio::test]
+async fn learning_an_uncertain_flag_as_good_clears_it_in_place() {
+    let mut env = Env::trained();
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &unknown("u1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let id = decision_where(&env, |d| d.action == "keyword:$TamisUncertain");
+
+    env.engine.learn(id, Some(Label::Good)).await.unwrap();
+
+    assert_eq!(env.mail().flags("INBOX", uid), Some(vec![]));
+    assert_eq!(env.store().trained("<u1@x>").unwrap(), Some(Label::Good));
+}
+
+#[tokio::test]
 async fn some_decisions_cannot_be_undone() {
     let mut env = Env::trained_with(Mode::Shadow, |_| {});
     env.start().await;

@@ -191,7 +191,7 @@ enum Command {
     },
     /// Teach tamis the right answer for decisions it only recorded
     #[command(
-        long_about = "Teach tamis the right answer for decisions it recorded without acting on, by\nthe IDs 'tamis log' shows (shadow mode). With no flag it learns the opposite\nof the verdict. The mail stays where it is, in its folder or in Junk. A\ncorrection can be learnt again to change it. Use 'tamis undo' for other\ndecisions that were applied."
+        long_about = "Teach tamis the right answer for decisions it recorded without acting on, or\nflagged uncertain, by the IDs 'tamis log' shows. With no flag it learns the opposite\nof the verdict. The mail stays where it is, in its folder or in Junk, except an uncertain\none: its flag is cleared, and it moves to Junk if learnt as spam. A\ncorrection can be learnt again to change it. Use 'tamis undo' for other\ndecisions that were applied."
     )]
     Learn {
         #[arg(required = true)]

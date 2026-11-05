@@ -2,7 +2,7 @@ use crate::classify::Label;
 use crate::mail::{Mailbox, Message};
 use crate::store::Decision;
 
-use super::domain::{Action, Judgement, Reason, Verdict};
+use super::domain::{Action, Judgement, Reason, Verdict, keyword};
 use super::{Context, Engine, Error, Result};
 
 /// The label to learn for `decision`, given the one asked for, if any.
@@ -16,13 +16,19 @@ fn learnt_label(decision: &Decision, label: Option<Label>) -> Result<Label> {
     }
 }
 
+/// Whether the decision's only effect was flagging the message uncertain,
+/// which learning replaces.
+fn flagged_uncertain(decision: &Decision) -> bool {
+    decision.action == Action::Keyword(keyword::UNCERTAIN.to_owned())
+}
+
 /// Says why a decision can't be learnt from. A correction is already applied
 /// by nature, so it stays learnable to change one's mind.
 fn refuse_learning(decision: &Decision, label: Option<Label>) -> Result<()> {
     let correction = decision.reason == Reason::Correction;
     if !decision.reason.is_own_judgement() && !correction {
         Err(Error::NotLearnable)
-    } else if decision.applied && !correction {
+    } else if decision.applied && !correction && !flagged_uncertain(decision) {
         Err(Error::AlreadyApplied)
     } else if label.is_none() && decision.corrected_by > 0 {
         Err(Error::AlreadyCorrected(decision.corrected_by))
@@ -34,7 +40,8 @@ fn refuse_learning(decision: &Decision, label: Option<Label>) -> Result<()> {
 impl<M: Mailbox> Engine<M> {
     /// Teaches tamis the right answer for a decision it only recorded, such
     /// as one made in shadow mode. With no label it learns the opposite of the
-    /// verdict. The message stays where it is. Returns a one-line account of
+    /// verdict. The message stays where it is, except one flagged uncertain:
+    /// its flag is cleared, and it goes to Junk if learnt as spam. Returns a one-line account of
     /// what it did.
     ///
     /// # Errors
@@ -47,6 +54,12 @@ impl<M: Mailbox> Engine<M> {
 
         let (folder, messages) = self.locate_for_learn(&decision).await.context(&context)?;
         self.relearn(&messages[0], learnt).context(&context)?;
+
+        if flagged_uncertain(&decision) && folder == decision.mailbox {
+            self.settle_uncertain(&folder, &messages, learnt)
+                .await
+                .context(&context)?;
+        }
 
         let score = self.rescore(&messages[0].raw).context(&context)?;
         let (verdict, action, account) = match learnt {
@@ -69,6 +82,27 @@ impl<M: Mailbox> Engine<M> {
         self.record(&folder, &messages[0], &judgement, &action, true)
             .context(&context)?;
         Ok(account.to_owned())
+    }
+
+    async fn settle_uncertain(
+        &mut self,
+        folder: &str,
+        messages: &[Message],
+        learnt: Label,
+    ) -> Result<()> {
+        let uids: Vec<u32> = messages.iter().map(|m| m.uid).collect();
+        self.mail
+            .remove_keyword(folder, &uids, keyword::UNCERTAIN)
+            .await
+            .context(format!("clear {}", keyword::UNCERTAIN))?;
+        if learnt == Label::Spam {
+            let junk = self.cfg.folders.junk.clone();
+            self.mail
+                .move_messages(folder, &uids, &junk)
+                .await
+                .context("move to junk")?;
+        }
+        Ok(())
     }
 
     /// Finds the message where it was judged or, if the user has since sent it

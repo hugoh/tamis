@@ -118,8 +118,8 @@ impl Report {
         self.checks.iter().any(|check| check.status == Status::Fail)
     }
 
-    /// The checks of how well the filter is learning and deciding that are not
-    /// ok: the training and the decisions, not the setup (configuration,
+    /// The checks of how well the filter is learning and deciding that failed:
+    /// the training and the decisions, not the setup (configuration,
     /// rules, web interface) or the daemon itself.
     #[must_use]
     pub fn quality_problems(&self) -> Vec<&Check> {
@@ -128,7 +128,7 @@ impl Report {
             .filter(|check| {
                 check.section == section::TRAINING || check.section == section::DECISIONS
             })
-            .filter(|check| matches!(check.status, Status::Warn | Status::Fail))
+            .filter(|check| check.status == Status::Fail)
             .collect()
     }
 }
@@ -672,10 +672,10 @@ mod tests {
     }
 
     #[test]
-    fn quality_problems_are_the_training_and_decision_warnings() {
+    fn quality_problems_are_the_training_and_decision_failures() {
         let mut input = input();
         input.stats = Stats {
-            spam: 5,
+            spam: 0,
             good: 90,
             ..Stats::default()
         };
@@ -695,8 +695,8 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["class balance", "uncertain rate", "correction rate"],
-            "the failing rules are not a quality problem"
+            ["class balance"],
+            "warnings and the failing rules are not a quality problem"
         );
         assert!(report.failed(), "but they do fail the report");
     }
@@ -721,8 +721,19 @@ mod tests {
         input.recent = judged(5, 11, 78);
 
         assert_eq!(
+            run(&input).quality_body(),
+            None,
+            "a warning is for doctor, not for the ping"
+        );
+
+        input.stats = Stats {
+            spam: 0,
+            good: 1013,
+            ..Stats::default()
+        };
+        assert_eq!(
             run(&input).quality_body().as_deref(),
-            Some("WARN correction rate: 11 of the last 78 judged (14%) corrected\n")
+            Some("FAIL class balance: 0 spam, 1013 good: it needs examples of both\n")
         );
     }
 

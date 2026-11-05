@@ -4,7 +4,7 @@ use rusqlite::types::Value;
 use rusqlite::{Row, params, params_from_iter};
 
 use super::decisions::like_pattern;
-use super::{DEFAULT_QUERY_LIMIT, Error, Result, Store, unix};
+use super::{Error, Result, Store, push_page, unix};
 
 /// A whitelisted sender.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -238,13 +238,7 @@ impl Store {
             |row| row.get(0),
         )?;
 
-        let limit = if query.limit <= 0 {
-            DEFAULT_QUERY_LIMIT
-        } else {
-            query.limit
-        };
-        args.push(Value::Integer(limit));
-        args.push(Value::Integer(query.offset.max(0)));
+        push_page(&mut args, query.limit, query.offset);
 
         let direction = if query.desc { "DESC" } else { "ASC" };
         let entries = self.read_addresses(

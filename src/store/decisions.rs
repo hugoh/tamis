@@ -1,8 +1,8 @@
 use jiff::Timestamp;
 use rusqlite::types::Value;
-use rusqlite::{OptionalExtension, Row, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
 
-use super::{DEFAULT_QUERY_LIMIT, Error, Result, Store, unix};
+use super::{Error, Result, Store, push_page, unix};
 use crate::journal::{Action, Reason, Verdict};
 
 /// One journal entry: what tamis concluded about a message and what it did
@@ -286,6 +286,28 @@ where
     })
 }
 
+fn insert_decision(conn: &Connection, decision: &Decision, applied: bool) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO decisions
+         (at, mailbox, uid, message_id, sender, subject, score, verdict, reason, action, applied)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            decision.at.as_second(),
+            decision.mailbox,
+            decision.uid,
+            decision.message_id,
+            decision.from,
+            decision.subject,
+            decision.score,
+            decision.verdict.as_str(),
+            decision.reason.as_str(),
+            decision.action.to_string(),
+            applied,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
 impl Store {
     /// Appends to the journal and returns the entry's ID. The ID and derived
     /// fields of `decision` are ignored.
@@ -293,26 +315,7 @@ impl Store {
     /// # Errors
     /// Fails on a database error.
     pub fn record_decision(&self, decision: &Decision) -> Result<i64> {
-        let conn = self.conn();
-        conn.execute(
-            "INSERT INTO decisions
-             (at, mailbox, uid, message_id, sender, subject, score, verdict, reason, action, applied)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![
-                decision.at.as_second(),
-                decision.mailbox,
-                decision.uid,
-                decision.message_id,
-                decision.from,
-                decision.subject,
-                decision.score,
-                decision.verdict.as_str(),
-                decision.reason.as_str(),
-                decision.action.to_string(),
-                decision.applied,
-            ],
-        )?;
-        Ok(conn.last_insert_rowid())
+        insert_decision(&self.conn(), decision, decision.applied)
     }
 
     /// Journals a move that is about to happen, as not yet applied, together
@@ -328,24 +331,7 @@ impl Store {
         keyword: &str,
     ) -> Result<i64> {
         self.in_tx(|tx| {
-            tx.execute(
-                "INSERT INTO decisions
-                 (at, mailbox, uid, message_id, sender, subject, score, verdict, reason, action, applied)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-                params![
-                    decision.at.as_second(),
-                    decision.mailbox,
-                    decision.uid,
-                    decision.message_id,
-                    decision.from,
-                    decision.subject,
-                    decision.score,
-                    decision.verdict.as_str(),
-                    decision.reason.as_str(),
-                    decision.action.to_string(),
-                ],
-            )?;
-            let id = tx.last_insert_rowid();
+            let id = insert_decision(tx, decision, false)?;
             tx.execute(
                 "INSERT INTO pending_moves (decision_id, source, dest, message_id, keyword)
                  VALUES (?, ?, ?, ?, ?)",
@@ -437,13 +423,7 @@ impl Store {
             |row| row.get(0),
         )?;
 
-        let limit = if query.limit <= 0 {
-            DEFAULT_QUERY_LIMIT
-        } else {
-            query.limit
-        };
-        args.push(Value::Integer(limit));
-        args.push(Value::Integer(query.offset.max(0)));
+        push_page(&mut args, query.limit, query.offset);
 
         let decisions = self.read_decisions(
             &format!(

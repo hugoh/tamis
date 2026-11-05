@@ -3,9 +3,20 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{OptionalExtension, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::{Result, Store, count};
+
+/// The label and tokens a message was trained with, if it was.
+fn stored_training(conn: &Connection, key: &str) -> Result<Option<(i64, String)>> {
+    Ok(conn
+        .query_row(
+            "SELECT label, tokens FROM trained WHERE key = ?",
+            [key],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()?)
+}
 use crate::classify::{Label, Model};
 
 impl Store {
@@ -17,13 +28,7 @@ impl Store {
     /// Fails on a database error.
     pub fn train(&self, key: &str, tokens: &[String], label: Label) -> Result<bool> {
         self.in_tx(|tx| {
-            let previous = tx
-                .query_row(
-                    "SELECT label, tokens FROM trained WHERE key = ?",
-                    [key],
-                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-                )
-                .optional()?;
+            let previous = stored_training(tx, key)?;
 
             if let Some((old_label, old_tokens)) = previous {
                 if old_label == label_to_int(label) {
@@ -50,13 +55,7 @@ impl Store {
     /// Fails on a database error.
     pub fn untrain(&self, key: &str) -> Result<bool> {
         self.in_tx(|tx| {
-            let stored = tx
-                .query_row(
-                    "SELECT label, tokens FROM trained WHERE key = ?",
-                    [key],
-                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-                )
-                .optional()?;
+            let stored = stored_training(tx, key)?;
             let Some((label, tokens)) = stored else {
                 return Ok(false);
             };

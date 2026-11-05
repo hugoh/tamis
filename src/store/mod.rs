@@ -15,6 +15,7 @@ use std::thread;
 use std::time::Duration;
 
 use jiff::Timestamp;
+use rusqlite::types::Value;
 use rusqlite::{Connection, ErrorCode, Transaction, TransactionBehavior};
 use thiserror::Error;
 
@@ -67,6 +68,18 @@ impl Error {
             Self::InvalidAddress(_) | Self::NoAddresses | Self::NoMatch | Self::NotWhitelisted(_)
         )
     }
+}
+
+/// Appends the `LIMIT` and `OFFSET` arguments of a paged query; a limit that
+/// isn't positive means the default.
+fn push_page(args: &mut Vec<Value>, limit: i64, offset: i64) {
+    let limit = if limit <= 0 {
+        DEFAULT_QUERY_LIMIT
+    } else {
+        limit
+    };
+    args.push(Value::Integer(limit));
+    args.push(Value::Integer(offset.max(0)));
 }
 
 type Result<T> = std::result::Result<T, Error>;

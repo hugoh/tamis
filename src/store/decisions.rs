@@ -57,6 +57,43 @@ pub struct Stats {
     /// The journal's size; `oldest_decision` is `None` when it is empty.
     pub decisions: i64,
     pub oldest_decision: Option<Timestamp>,
+    /// Tokens seen in a single message: the first to go if the model is pruned.
+    pub single_use_tokens: i64,
+    /// The database file's size, and the part of it that is free pages.
+    pub bytes: i64,
+    pub free_bytes: i64,
+}
+
+impl Stats {
+    /// One line on the database: its size, what vacuuming would give back, and
+    /// what fills it.
+    #[must_use]
+    pub fn database_line(&self) -> String {
+        format!(
+            "{} ({} free); {} tokens ({} seen once), {} decisions",
+            human_bytes(self.bytes),
+            human_bytes(self.free_bytes),
+            self.tokens,
+            self.single_use_tokens,
+            self.decisions,
+        )
+    }
+}
+
+#[allow(clippy::cast_precision_loss, reason = "a size for display")]
+fn human_bytes(bytes: i64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{size:.1} {}", UNITS[unit])
+    }
 }
 
 /// The columns a decision query can sort by.
@@ -492,7 +529,10 @@ impl Store {
              (SELECT COUNT(*) FROM tokens),
              (SELECT COUNT(*) FROM addresses),
              (SELECT COUNT(*) FROM decisions),
-             (SELECT MIN(at) FROM decisions)",
+             (SELECT MIN(at) FROM decisions),
+             (SELECT COUNT(*) FROM tokens WHERE spam + good = 1),
+             (SELECT page_count * page_size FROM pragma_page_count, pragma_page_size),
+             (SELECT freelist_count * page_size FROM pragma_freelist_count, pragma_page_size)",
             params![1, 0],
             |row| {
                 Ok(Stats {
@@ -502,6 +542,9 @@ impl Store {
                     addresses: row.get(3)?,
                     decisions: row.get(4)?,
                     oldest_decision: row.get::<_, Option<i64>>(5)?.map(unix),
+                    single_use_tokens: row.get(6)?,
+                    bytes: row.get(7)?,
+                    free_bytes: row.get(8)?,
                 })
             },
         )?)

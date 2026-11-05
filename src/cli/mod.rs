@@ -212,11 +212,9 @@ enum Command {
         #[arg(short = 'n', long = "number", default_value_t = 20)]
         number: i64,
     },
-    /// Show the configuration and what has been learnt
-    Status,
-    /// Check the configuration, the rules and that the filter is in good shape
+    /// Show the configuration and check the rules and that the filter is in good shape
     #[command(
-        long_about = "Check that the configuration loads and the filing rules compile, that the filter\nhas learnt from both kinds of mail, how it has been deciding lately, and whether\nit is still deciding. Exits non-zero when a check fails."
+        long_about = "Show the configuration, check that it loads and the filing rules compile, that the filter\nhas learnt from both kinds of mail, how it has been deciding lately, and whether\nit is still deciding. Exits non-zero when a check fails."
     )]
     Doctor {
         /// Print the report as JSON
@@ -445,7 +443,6 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
             commands::learn(app, &ids, label).await
         }
         Command::Log { number } => commands::log(app, number),
-        Command::Status => commands::status(app),
         Command::Doctor { json } => commands::doctor(app, json),
         Command::Monitor { json, action: None } => commands::monitor(app, json),
         Command::Monitor {

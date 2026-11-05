@@ -123,27 +123,21 @@ async fn log_shows_where_a_move_goes_and_marks_rule_decisions() {
 }
 
 #[tokio::test]
-async fn status_summarises_the_configuration_and_what_has_been_learnt() {
+async fn doctor_summarises_the_configuration_and_what_has_been_learnt() {
     let dir = tempfile::tempdir().unwrap();
     let (config, store) = setup(dir.path(), "port = 1993\n[policy]\nmode = \"live\"\n");
-    store.add_address("a@example.org", "sent").unwrap();
     store
         .train("<t@x>", &["free".to_owned()], crate::classify::Label::Spam)
         .unwrap();
 
-    let (code, out, _) = run(&["-c", &config, "status"]).await;
+    let (_, out, _) = run(&["-c", &config, "--color", "never", "doctor"]).await;
 
-    assert_eq!(code, 0);
     for want in [
-        "Mode:",
-        "live",
-        "me@example.org on imap.example.org:1993",
-        "Watching:",
-        "[INBOX]",
-        "TrainSpam, TrainGood",
-        "1 spam, 0 good messages (1 tokens)",
-        "1 addresses",
-        "not set; only the topmost header counts",
+        "me@example.org on imap.example.org",
+        "live mode; watching [INBOX], training TrainSpam, TrainGood",
+        "1 spam, 0 good",
+        "1 tokens (1 seen once)",
+        "not learnt; only the topmost header counts",
         "nothing saved yet; has 'tamis run' ever run?",
     ] {
         assert!(out.contains(want), "{want:?} not in\n{out}");
@@ -163,6 +157,10 @@ async fn doctor_prints_sections_and_fails_when_a_check_does() {
         "{out}"
     );
     assert!(out.contains("FAIL  class balance"), "{out}");
+    assert!(
+        out.contains("database") && out.contains("0 tokens (0 seen once)"),
+        "{out}"
+    );
 
     let (code, out, _) = run(&["-c", &config, "doctor", "--json"]).await;
     assert_eq!(code, 1);

@@ -80,7 +80,7 @@ Mail already in Sent when tamis first sees the folder is left to
 A dropped connection is different: the connection is gone for the rest of the
 pass too, so it fails the pass, which is retried after a wait that grows from
 the poll interval while passes keep failing. How the passes are going is saved
-in the state database for `tamis status` and `tamis doctor` to show; see
+in the state database for `tamis doctor` to show; see
 [imap.md](imap.md).
 
 Training folders are processed in both modes. Dropping a message into one is
@@ -168,8 +168,8 @@ messages it trains on, and takes the one that heads nine in ten of at least 20.
 A sample that can't tell leaves what was learnt before. The domain is saved
 with the IMAP host it was learnt for: if `account.host` later differs (you moved
 to another provider), the learnt domain is not used, only the topmost header
-counts, and `tamis status`, `tamis doctor` and the `run` log say to run
-`tamis bootstrap` again. `tamis status` shows which is in use. Set `policy.whitelist_requires_auth = false` to trust the
+counts, and `tamis doctor` and the `run` log say to run
+`tamis bootstrap` again. `tamis doctor` shows which is in use. Set `policy.whitelist_requires_auth = false` to trust the
 address alone.
 
 **Scoring.** `classify` tokenizes the subject, the `From` address and domain,

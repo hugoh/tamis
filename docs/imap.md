@@ -30,7 +30,7 @@ it keeps the last error, marked as recovered.
 
 The daemon saves that state in the state database (the `daemon_status` setting)
 after every pass, failure and retry time, so the commands that run in another
-process show it too. `tamis status` has a `Daemon:` line, and `tamis doctor` a
+process show it too. `tamis doctor` and the web Health page have a
 Daemon section: ok while passes succeed (with the last pass and any recent
 recovery), WARN while they fail or when nothing has been heard for longer than
 the daemon is due to report (a back-off wait counts as due), and FAIL, so

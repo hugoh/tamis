@@ -61,6 +61,9 @@ fn config_info(cfg: &Config) -> ConfigInfo {
             "shadow"
         }
         .to_owned(),
+        watch: cfg.folders.watch.join(" "),
+        train: format!("{}, {}", cfg.folders.train_spam, cfg.folders.train_good),
+        state: cfg.state.display().to_string(),
     }
 }
 

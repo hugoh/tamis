@@ -417,8 +417,13 @@ struct DaemonView {
     recovered: bool,
 }
 
-struct HealthBody {
+struct HealthSection {
+    name: String,
     checks: Vec<CheckRow>,
+}
+
+struct HealthBody {
+    sections: Vec<HealthSection>,
     daemon: Option<DaemonView>,
 }
 
@@ -481,13 +486,18 @@ pub(super) async fn health(State(app): State<App>) -> Response {
         Ok(report) => report,
         Err(err) => return fail("check health", &err),
     };
-    let checks = report
-        .checks
-        .iter()
-        .map(|c| CheckRow {
-            status: c.status.as_str(),
-            name: c.name.clone(),
-            detail: c.detail.clone(),
+    let sections = report
+        .sections()
+        .map(|(name, checks)| HealthSection {
+            name: name.to_owned(),
+            checks: checks
+                .iter()
+                .map(|c| CheckRow {
+                    status: c.status.as_str(),
+                    name: c.name.clone(),
+                    detail: c.detail.clone(),
+                })
+                .collect(),
         })
         .collect();
     render(&HealthPage {
@@ -495,7 +505,7 @@ pub(super) async fn health(State(app): State<App>) -> Response {
         nav: "health",
         version: app.options.version.clone(),
         body: HealthBody {
-            checks,
+            sections,
             daemon: daemon_view(&app),
         },
     })

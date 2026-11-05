@@ -29,7 +29,10 @@ pub(super) fn config_file(info: &ConfigInfo) -> Check {
     Check::new(
         name::CONFIG,
         Status::Ok,
-        format!("{}: {}, {} mode", info.path, info.account, info.mode),
+        format!(
+            "{}: {}, {} mode; watching [{}], training {}; state {}",
+            info.path, info.account, info.mode, info.watch, info.train, info.state
+        ),
     )
 }
 
@@ -129,6 +132,10 @@ pub(super) fn balance(stats: &Stats) -> Check {
     } else {
         Check::new(name::BALANCE, Status::Ok, detail)
     }
+}
+
+pub(super) fn database(stats: &Stats) -> Check {
+    Check::new(name::DATABASE, Status::Ok, stats.database_line())
 }
 
 pub(super) fn uncertain_rate(judged: &[&Decision]) -> Check {

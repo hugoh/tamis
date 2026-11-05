@@ -22,7 +22,7 @@ pub(super) use engine::{bootstrap, learn, undo};
 pub(super) use init::init;
 pub(super) use log::log;
 pub(super) use probe::probe;
-pub(super) use report::{doctor, monitor, monitor_test, status};
+pub(super) use report::{doctor, monitor, monitor_test};
 pub(super) use rules::{check as rules_check, show as rules_show, test as rules_test};
 pub(super) use run::run;
 pub(super) use session::{login, logout};

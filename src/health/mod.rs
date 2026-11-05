@@ -51,6 +51,7 @@ pub mod name {
     pub const CORRECTIONS: &str = "correction rate";
     pub const LAST: &str = "last decision";
     pub const JOURNAL: &str = "journal";
+    pub const DATABASE: &str = "database";
     pub const RECENT: &str = "recent verdicts";
     pub const AUTH_ID: &str = "provider auth id";
     pub const WEB: &str = "web interface";
@@ -75,7 +76,7 @@ fn section_of(check: &str) -> &'static str {
         name::CONFIG | name::AUTH_ID => section::CONFIG,
         name::RULES => section::RULES,
         name::DAEMON => section::DAEMON,
-        name::BALANCE => section::TRAINING,
+        name::BALANCE | name::DATABASE => section::TRAINING,
         name::UNCERTAIN | name::CORRECTIONS | name::LAST | name::JOURNAL | name::RECENT => {
             section::DECISIONS
         }
@@ -116,6 +117,14 @@ impl Report {
     #[must_use]
     pub fn failed(&self) -> bool {
         self.checks.iter().any(|check| check.status == Status::Fail)
+    }
+
+    /// The checks in their sections, in report order: what doctor and the web
+    /// Health page both show.
+    pub fn sections(&self) -> impl Iterator<Item = (&str, &[Check])> {
+        self.checks
+            .chunk_by(|a, b| a.section == b.section)
+            .map(|checks| (checks[0].section.as_str(), checks))
     }
 
     /// The checks of how well the filter is learning and deciding that failed:
@@ -162,6 +171,9 @@ pub struct ConfigInfo {
     pub path: String,
     pub account: String,
     pub mode: String,
+    pub watch: String,
+    pub train: String,
+    pub state: String,
 }
 
 /// What compiling the filing rules found. `script` is empty when none are
@@ -211,6 +223,7 @@ pub fn run(input: &Input) -> Report {
         checks::filing_rules(&input.rules),
         daemon::check(&input.daemon, input.now, &input.zone),
         checks::balance(&input.stats),
+        checks::database(&input.stats),
         checks::uncertain_rate(&judged),
         checks::correction_rate(&judged),
         checks::last_decision(&input.recent, input.now),
@@ -297,6 +310,9 @@ mod tests {
                 path: "/c.toml".into(),
                 account: "me on imap.example.org".into(),
                 mode: "live".into(),
+                watch: "INBOX".into(),
+                train: "TrainSpam, TrainGood".into(),
+                state: "/state.db".into(),
             },
             rules: RulesInfo::default(),
             daemon: DaemonInfo {

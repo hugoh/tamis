@@ -1,0 +1,42 @@
+---
+name: cross
+
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - mise.toml
+      - .goreleaser.yml
+      - .github/workflows/cross.yml
+  pull_request:
+    branches: [main]
+    paths: *paths
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: cross-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: ci
+    steps:
+      - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: cross
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: mise run prebuild
+      - name: Build every release target
+        run: goreleaser build --snapshot --clean

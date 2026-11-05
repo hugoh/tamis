@@ -2,11 +2,12 @@
 //! per-folder sync cursors and the decision journal.
 
 mod addresses;
+mod cursors;
 mod decisions;
+mod model;
 mod schema;
 mod web;
 
-use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -14,18 +15,16 @@ use std::thread;
 use std::time::Duration;
 
 use jiff::Timestamp;
-use rusqlite::{
-    Connection, ErrorCode, OptionalExtension, Transaction, TransactionBehavior, params,
-};
+use rusqlite::{Connection, ErrorCode, Transaction, TransactionBehavior};
 use thiserror::Error;
 
 pub use addresses::{
     Address, AddressQuery, AddressSort, MANUAL_SOURCE, parse_address, parse_addresses,
 };
+pub use cursors::{Cursor, ModSeq};
 pub use decisions::{Decision, DecisionQuery, DecisionSort, PendingMove, Stats};
+pub use model::Snapshot;
 pub use web::Passkey;
-
-use crate::classify::{Label, Model};
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const MIGRATION_ATTEMPTS: u32 = 20;
@@ -147,284 +146,12 @@ impl Store {
             Ok(())
         })
     }
-
-    /// Records the message identified by `key` as `label`. Training a message
-    /// again with the same label does nothing; with the other label it
-    /// reverses the earlier training first. Reports whether anything changed.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn train(&self, key: &str, tokens: &[String], label: Label) -> Result<bool> {
-        self.in_tx(|tx| {
-            let previous = tx
-                .query_row(
-                    "SELECT label, tokens FROM trained WHERE key = ?",
-                    [key],
-                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-                )
-                .optional()?;
-
-            if let Some((old_label, old_tokens)) = previous {
-                if old_label == label_to_int(label) {
-                    return Ok(false);
-                }
-                let old_tokens: Vec<String> = serde_json::from_str(&old_tokens)?;
-                adjust(tx, &old_tokens, label_from_int(old_label), -1)?;
-            }
-
-            adjust(tx, tokens, label, 1)?;
-            tx.execute(
-                "INSERT INTO trained (key, label, tokens) VALUES (?, ?, ?)
-                 ON CONFLICT(key) DO UPDATE SET label = excluded.label, tokens = excluded.tokens",
-                params![key, label_to_int(label), serde_json::to_string(tokens)?],
-            )?;
-            Ok(true)
-        })
-    }
-
-    /// Reverses the training of the message identified by `key`, and reports
-    /// whether it had been trained.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn untrain(&self, key: &str) -> Result<bool> {
-        self.in_tx(|tx| {
-            let stored = tx
-                .query_row(
-                    "SELECT label, tokens FROM trained WHERE key = ?",
-                    [key],
-                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-                )
-                .optional()?;
-            let Some((label, tokens)) = stored else {
-                return Ok(false);
-            };
-
-            let tokens: Vec<String> = serde_json::from_str(&tokens)?;
-            adjust(tx, &tokens, label_from_int(label), -1)?;
-            tx.execute("DELETE FROM trained WHERE key = ?", [key])?;
-            Ok(true)
-        })
-    }
-
-    /// The label a message was trained with, if it was.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn trained(&self, key: &str) -> Result<Option<Label>> {
-        let label = self
-            .conn()
-            .query_row("SELECT label FROM trained WHERE key = ?", [key], |row| {
-                row.get::<_, i64>(0)
-            })
-            .optional()?;
-        Ok(label.map(label_from_int))
-    }
-
-    /// The statistics of the given tokens, for scoring.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn model(&self, tokens: &[String]) -> Result<Snapshot> {
-        let conn = self.conn();
-        let (spam, good) = conn.query_row(
-            "SELECT COALESCE(SUM(label = ?), 0), COALESCE(SUM(label = ?), 0) FROM trained",
-            params![label_to_int(Label::Spam), label_to_int(Label::Good)],
-            |row| Ok((count(row, 0)?, count(row, 1)?)),
-        )?;
-
-        let mut snapshot = Snapshot {
-            counts: HashMap::with_capacity(tokens.len()),
-            total_spam: spam,
-            total_good: good,
-        };
-        let mut statement = conn.prepare(
-            "SELECT token, spam, good FROM tokens WHERE token IN (SELECT value FROM json_each(?))",
-        )?;
-        let rows = statement.query_map([serde_json::to_string(tokens)?], |row| {
-            Ok((row.get::<_, String>(0)?, (count(row, 1)?, count(row, 2)?)))
-        })?;
-        for row in rows {
-            let (token, counts) = row?;
-            snapshot.counts.insert(token, counts);
-        }
-        Ok(snapshot)
-    }
-
-    /// A value tamis learnt about the account, if it has one.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn setting(&self, key: &str) -> Result<Option<String>> {
-        Ok(self
-            .conn()
-            .query_row("SELECT value FROM settings WHERE key = ?", [key], |row| {
-                row.get(0)
-            })
-            .optional()?)
-    }
-
-    /// Saves a value tamis learnt about the account.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
-        self.conn().execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            [key, value],
-        )?;
-        Ok(())
-    }
-
-    /// The folder's cursor, if one was saved.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn cursor(&self, mailbox: &str) -> Result<Option<Cursor>> {
-        Ok(self
-            .conn()
-            .query_row(
-                "SELECT uid_validity, last_uid FROM cursors WHERE mailbox = ?",
-                [mailbox],
-                |row| {
-                    Ok(Cursor {
-                        uid_validity: row.get(0)?,
-                        last_uid: row.get(1)?,
-                    })
-                },
-            )
-            .optional()?)
-    }
-
-    /// Saves the folder's cursor.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn set_cursor(&self, mailbox: &str, cursor: Cursor) -> Result<()> {
-        self.conn().execute(
-            "INSERT INTO cursors (mailbox, uid_validity, last_uid) VALUES (?, ?, ?)
-             ON CONFLICT(mailbox) DO UPDATE SET
-             uid_validity = excluded.uid_validity, last_uid = excluded.last_uid",
-            params![mailbox, cursor.uid_validity, cursor.last_uid],
-        )?;
-        Ok(())
-    }
-
-    /// The folder's saved mod-sequence, if one was saved.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn mod_seq(&self, mailbox: &str) -> Result<Option<ModSeq>> {
-        Ok(self
-            .conn()
-            .query_row(
-                "SELECT uid_validity, highest FROM mod_seqs WHERE mailbox = ?",
-                [mailbox],
-                |row| {
-                    Ok(ModSeq {
-                        uid_validity: row.get(0)?,
-                        highest: count(row, 1)?,
-                    })
-                },
-            )
-            .optional()?)
-    }
-
-    /// Saves the folder's mod-sequence.
-    ///
-    /// # Errors
-    /// Fails on a database error.
-    pub fn set_mod_seq(&self, mailbox: &str, mod_seq: ModSeq) -> Result<()> {
-        self.conn().execute(
-            "INSERT INTO mod_seqs (mailbox, uid_validity, highest) VALUES (?, ?, ?)
-             ON CONFLICT(mailbox) DO UPDATE SET
-             uid_validity = excluded.uid_validity, highest = excluded.highest",
-            params![
-                mailbox,
-                mod_seq.uid_validity,
-                i64::try_from(mod_seq.highest).unwrap_or(i64::MAX)
-            ],
-        )?;
-        Ok(())
-    }
-}
-
-/// How far a folder has been processed: the highest UID seen, valid only
-/// while the folder's `UIDVALIDITY` is unchanged.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cursor {
-    pub uid_validity: u32,
-    pub last_uid: u32,
-}
-
-/// A folder's CONDSTORE `HIGHESTMODSEQ` as of the last keyword search, valid
-/// only while the folder's `UIDVALIDITY` is unchanged.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ModSeq {
-    pub uid_validity: u32,
-    pub highest: u64,
-}
-
-/// A [`Model`] loaded from the store for a set of tokens.
-#[derive(Clone, Debug, Default)]
-pub struct Snapshot {
-    counts: HashMap<String, (u64, u64)>,
-    total_spam: u64,
-    total_good: u64,
-}
-
-impl Model for Snapshot {
-    fn counts(&self, token: &str) -> (u64, u64) {
-        self.counts.get(token).copied().unwrap_or_default()
-    }
-
-    fn totals(&self) -> (u64, u64) {
-        (self.total_spam, self.total_good)
-    }
 }
 
 /// A non-negative integer column. `SQLite` integers are signed; counts and
 /// mod-sequences never reach the sign bit.
 fn count(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
     Ok(u64::try_from(row.get::<_, i64>(index)?).unwrap_or_default())
-}
-
-/// Labels are stored as integers: good is 0, spam is 1.
-fn label_to_int(label: Label) -> i64 {
-    match label {
-        Label::Good => 0,
-        Label::Spam => 1,
-    }
-}
-
-fn label_from_int(value: i64) -> Label {
-    if value == 1 { Label::Spam } else { Label::Good }
-}
-
-fn adjust(tx: &Transaction<'_>, tokens: &[String], label: Label, delta: i64) -> Result<()> {
-    let (spam, good) = if label == Label::Spam {
-        (delta, 0)
-    } else {
-        (0, delta)
-    };
-    let encoded = serde_json::to_string(tokens)?;
-
-    tx.execute(
-        "INSERT INTO tokens (token, spam, good)
-         SELECT value, ?, ? FROM json_each(?) WHERE true
-         ON CONFLICT(token) DO UPDATE SET
-         spam = spam + excluded.spam, good = good + excluded.good",
-        params![spam, good, encoded],
-    )?;
-
-    if delta < 0 {
-        tx.execute(
-            "DELETE FROM tokens WHERE spam <= 0 AND good <= 0 AND token IN (SELECT value FROM json_each(?))",
-            [encoded],
-        )?;
-    }
-    Ok(())
 }
 
 /// Makes sure the database file exists and only its owner can read it: it
@@ -462,6 +189,7 @@ mod tests {
     use std::fs;
 
     use super::*;
+    use crate::classify::{Label, Model};
 
     fn open() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();

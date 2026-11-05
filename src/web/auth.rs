@@ -57,7 +57,7 @@ fn rejected(what: &str, err: &dyn std::fmt::Display) -> Response {
 }
 
 fn json_with_cookie(app: &App, ceremony: Ceremony, body: &impl serde::Serialize) -> Response {
-    let id = match app.ceremonies.put(ceremony, CEREMONY_TTL) {
+    let id = match app.ceremonies.put_evicting(ceremony, CEREMONY_TTL) {
         Ok(id) => id,
         Err(err) => return fail("start ceremony", &err),
     };

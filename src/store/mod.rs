@@ -652,6 +652,21 @@ mod tests {
     }
 
     #[test]
+    fn the_reported_size_includes_the_write_ahead_log() {
+        let (dir, store) = open();
+        store
+            .train("<a>", &["word".to_owned()], Label::Spam)
+            .unwrap();
+        let on_disk = |suffix: &str| {
+            let name = format!("{}{suffix}", dir.path().join("state.db").display());
+            std::fs::metadata(name).map_or(0, |m| i64::try_from(m.len()).unwrap())
+        };
+        assert!(on_disk("-wal") > 0, "the test needs a log to count");
+
+        assert!(store.stats().unwrap().bytes >= on_disk("") + on_disk("-wal"));
+    }
+
+    #[test]
     fn pruning_drops_only_older_decisions() {
         let (_dir, store) = open();
         for seconds in [10, 20, 30] {

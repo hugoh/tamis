@@ -88,6 +88,13 @@ const TABLE_GAP: usize = 2;
 /// # Errors
 /// When `out` can't be written.
 pub fn write_table(out: &mut dyn Write, colors: Palette, rows: &[Vec<Cell>]) -> Result<()> {
+    out.write_all(render_table(colors, rows).as_bytes())
+        .context("write table")
+}
+
+/// The text [`write_table`] writes.
+#[must_use]
+pub fn render_table(colors: Palette, rows: &[Vec<Cell>]) -> String {
     let mut widths: Vec<usize> = Vec::new();
     for row in rows {
         for (index, cell) in row.iter().take(row.len().saturating_sub(1)).enumerate() {
@@ -110,7 +117,7 @@ pub fn write_table(out: &mut dyn Write, colors: Palette, rows: &[Vec<Cell>]) -> 
         }
         text.push('\n');
     }
-    out.write_all(text.as_bytes()).context("write table")
+    text
 }
 
 #[cfg(test)]

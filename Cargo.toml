@@ -14,13 +14,13 @@ default-run = "tamis"
 ignored = ["sieve-rs"]
 
 [dependencies]
+anstyle = "1.0.14"
 anyhow = "1.0.104"
 askama = "0.16.1"
 axum = "0.8.9"
 axum-server = { version = "0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false }
-anstyle = "1.0.14"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 fastrand = "2.5.0"
 getrandom = "0.4.3"
@@ -47,7 +47,7 @@ sha2 = "0.11.1"
 sieve-rs = "0.7.3"
 thiserror = "2.0.21"
 time = "0.3.55"
-tokio = { version = "1.54.1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt", "rt-multi-thread", "signal", "sync", "test-util", "time"] }
+tokio = { version = "1.54.1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = "0.7.20"
 toml = "1.2.0"
 tracing = "0.1.44"
@@ -63,6 +63,7 @@ x509-parser = "0.18.1"
 [dev-dependencies]
 http-body-util = "0.1.5"
 tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["test-util"] }
 tower = { version = "0.5.3", features = ["util"] }
 
 [lints.clippy]

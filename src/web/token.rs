@@ -73,6 +73,29 @@ impl<T> Table<T> {
         Ok(key)
     }
 
+    /// Like [`Table::put`], but when the table is full it drops the entry that
+    /// expires first, so unauthenticated callers can't lock everyone else out.
+    ///
+    /// # Errors
+    /// When a key can't be generated.
+    pub fn put_evicting(&self, value: T, ttl: Duration) -> Result<String, getrandom::Error> {
+        let key = new_token()?;
+        let now = Instant::now();
+        let mut items = self.lock();
+        items.retain(|_, (_, expires)| *expires > now);
+        if items.len() >= MAX_ITEMS {
+            let oldest = items
+                .iter()
+                .min_by_key(|(_, (_, expires))| *expires)
+                .map(|(key, _)| key.clone());
+            if let Some(oldest) = oldest {
+                items.remove(&oldest);
+            }
+        }
+        items.insert(key.clone(), (value, now + ttl));
+        Ok(key)
+    }
+
     #[must_use]
     pub fn contains(&self, key: &str) -> bool {
         self.lock()
@@ -129,6 +152,20 @@ mod tests {
 
         let gone = table.put(8, Duration::ZERO).unwrap();
         assert_eq!(table.take(&gone), None);
+    }
+
+    #[test]
+    fn an_evicting_put_replaces_the_oldest_when_full() {
+        let table = Table::default();
+        let first = table.put_evicting(0, Duration::from_secs(60)).unwrap();
+        for n in 1..MAX_ITEMS {
+            table.put_evicting(n, Duration::from_secs(60)).unwrap();
+        }
+
+        let newest = table.put_evicting(0, Duration::from_secs(60)).unwrap();
+
+        assert!(!table.contains(&first));
+        assert!(table.contains(&newest));
     }
 
     #[test]

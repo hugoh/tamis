@@ -29,10 +29,15 @@ pub(super) fn config_file(info: &ConfigInfo) -> Check {
     Check::new(
         name::CONFIG,
         Status::Ok,
-        format!(
-            "{}: {}, {} mode; watching [{}], training {}; state {}",
-            info.path, info.account, info.mode, info.watch, info.train, info.state
-        ),
+        format!("{}: {}, {} mode", info.path, info.account, info.mode),
+    )
+}
+
+pub(super) fn folders(info: &ConfigInfo) -> Check {
+    Check::new(
+        name::FOLDERS,
+        Status::Ok,
+        format!("watching [{}], training {}", info.watch, info.train),
     )
 }
 

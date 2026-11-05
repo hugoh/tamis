@@ -59,7 +59,7 @@ pub struct Stats {
     pub oldest_decision: Option<Timestamp>,
     /// Tokens seen in a single message: the first to go if the model is pruned.
     pub single_use_tokens: i64,
-    /// The database file's size, and the part of it that is free pages.
+    /// The database's size, write-ahead log included, and the part of it that is free pages.
     pub bytes: i64,
     pub free_bytes: i64,
 }
@@ -70,11 +70,12 @@ impl Stats {
     #[must_use]
     pub fn database_line(&self) -> String {
         format!(
-            "{} ({} free); {} tokens ({} seen once), {} decisions",
+            "{} ({} free); {} tokens ({} seen once), {} addresses, {} decisions",
             human_bytes(self.bytes),
             human_bytes(self.free_bytes),
             self.tokens,
             self.single_use_tokens,
+            self.addresses,
             self.decisions,
         )
     }
@@ -522,7 +523,12 @@ impl Store {
     /// # Errors
     /// Fails on a database error.
     pub fn stats(&self) -> Result<Stats> {
-        Ok(self.conn().query_row(
+        let conn = self.conn();
+        let wal = conn
+            .path()
+            .and_then(|path| std::fs::metadata(format!("{path}-wal")).ok())
+            .map_or(0, |meta| i64::try_from(meta.len()).unwrap_or(i64::MAX));
+        let mut stats: Stats = conn.query_row(
             "SELECT
              (SELECT COALESCE(SUM(label = ?), 0) FROM trained),
              (SELECT COALESCE(SUM(label = ?), 0) FROM trained),
@@ -547,7 +553,9 @@ impl Store {
                     free_bytes: row.get(8)?,
                 })
             },
-        )?)
+        )?;
+        stats.bytes += wal;
+        Ok(stats)
     }
 
     fn read_decisions(&self, sql: &str, args: &[Value]) -> Result<Vec<Decision>> {

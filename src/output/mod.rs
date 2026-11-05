@@ -28,7 +28,7 @@ pub fn write_table<R: AsRef<[String]>>(out: &mut impl Write, rows: &[R]) -> io::
         .iter()
         .map(|row| row.as_ref().iter().map(|text| cell(text, PLAIN)).collect())
         .collect();
-    style::write_table(out, Palette::off(), &rows).map_err(io::Error::other)
+    out.write_all(style::render_table(Palette::off(), &rows).as_bytes())
 }
 
 #[cfg(test)]
@@ -46,6 +46,22 @@ mod tests {
         let mut out = Vec::new();
         write_json(&mut out, &BTreeMap::from([("a", 1)])).unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "{\n  \"a\": 1\n}\n");
+    }
+
+    #[test]
+    fn a_failed_table_write_keeps_its_error_kind() {
+        struct Closed;
+        impl Write for Closed {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let err = write_table(&mut Closed, &[row(&["a"])]).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
     }
 
     #[test]

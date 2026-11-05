@@ -134,7 +134,9 @@ async fn doctor_summarises_the_configuration_and_what_has_been_learnt() {
 
     for want in [
         "me@example.org on imap.example.org",
-        "live mode; watching [INBOX], training TrainSpam, TrainGood",
+        "live mode",
+        "watching [INBOX], training TrainSpam, TrainGood",
+        "0 addresses",
         "1 spam, 0 good",
         "1 tokens (1 seen once)",
         "not learnt; only the topmost header counts",

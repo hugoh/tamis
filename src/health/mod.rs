@@ -57,6 +57,7 @@ pub mod name {
     pub const WEB: &str = "web interface";
     pub const PASSKEYS: &str = "web passkeys";
     pub const CONFIG: &str = "config file";
+    pub const FOLDERS: &str = "folders";
     pub const RULES: &str = "filing rules";
     pub const DAEMON: &str = "daemon";
 }
@@ -73,7 +74,7 @@ pub mod section {
 
 fn section_of(check: &str) -> &'static str {
     match check {
-        name::CONFIG | name::AUTH_ID => section::CONFIG,
+        name::CONFIG | name::FOLDERS | name::AUTH_ID => section::CONFIG,
         name::RULES => section::RULES,
         name::DAEMON => section::DAEMON,
         name::BALANCE | name::DATABASE => section::TRAINING,
@@ -129,9 +130,10 @@ impl Report {
 
     /// The checks of how well the filter is learning and deciding that failed:
     /// the training and the decisions, not the setup (configuration,
-    /// rules, web interface) or the daemon itself.
+    /// rules, web interface) or the daemon itself. Warnings are for `doctor`
+    /// and never ping.
     #[must_use]
-    pub fn quality_problems(&self) -> Vec<&Check> {
+    pub fn quality_failures(&self) -> Vec<&Check> {
         self.checks
             .iter()
             .filter(|check| {
@@ -147,7 +149,7 @@ impl Report {
     /// when the training and the decisions look healthy.
     #[must_use]
     pub fn quality_body(&self) -> Option<String> {
-        let problems = self.quality_problems();
+        let problems = self.quality_failures();
         if problems.is_empty() {
             return None;
         }
@@ -173,7 +175,6 @@ pub struct ConfigInfo {
     pub mode: String,
     pub watch: String,
     pub train: String,
-    pub state: String,
 }
 
 /// What compiling the filing rules found. `script` is empty when none are
@@ -219,6 +220,7 @@ pub fn run(input: &Input) -> Report {
     let judged = checks::judgements(&input.recent);
     let mut all = vec![
         checks::config_file(&input.config),
+        checks::folders(&input.config),
         checks::auth_id(&input.auth),
         checks::filing_rules(&input.rules),
         daemon::check(&input.daemon, input.now, &input.zone),
@@ -312,7 +314,6 @@ mod tests {
                 mode: "live".into(),
                 watch: "INBOX".into(),
                 train: "TrainSpam, TrainGood".into(),
-                state: "/state.db".into(),
             },
             rules: RulesInfo::default(),
             daemon: DaemonInfo {
@@ -688,7 +689,7 @@ mod tests {
     }
 
     #[test]
-    fn quality_problems_are_the_training_and_decision_failures() {
+    fn quality_failures_are_the_training_and_decision_failures() {
         let mut input = input();
         input.stats = Stats {
             spam: 0,
@@ -705,7 +706,7 @@ mod tests {
         let report = run(&input);
 
         let names: Vec<&str> = report
-            .quality_problems()
+            .quality_failures()
             .iter()
             .map(|c| c.name.as_str())
             .collect();
@@ -832,7 +833,7 @@ mod tests {
 
         let report = collect(&store, &cfg).unwrap();
 
-        assert_eq!(report.checks.len(), 12);
+        assert_eq!(report.checks.len(), 13);
         assert_eq!(find(&report, name::LAST).status, Status::Ok);
         assert_eq!(find(&report, name::WEB).status, Status::Skip);
         assert_eq!(

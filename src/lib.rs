@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod auth_pin;
 pub mod classify;
 pub mod cli;
 pub mod config;

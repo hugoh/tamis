@@ -5,7 +5,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use super::{Check, ConfigInfo, RulesInfo, Status, Web, name};
-use crate::engine::{AuthPin, AuthSource};
+use crate::auth_pin::{AuthPin, AuthSource};
 use crate::store::{Decision, Stats};
 
 /// Fewer than this many of one kind makes the balance a warning.

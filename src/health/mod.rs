@@ -16,7 +16,7 @@ use serde::Serialize;
 pub use collect::collect;
 pub use daemon::{DaemonInfo, load_daemon};
 
-use crate::engine::AuthPin;
+use crate::auth_pin::AuthPin;
 use crate::store::{Decision, Stats};
 
 /// The outcome of a single check.
@@ -276,8 +276,8 @@ pub(crate) fn elapsed(span: Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth_pin::AuthSource;
     use crate::config::Config;
-    use crate::engine::AuthSource;
     use crate::live::{Snapshot, Waiting};
 
     fn at(seconds: i64) -> Timestamp {

@@ -1,5 +1,6 @@
 use tempfile::TempDir;
 
+use crate::auth_pin::{AuthSource, resolve_auth_pin};
 use crate::classify::Label;
 use crate::config::{Account, Config, Mode};
 use crate::mail::fake::Fake;

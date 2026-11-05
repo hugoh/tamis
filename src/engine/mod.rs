@@ -20,7 +20,6 @@ use std::sync::Arc;
 use jiff::Timestamp;
 use sha2::{Digest, Sha256};
 
-pub use authid::{AuthPin, AuthSource, NO_AUTH_SERVER_ID, resolve_auth_pin};
 pub use bootstrap::{BootstrapOptions, BootstrapSummary, Source};
 pub use domain::{Action, Judgement, Reason, Summary, Verdict, keyword};
 pub use error::{Context, Error, Result};

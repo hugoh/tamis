@@ -832,7 +832,7 @@ mod tests {
 
         let report = collect(&store, &cfg).unwrap();
 
-        assert_eq!(report.checks.len(), 11);
+        assert_eq!(report.checks.len(), 12);
         assert_eq!(find(&report, name::LAST).status, Status::Ok);
         assert_eq!(find(&report, name::WEB).status, Status::Skip);
         assert_eq!(

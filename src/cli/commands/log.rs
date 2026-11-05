@@ -3,9 +3,11 @@ use std::io::Write;
 use anyhow::Result;
 
 use super::super::App;
-use super::super::style::{BOLD, Cell, DIM, GREEN, MAGENTA, RED, Style, YELLOW, cell, write_table};
+use super::super::style::{
+    BLUE, BOLD, Cell, DIM, GREEN, MAGENTA, RED, Style, YELLOW, cell, write_table,
+};
 use super::common::{local, open, palette};
-use crate::journal::Verdict;
+use crate::journal::{Action, Reason, Verdict};
 use crate::store::Decision;
 
 pub(in super::super) fn log(app: &mut App, number: i64) -> Result<()> {
@@ -43,10 +45,17 @@ fn write_decisions(app: &mut App, decisions: &[Decision]) -> Result<()> {
             cell(&decision.id.to_string(), ""),
             cell(&local(decision.at), DIM),
             cell(decision.verdict.as_str(), style),
-            cell(decision.reason.as_str(), DIM),
+            cell(
+                decision.reason.as_str(),
+                if decision.reason == Reason::Rule {
+                    BLUE
+                } else {
+                    DIM
+                },
+            ),
             cell(&format!("{:.2}", decision.score), style),
             action_cell(decision),
-            cell(&decision.mailbox, ""),
+            cell(&folder_text(decision), ""),
             cell(&decision.from, ""),
             cell(&decision.subject, ""),
         ]);
@@ -75,4 +84,11 @@ fn action_cell(decision: &Decision) -> Cell {
         ));
     }
     action
+}
+
+fn folder_text(decision: &Decision) -> String {
+    match &decision.action {
+        Action::Move(target) => format!("{} → {target}", decision.mailbox),
+        _ => decision.mailbox.clone(),
+    }
 }

@@ -6,6 +6,9 @@
 <div class="join">
 {% for choice in body.verdicts %}<input class="join-item btn btn-sm" type="radio" name="verdict" value="{{ choice.value }}" aria-label="{{ choice.label }}"{% if choice.checked %} checked{% endif %} hx-get="/" hx-trigger="change">
 {% endfor %}</div>
+<select name="reason" aria-label="Reason" class="select select-sm w-auto" hx-get="/" hx-trigger="change">
+{% for choice in body.reasons %}<option value="{{ choice.value }}"{% if choice.checked %} selected{% endif %}>{% if choice.value.is_empty() %}Any reason{% else %}{{ choice.value }}{% endif %}</option>
+{% endfor %}</select>
 </form>
 {% include "decisions_results.html" %}
 {% endblock %}

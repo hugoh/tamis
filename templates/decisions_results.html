@@ -10,5 +10,5 @@
 {% include "decisions_rows.html" %}
 </tbody>
 </table>
-</div>{% else %}<p class="py-8 text-center opacity-70">No decisions {% if !body.search.is_empty() || !body.verdict.is_empty() || body.only_id != 0 %}match{% else %}yet{% endif %}.</p>{% endif %}
+</div>{% else %}<p class="py-8 text-center opacity-70">No decisions {% if !body.search.is_empty() || !body.verdict.is_empty() || !body.reason.is_empty() || body.only_id != 0 %}match{% else %}yet{% endif %}.</p>{% endif %}
 </div>

@@ -304,6 +304,7 @@ fn queries_match_the_go_store() {
             let query = DecisionQuery {
                 id: case.id,
                 verdict: case.verdict.parse().ok(),
+                reason: None,
                 search: case.search.clone(),
                 sort: DecisionSort::from_name(&case.sort),
                 asc: case.asc,

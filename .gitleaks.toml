@@ -1,0 +1,8 @@
+title = "tamis"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Build output embeds the test keys of crypto dependencies"
+paths = ['''(^|/)target/''']

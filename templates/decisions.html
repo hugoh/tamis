@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Decisions</h1>
+<form id="toolbar" class="flex flex-wrap items-center gap-3" hx-get="/" hx-target="#results" hx-swap="outerHTML" hx-push-url="true" hx-include="#toolbar">
+<input type="search" name="q" value="{{ body.search }}" placeholder="Search folder, sender, subject, reason…" aria-label="Search" class="input input-sm w-72" hx-get="/" hx-trigger="input changed delay:300ms, search">
+<div class="join">
+{% for choice in body.verdicts %}<input class="join-item btn btn-sm" type="radio" name="verdict" value="{{ choice.value }}" aria-label="{{ choice.label }}"{% if choice.checked %} checked{% endif %} hx-get="/" hx-trigger="change">
+{% endfor %}</div>
+</form>
+{% include "decisions_results.html" %}
+{% endblock %}

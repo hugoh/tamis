@@ -1,0 +1,3 @@
+[files]
+# A deliberately invalid file, to test the loader's parse error.
+exclude = ["tests/fixtures/config/not-toml.toml"]

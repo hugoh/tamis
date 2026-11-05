@@ -1,6 +1,3 @@
 #!/usr/bin/env bash
-# DO NOT EDIT — managed by hugoh/go-tools via copier.
-#MISE description="Upgrade dependencies"
-set -e
-go get -u -t ./...
-go mod tidy -v
+#MISE description="Upgrade dependencies within their semver ranges"
+cargo update

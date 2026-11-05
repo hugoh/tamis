@@ -2,18 +2,21 @@
 /tamis
 *.test
 *.out
+lcov.info
 dist/
 
 # Local state and secrets
 .env
 *.db
-go.work
-go.work.sum
 
 # Mail copied for evaluation (see docs/evaluation.md)
 eval-data/
 
 # Built by the prebuild task (mise run vendor-web) and embedded; not committed.
-/internal/web/static/vendor/htmx.min.js
-/internal/web/static/vendor/htmx.LICENSE
-/internal/web/static/vendor/theme.css
+/web/static/vendor/htmx.min.js
+/web/static/vendor/htmx.LICENSE
+/web/static/vendor/theme.css
+
+# Rust
+/target
+!tests/fixtures/golden/state.db

@@ -1,0 +1,4 @@
+Authentication-Results: mx.provider.example; dmarc=pass header.from=example.org
+Subject: x
+
+body

@@ -1,0 +1,44 @@
+state = "~/mail/tamis.db"
+
+[account]
+host = "imap.mail.me.com"
+port = 1993
+user = "me@icloud.com"
+password_command = ["security", "find-generic-password", "-s", "tamis", "-w"]
+auth_server_id = "icloud.com"
+
+[folders]
+watch = ["INBOX", "Lists"]
+junk = "Junk Mail"
+sent = "Sent"
+train_spam = "Spam!"
+train_good = "Ham!"
+rescued = "Rescued"
+
+[policy]
+mode = "live"
+spam_threshold = 0.95
+good_threshold = 0.1
+poll_interval = "90s"
+whitelist_requires_auth = false
+learn_from_junk = false
+learn_provider_junk = false
+learn_from_keywords = false
+rescue = false
+journal_retention = "720h30m"
+rescue_threshold = 0.05
+
+[web]
+enabled = true
+listen = "[::1]:9000"
+origin = "https://tamis.example.net"
+tls_cert = "~/certs/tamis.pem"
+tls_key = "~/certs/tamis.key"
+
+[monitor]
+ping_url = "https://hc-ping.example.com/abc"
+quality_url = "http://hc.example.com/def"
+fail_after = 5
+
+[rules]
+create_folders = true

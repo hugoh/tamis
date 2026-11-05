@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Rules</h1>
+{% if !body.path.is_empty() %}<p class="mb-2 font-mono text-sm">{{ body.path }}
+{% if !body.problem.is_empty() %}<span class="badge badge-error badge-sm">Invalid</span>{% else %}<span class="badge badge-success badge-sm">Valid</span>{% endif %}</p>
+{% if !body.problem.is_empty() %}<div role="alert" class="alert alert-error alert-soft mb-4"><span>{{ body.problem }}</span></div>{% endif %}
+{% if !body.source.is_empty() %}<pre class="bg-base-200 rounded-box p-4 mb-6 overflow-x-auto text-sm">{{ body.source }}</pre>{% endif %}
+<h2 class="text-lg font-semibold mb-2">Try a message</h2>
+<form hx-post="/rules/test" hx-target="#result" hx-swap="outerHTML" class="flex flex-col gap-2 max-w-3xl">
+<textarea name="message" rows="10" class="textarea w-full font-mono text-sm" placeholder="From: someone@example.org&#10;List-Id: &lt;list.example.org&gt;&#10;&#10;Body…" aria-label="Message to try"></textarea>
+<div><button class="btn btn-sm btn-primary">Try</button></div>
+</form>
+<div id="result"></div>
+{% else %}<p class="py-8 opacity-70">No rules script configured. Set <code>rules.script</code> to a Sieve file to file good mail into folders.</p>{% endif %}
+{% endblock %}

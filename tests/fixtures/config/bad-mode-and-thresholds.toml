@@ -1,0 +1,9 @@
+[account]
+host = "h"
+user = "u"
+
+[policy]
+mode = "yolo"
+spam_threshold = 0.5
+good_threshold = 0.6
+rescue_threshold = 0.7

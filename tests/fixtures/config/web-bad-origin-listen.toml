@@ -1,0 +1,8 @@
+[account]
+host = "h"
+user = "u"
+
+[web]
+enabled = true
+listen = "8484"
+origin = "tamis.example.net/path"

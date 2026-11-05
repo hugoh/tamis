@@ -1,0 +1,21 @@
+From: =?UTF-8?B?QWxpY2Ugw4ltaWxpZQ==?= <Alice@Friends.Example.org>
+To: me@example.org
+Subject: =?UTF-8?Q?Caf=C3=A9_on_Thursday_=E2=80=94_lunch?=
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="b1"
+
+--b1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Lunch on Thursday at the caf=C3=A9? Claim your free prize later.
+--b1
+Content-Type: text/html; charset=utf-8
+
+<p>Lunch on <b>Thursday</b></p><script>var hidden = "winner prize";</script>
+<a href="http://www.news.example.co.uk/path?q=1">link</a>
+--b1
+Content-Type: application/pdf
+
+ignored attachment words
+--b1--

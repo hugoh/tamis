@@ -1,0 +1,7 @@
+{% for row in body.rows %}<tr class="hover:bg-base-300">
+<td><input type="checkbox" class="checkbox checkbox-sm" name="address" value="{{ row.address }}" form="bulk" aria-label="Select {{ row.address }}"></td>
+<td>{{ row.address }}</td>
+<td>{{ row.source }}</td>
+<td class="whitespace-nowrap">{{ row.added }}</td>
+</tr>
+{% endfor %}{% if !body.more_href.is_empty() %}<tr hx-get="{{ body.more_href }}" hx-trigger="intersect once" hx-swap="outerHTML"><td colspan="4" class="text-center"><span class="loading loading-dots loading-sm"></span></td></tr>{% endif %}

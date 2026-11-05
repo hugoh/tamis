@@ -1,4 +1,3 @@
-# DO NOT EDIT — managed by hugoh/go-tools via copier.
 tag_prefix = "v"
 disable_changelog = true
 disable_bump_commit = true

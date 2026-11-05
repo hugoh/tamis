@@ -1,0 +1,5 @@
+Authentication-Results: mx.provider.example; dkim=pass header.d=example.org
+From: Alice <alice@mail.example.org>
+Subject: x
+
+body

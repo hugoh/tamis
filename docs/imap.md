@@ -1,7 +1,7 @@
 # IMAP interface
 
-How tamis talks to the server. The code is `internal/mail` (the client) and
-`internal/engine` (what it asks for); `tamis probe` measures what a given server
+How tamis talks to the server. The code is `src/mail` (the client) and
+`src/engine` (what it asks for); `tamis probe` measures what a given server
 actually supports (see the README). Run any command with `--verbose` to log each
 exchange; credentials and message contents are never logged.
 
@@ -76,7 +76,7 @@ search or fetch.
 ## Idle and polling
 
 The daemon waits for the watchers to report a change or for `poll_interval`,
-whichever is first, then runs a pass. The go-imap client renews each `IDLE` every
+whichever is first, then runs a pass. The IMAP client renews each `IDLE` every
 28 minutes on the same connection, inside the 29-minute limit of RFC 2177. A pass
 that files mail changes flags and moves mail the watchers can see, so one extra
 pass may follow it; that pass finds nothing and stops the chain.

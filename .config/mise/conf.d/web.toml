@@ -1,4 +1,4 @@
-# Front-end files tamis embeds (internal/web/static/vendor). Renovate bumps the
+# Front-end files tamis embeds (web/static/vendor). Renovate bumps the
 # versions. The prebuild task (mise run vendor-web) copies htmx and builds the
 # stylesheet from them before every build and test; the results are not committed.
 [tools]

@@ -1,16 +1,16 @@
 # Evaluating the filter
 
-`cmd/tamis-eval` measures how a change to the tokenizer or the features
+`tamis-eval` (`src/bin/tamis-eval.rs`) measures how a change to the tokenizer or the features
 affects the filter, on mail you label. It is a development tool and is not
 part of the `tamis` binary.
 
 ## How it measures
 
-[`internal/eval`](../internal/eval) does progressive validation: each message
+[`src/eval`](../src/eval) does progressive validation: each message
 is scored by a model that has learnt only from the messages before it, then
 learnt from. That is how tamis meets mail, and it needs no train/test split.
 
-- The model, tokenizer and scoring are the production ones (`internal/classify`),
+- The model, tokenizer and scoring are the production ones (`src/classify`),
   so an experiment can't drift from what tamis does. The first variant,
   `baseline`, is exactly that, including the recipient status token.
 - The first `--warmup` messages (default 200) are learnt but not scored.

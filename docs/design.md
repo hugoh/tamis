@@ -1,7 +1,10 @@
 # Design
 
-Status: draft. Captures the initial design discussion; expect it to change once
-the iCloud capability probe has run.
+Status: partly built. The core (token Bayes, whitelist, train folders, inferred
+corrections, rescue, shadow mode, undo, filing rules, the web interface) is
+implemented; [engine.md](engine.md) describes what the code does today. The
+rest of this page is the plan around it, and says where it hasn't been built.
+The iCloud probe has run: see [iCloud notes](#icloud-notes).
 
 ## Goal
 
@@ -44,9 +47,12 @@ rescue from the provider's junk folder, shadow mode, or undo.
 ## Classification
 
 The provider has already applied delivery-time checks, so re-running
-SpamAssassin or Rspamd adds little. The value is in personal signals. Several
-scorers feed a small combiner (logistic regression) trained on the user's own
-corrections:
+SpamAssassin or Rspamd adds little. The value is in personal signals. The
+plan is for several scorers to feed a small combiner (logistic regression)
+trained on the user's own corrections. **Built today:** token Bayes, the
+correspondent whitelist and the provider's Junk folder as a prior; the verdict
+comes from the whitelist or the Bayes score against two thresholds, with no
+combiner. The other rows are not built.
 
 | Signal | Why |
 |---|---|
@@ -95,7 +101,7 @@ Constraints:
 
 - It is a hosted API, so message content leaves the machine. Off by
   default; send bounded text and metadata, never attachments.
-- The study used the Python SDK; a Go client needs the HTTP API, not yet
+- The study used the Python SDK; a Rust client needs the HTTP API, not yet
   checked.
 - Pin the model version, cache verdicts per message, and calibrate its
   probabilities on the user's own corrections before trusting thresholds.
@@ -109,46 +115,83 @@ path.
 ## Learning and corrections
 
 The daemon runs remotely, so training must come from what the user already
-does in their mail client. Three channels, all on by default:
+does in their mail client. Three channels, all on by default and all built:
 
-1. **Train folders**: `TrainSpam` and `TrainGood` per account (configurable).
-   Messages dropped there are trained, then moved to Junk or back to the
-   Inbox.
-2. **Inferred moves**: every message tamis touches is recorded (Message-ID,
-   content hash, verdict) and tagged with a `$TamisFiled` keyword.
-   - Filed as spam, later back in the Inbox: false positive, train good.
-   - Left in the Inbox, later in Junk: missed spam, train spam.
-3. **Client junk keywords**: `$Junk` / `$NotJunk`, plus Apple Mail's
-   `Junk` / `NotJunk`.
+1. **Train folders**: `TrainSpam` and `TrainGood` per account. See
+   [Where messages go](engine.md#where-messages-go) and
+   [Learn](engine.md#learn).
+2. **Inferred moves**: every message tamis touches is journalled and tagged
+   with a `$TamisFiled` keyword, so a message filed as spam and later back in
+   the Inbox is a false positive (train good), and one left in the Inbox and
+   later in Junk is missed spam (train spam). See
+   [Missed spam](engine.md#missed-spam) and [Rescue](engine.md#rescue).
+3. **Client junk keywords**: `$Junk` / `$NotJunk`, plus Apple Mail's `Junk` /
+   `NotJunk`. See [Junk and Not Junk marks](engine.md#junk-and-not-junk-marks).
+
+### Open question: should learned tokens age out?
+
+Nothing ages today. Each token has one spam count and one good count, each
+trained message is recorded once, and only `undo` or `learn` on a specific
+message takes its counts back out. A spam message from today scores the same
+ten years from now. Only the decision journal has a retention
+(`policy.journal_retention`), and that doesn't touch scoring.
+
+Reasons to age:
+
+- Spam changes quickly. The words, domains and senders of this year's spam
+  say little about next year's, and a long history of old counts makes the
+  model slow to notice a new kind of junk.
+- Good mail drifts too, more slowly: correspondents, signatures, formats.
+
+Reasons not to:
+
+- A rare token with few observations gets noisy when old counts expire, and
+  a hard cutoff throws away rare but strong signals.
+- The whitelist and recipient status already carry the stable part of the
+  signal, so aging may matter less than it seems.
+
+Sketch, if it earns its place:
+
+1. Keep the counts as they are.
+2. Record when each message was trained: the `trained` table stores no time
+   today, so this is a schema step.
+3. Weight old training down, or let `bootstrap --refresh` rebuild from only
+   the last N months of the mailbox.
+
+Decide with data, not by argument: `tamis-eval` replays a corpus oldest first,
+scoring each message before learning it, so a variant that downweights old
+training can be compared with today's behaviour on real mail. See
+[evaluation.md](evaluation.md).
 
 ## Actions and safety
 
-- Spam tier: move to Junk (or flag only, configurable).
-- Uncertain tier: move to `Junk/Uncertain`, or flag in place.
-- Rescue: whitelisted sender with DKIM/DMARC pass, or a strong good score,
-  in the provider's Junk gets moved back to the Inbox (or a `Rescued` folder).
-- Never delete. Every action goes into a journal and can be undone.
-- Rate-limit moves; all actions are idempotent.
-- **Shadow mode** for the first one to two weeks: report what would have
-  happened, act on nothing.
-- Always fetch with `BODY.PEEK` so scanning never marks mail as read.
+Built, and described in [engine.md](engine.md): [actions](engine.md#actions)
+(spam to Junk, uncertain flagged in place with `$TamisUncertain`, good mail
+filed by [rules](rules.md)), [rescue](engine.md#rescue) from the provider's
+Junk, [undo](engine.md#undo), shadow mode for the first one to two weeks,
+and the [safety rules](engine.md#safety-rules): never delete, always journal,
+always fetch with `BODY.PEEK`.
+
+Not built: a `Junk/Uncertain` folder, a flag-only option for spam, and rate
+limiting of moves. Actions are idempotent, so a move can be repeated after a
+failure.
 
 ## Feedback
 
-A daily digest message delivered into the mailbox itself: caught, uncertain,
-rescued, with undo links to a small web UI. Login failures (e.g. a revoked
-app-specific password) alert through a separate channel such as ntfy, since
-the mailbox itself is unreachable then.
+Planned, not built: a daily digest message delivered into the mailbox itself
+(caught, uncertain, rescued, with undo links). What exists instead is the web
+interface (decisions with undo and learn, whitelist, health, rules, logs),
+`tamis log`, `tamis doctor`, and dead-man's-switch pings that alert when the
+daemon stops or the filter's quality drops; see [monitoring.md](monitoring.md).
+A revoked app-specific password shows up there too, through a channel other
+than the mailbox.
 
 ## Onboarding
 
-1. Connect: server auto-discovery plus an app-specific password.
-2. Discover folders via SPECIAL-USE (`\Junk`, `\Sent`); user confirms which to
-   watch.
-3. Build the whitelist from Sent recipients (last ~2 years) and contacts.
-4. Seed the corpus: Junk as spam; read-and-kept Inbox/Archive mail and mail
-   from whitelisted senders as good. A few hundred of each, balanced.
-5. Shadow mode, then go live, with an accuracy page.
+[Bootstrap](engine.md#bootstrap) does the seeding: the whitelist from Sent
+recipients, Junk as spam, read-and-kept mail as good, then shadow mode and
+going live. Server auto-discovery and a folder-confirmation step were planned
+and are not built; the folders come from the configuration.
 
 ## iCloud notes
 
@@ -156,15 +199,18 @@ The first target account is iCloud, the most constrained of the big
 providers:
 
 - IMAP only (`imap.mail.me.com:993`), app-specific password, no OAuth, no JMAP.
-- CONDSTORE/QRESYNC are advertised but have been buggy, and iCloud never
-  confirms `ENABLE QRESYNC`. tamis doesn't use them: it searches
-  each pass instead of tracking flag changes. go-imap v2 has no client-side
-  QRESYNC either.
-- MOVE is missing. `tamis probe` measures what the extensions tamis relies on
-  (IDLE, UIDPLUS, MOVE, SPECIAL-USE, custom keywords) actually do.
-- Without MOVE, use COPY + `\Deleted` + `UID EXPUNGE`; never plain `EXPUNGE`
-  without UIDPLUS.
-- Connection limits are undocumented: IDLE on the watched folders only, poll the rest.
+- No MOVE, and CONDSTORE/QRESYNC are advertised but have been buggy: how
+  tamis copes is in [imap.md](imap.md#server-behaviour-tamis-relies-on) and
+  [capabilities](imap.md#capabilities). `tamis probe` measures what a given
+  server's extensions actually do.
+- Measured with `tamis probe --write` on a real account (2026-11-03): IDLE,
+  UIDPLUS and custom keywords (`PERMANENTFLAGS` includes `\*`) work;
+  APPENDUID is returned; `BODY.PEEK` leaves mail unread; two concurrent
+  connections are accepted; an IDLE push arrives in about 4 seconds; MOVE and
+  SPECIAL-USE are absent, so the Junk folder is found by name, not by
+  `\Junk`; the COPY + STORE + UID EXPUNGE fallback works.
+- Connection limits are undocumented: IDLE on the watched folders only, poll the
+  rest ([Idle and polling](imap.md#idle-and-polling)).
 - Apple's server filter, Mail.app's local filter and SpamSieve all move mail
   too; tamis must tolerate other actors.
 - No server-side Sieve, which is part of why this project exists. Good mail is
@@ -172,7 +218,7 @@ providers:
 
 ## Architecture
 
-One Go daemon:
+One Rust daemon (JMAP, the combiner and the API are plans, not built):
 
 ```text
 connectors (IMAP, JMAP) ─┐
@@ -191,5 +237,7 @@ web UI / API, TOML config
 | 0 | iCloud capability probe: which extensions actually work (`tamis probe`) |
 | MVP (done, see [engine.md](engine.md)) | IMAP, Train folders, token Bayes, whitelist from Sent, shadow mode, SQLite, CLI |
 | Filing (done, see [rules.md](rules.md)) | Sieve rules file good mail into folders; `tamis rules`; web Rules page |
-| Next | Opt-in Jev signal, inferred corrections, rescue from Junk, digest, web UI with undo |
+| Corrections and rescue (done, see [engine.md](engine.md)) | Inferred corrections, `$Junk`/`$NotJunk` marks, rescue from Junk, undo and learn |
+| Web interface (done) | Passkey sign-in, decisions with undo and learn, whitelist, rules, health, logs |
+| Next | Opt-in Jev signal and the combiner, digest, Hide My Email alias check, token aging (open question above) |
 | Later | JMAP, OAuth (Gmail, Microsoft), local embeddings, optional Rspamd signal |

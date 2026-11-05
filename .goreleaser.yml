@@ -1,4 +1,3 @@
-# DO NOT EDIT — managed by hugoh/go-tools via copier.
 version: 2
 
 before:
@@ -6,41 +5,24 @@ before:
     - mise run prebuild
 
 builds:
-  - env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-      - freebsd
-    goarch:
-      - amd64
-      - arm64
-      - "386"
-      - arm
-    goarm:
-      - "6"
-      - "7"
-    ignore:
-      - goos: darwin
-        goarch: "386"
-      - goos: darwin
-        goarch: arm
-      - goos: freebsd
-        goarch: arm
-      - goos: freebsd
-        goarch: "386"
+  - builder: rust
+    command: zigbuild
     flags:
-      - -trimpath
-      - -mod=readonly
-    ldflags:
-      - -s -w
-      - -X main.version={{.Version}}
+      - --release
+    env:
+      - TAMIS_VERSION={{ .Version }}
+    targets:
+      - x86_64-unknown-linux-gnu
+      - aarch64-unknown-linux-gnu
+      - x86_64-apple-darwin
+      - aarch64-apple-darwin
+      - x86_64-pc-windows-gnu
+
 nfpms:
   - maintainer: "Hugo Haas <hugoh@hugoh.net>"
     description: "A second-opinion spam filter and mail sorter for remote mailboxes"
     homepage: "https://github.com/hugoh/tamis"
-    license: "MIT"
+    license: "AGPL-3.0-only"
     formats:
       - deb
       - rpm
@@ -53,13 +35,13 @@ nfpms:
 publishers:
   - name: cloudsmith-apt
     cmd: >-
-      sh -c 'case "$0" in *_armv7.deb) ;; *.deb) cloudsmith push deb hugoh/tamis/any-distro/any-version "$0";; esac'
+      sh -c 'case "$0" in *_armv7.deb) ;; *.deb) cloudsmith push deb hugoh-oss/tamis/any-distro/any-version "$0";; esac'
       {{ .ArtifactPath }}
     env:
       - CLOUDSMITH_API_KEY={{ .Env.CLOUDSMITH_API_KEY }}
   - name: cloudsmith-rpm
     cmd: >-
-      sh -c 'case "$0" in *.rpm) cloudsmith push rpm hugoh/tamis/any-distro/any-version "$0";; esac'
+      sh -c 'case "$0" in *.rpm) cloudsmith push rpm hugoh-oss/tamis/any-distro/any-version "$0";; esac'
       {{ .ArtifactPath }}
     env:
       - CLOUDSMITH_API_KEY={{ .Env.CLOUDSMITH_API_KEY }}

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Run the IMAP client tests against a Dovecot container (needs Apple's container CLI)"
+set -euo pipefail
+
+name=tamis-dovecot
+dir="$PWD/tests/dovecot"
+
+container system status >/dev/null 2>&1 || container system start --enable-kernel-install
+container rm -f "$name" >/dev/null 2>&1 || true
+container run -d --name "$name" --user 0:0 \
+  -v "$dir/dovecot.conf:/etc/dovecot/dovecot.conf:ro" \
+  -v "$dir/passwd:/etc/passwd:ro" \
+  -v "$dir/group:/etc/group:ro" \
+  docker.io/dovecot/dovecot:latest >/dev/null
+trap 'container rm -f "$name" >/dev/null 2>&1 || true' EXIT
+
+ip=$(container inspect "$name" | jq -r '.. | objects | select(has("ipv4Address")) | .ipv4Address' | head -1 | cut -d/ -f1)
+for _ in {1..60}; do
+  (exec 3<>"/dev/tcp/$ip/143") 2>/dev/null && break
+  sleep 0.5
+done
+
+TAMIS_TEST_IMAP="$ip:143" cargo nextest run --test imap_dovecot --test cli_dovecot "$@"

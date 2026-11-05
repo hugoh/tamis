@@ -1,0 +1,10 @@
+[account]
+host = "h"
+user = "u"
+
+[web]
+enabled = true
+listen = "localhost:8484"
+origin = "http://localhost:8484"
+tls_cert = "/c.pem"
+self_signed = true

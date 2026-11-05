@@ -1,0 +1,7 @@
+From: Go Nuts <noreply@golang.example.org>
+To: me@example.org
+Subject: [golang-nuts] release candidate
+Content-Type: text/plain; charset=utf-8
+
+The release candidate is ready for testing. Please file issues at https://github.com/golang/go/issues
+Thanks for the help with the review.

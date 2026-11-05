@@ -1,0 +1,8 @@
+[account]
+host = "h"
+user = "u"
+
+[monitor]
+ping_url = "ftp://example.com/x"
+quality_url = "not a url"
+fail_after = 0

@@ -40,8 +40,8 @@ mise install
 mise run build
 ```
 
-A plain `go install github.com/hugoh/tamis@latest` also works, but the binary
-has no web interface (`tamis version` shows `+noweb`); see
+A plain `cargo build --release` also works, but run `mise run vendor-web` first:
+without the files it embeds, the web interface refuses to start; see
 [Development](#development).
 
 ## Quick start
@@ -114,7 +114,7 @@ tamis status      # mode, folders, how much it has learnt, how the daemon is doi
 tamis monitor     # the healthchecks.io checks to set up for [monitor], and when they alert
 tamis doctor      # does the config load, do the rules compile, is the daemon and the filter in good shape? (--json; exits 1 on failure)
 tamis undo 42     # reverse decision 42 from the log
-tamis learn 42    # shadow mode: learn the opposite of decision 42's verdict
+tamis learn 42    # learn the opposite of decision 42's verdict (shadow mode, or to change a correction)
 tamis whitelist list   # also: add ADDRESS..., rm ADDRESS... or rm --matching TEXT
 tamis rules show       # also: check [--folders] [FILE] to validate a Sieve script, test MESSAGE.eml to see where it goes
 tamis web enroll       # one-time link to enrol a passkey for the web interface
@@ -432,8 +432,7 @@ folders named `tamis-probe-<timestamp>`, appends a test message, exercises
 
 ## Development
 
-Tooling is managed by [mise](https://mise.jdx.dev) and the shared
-[`hugoh/go-tools`](https://github.com/hugoh/go-tools) Copier template.
+Tooling is managed by [mise](https://mise.jdx.dev).
 
 ```sh
 mise install
@@ -441,22 +440,21 @@ hk install
 mise run ci
 ```
 
-The web interface embeds htmx and a stylesheet from `internal/web/static/vendor`.
+The web interface embeds htmx and a stylesheet from `web/static/vendor`.
 They are not committed: the stylesheet is built by the Tailwind CLI with the
-daisyUI plugin, from only the classes in `internal/web/templates`, so it stays
+daisyUI plugin, from only the classes in `templates`, so it stays
 small. The tool versions are pinned in `.config/mise/conf.d/web.toml`, where
 Renovate updates them, so an update is just a change to that file.
 
 `mise run vendor-web` produces the files, and the `prebuild` task from the
-template runs it before every `mise run build`, `test`, `lint-go` and so on, so
+template runs it before every `mise run build`, `test`, `lint-rust` and so on, so
 `mise run ci` needs nothing extra. A test fails if a template uses a class the
 stylesheet lacks.
 
-A plain `go build` or `go install` does not run it. Such a binary still works,
-but `tamis version` shows a `+noweb` suffix and the web interface refuses to
-start, saying to run `mise run vendor-web` and rebuild. A full build shows the
-plain version, which is also at the foot of every page.
+A plain `cargo build` does not run it. Such a binary still works, but the web
+interface refuses to start, saying to run `mise run vendor-web` and rebuild.
+The version is at the foot of every page.
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0-only](LICENSE)

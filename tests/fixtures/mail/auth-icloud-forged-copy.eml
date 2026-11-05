@@ -1,0 +1,6 @@
+Authentication-Results: dmarc.icloud.com; dmarc=fail header.from=example.org
+Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=example.org
+From: Alice <alice@example.org>
+Subject: x
+
+body

@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-use mail_parser::{Addr, MessageParser};
+use mail_parser::MessageParser;
 use sieve::{Compiler, Envelope, Event, Input, Runtime, Sieve};
 use thiserror::Error;
 
@@ -156,14 +156,7 @@ fn with_body_separator(raw: &[u8]) -> Cow<'_, [u8]> {
 pub fn sender_of(raw: &[u8]) -> String {
     MessageParser::default()
         .parse_headers(raw)
-        .and_then(|message| {
-            message
-                .from()?
-                .iter()
-                .next()
-                .and_then(Addr::address)
-                .map(str::to_lowercase)
-        })
+        .and_then(|message| message.from()?.first()?.address().map(str::to_lowercase))
         .unwrap_or_default()
 }
 

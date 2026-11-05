@@ -9,7 +9,7 @@ use html5ever::tokenizer::{
     BufferQueue, CharacterTokens, TagKind, TagToken, Token, TokenSink, TokenSinkResult, Tokenizer,
     TokenizerOpts,
 };
-use mail_parser::{Addr, Address, MessageParser, MimeHeaders, PartType};
+use mail_parser::{AddressList, MessageParser, PartKind};
 use regex::Regex;
 use unicode_general_category::{GeneralCategory, get_general_category};
 use url::Url;
@@ -55,20 +55,23 @@ pub fn tokenize(raw: &[u8]) -> Vec<String> {
         }
     }
 
-    for part in &message.parts {
+    for part in message.root().parts() {
         let (media, subtype) = part.content_type().map_or(("text", "plain"), |ct| {
             (ct.ctype(), ct.subtype().unwrap_or(""))
         });
         let is_html = media.eq_ignore_ascii_case("text") && subtype.eq_ignore_ascii_case("html");
         let is_plain = media.eq_ignore_ascii_case("text") && subtype.eq_ignore_ascii_case("plain");
 
-        let body = match &part.body {
-            PartType::Text(text) if is_plain => text,
-            PartType::Html(text) if is_html => text,
-            _ => continue,
+        let wanted = match part.kind() {
+            PartKind::Text => is_plain,
+            PartKind::Html => is_html,
+            _ => false,
+        };
+        let Some(body) = part.text().filter(|_| wanted) else {
+            continue;
         };
 
-        let body = truncate(body, MAX_PART_BYTES);
+        let body = truncate(&body, MAX_PART_BYTES);
         if is_html {
             tokens.add_text("", &strip_html(body));
         } else {
@@ -79,18 +82,22 @@ pub fn tokenize(raw: &[u8]) -> Vec<String> {
     tokens.list
 }
 
-fn addresses(address: Option<&Address<'_>>) -> Vec<String> {
+fn addresses(address: Option<AddressList<'_>>) -> Vec<String> {
     address
         .into_iter()
-        .flat_map(Address::iter)
-        .filter_map(Addr::address)
+        .flat_map(|list| list.mailboxes())
+        .filter_map(|mailbox| mailbox.address())
         .map(str::to_lowercase)
         .collect()
 }
 
 /// Records who the message went to: each distinct To and Cc address and its
 /// domain, up to `MAX_RECIPIENTS` addresses.
-fn add_recipient_tokens(tokens: &mut TokenSet, to: Option<&Address<'_>>, cc: Option<&Address<'_>>) {
+fn add_recipient_tokens(
+    tokens: &mut TokenSet,
+    to: Option<AddressList<'_>>,
+    cc: Option<AddressList<'_>>,
+) {
     let mut seen = HashSet::new();
 
     for address in addresses(to).into_iter().chain(addresses(cc)) {

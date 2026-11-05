@@ -833,7 +833,7 @@ mod tests {
         let mut env = Env::with(cfg, || unreachable!());
         let handle = env.spawn();
 
-        after(5).await;
+        after(4).await;
         assert_eq!(
             env.connects(),
             2,

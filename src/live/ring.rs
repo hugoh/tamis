@@ -95,6 +95,9 @@ impl Visit for Text {
     }
 }
 
+/// The per-request web log line, which would otherwise record the log view's own polling.
+pub const WEB_REQUEST: &str = "web request";
+
 /// Feeds a [`Ring`] with every event the subscriber lets through.
 pub struct RingLayer(pub std::sync::Arc<Ring>);
 
@@ -102,6 +105,9 @@ impl<S: Subscriber> Layer<S> for RingLayer {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
         let mut text = Text::default();
         event.record(&mut text);
+        if text.message == WEB_REQUEST {
+            return;
+        }
         self.0.add(Entry {
             at: Timestamp::now(),
             level: *event.metadata().level(),
@@ -157,6 +163,19 @@ mod tests {
         ring.add(entry("a"));
 
         ring.stop();
+
+        assert!(ring.entries().is_empty());
+    }
+
+    #[test]
+    fn the_layer_skips_web_requests() {
+        let ring = Arc::new(Ring::new(5));
+        ring.start();
+        let subscriber = tracing_subscriber::registry().with(RingLayer(Arc::clone(&ring)));
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::debug!("web request");
+        });
 
         assert!(ring.entries().is_empty());
     }

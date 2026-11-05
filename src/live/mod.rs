@@ -7,5 +7,5 @@ mod ring;
 mod status;
 
 pub use debug::DebugSwitch;
-pub use ring::{Entry, Ring, RingLayer};
+pub use ring::{Entry, Ring, RingLayer, WEB_REQUEST};
 pub use status::{SETTING_KEY, Snapshot, Status, Waiting};

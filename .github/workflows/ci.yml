@@ -59,10 +59,28 @@ jobs:
       - name: Tests and coverage
         run: mise run ci-core
 
+  cross:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: ci
+    steps:
+      - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: cross
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: mise run prebuild
+      - name: Build every release target
+        run: goreleaser build --snapshot --clean
+
   release:
-    needs: [hk, test]
+    needs: [hk, test, cross]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,6 +93,7 @@ jobs:
       - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
         with:
           fetch-depth: "0"
+      - run: rustup toolchain install
       - name: Guard manual dispatch to main
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
         env:

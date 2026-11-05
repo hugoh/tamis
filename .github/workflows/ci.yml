@@ -60,7 +60,7 @@ jobs:
         run: mise run ci-core
 
   cross:
-    timeout-minutes: 60
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -80,7 +80,7 @@ jobs:
   release:
     needs: [hk, test, cross]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 60
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
       contents: write

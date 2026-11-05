@@ -115,6 +115,8 @@ pub struct DecisionQuery {
     pub id: i64,
     /// Keeps one verdict; `None` keeps all.
     pub verdict: Option<Verdict>,
+    /// Keeps one reason; `None` keeps all.
+    pub reason: Option<Reason>,
     /// Keeps decisions whose sender, subject, reason, action or folder contain
     /// it, ignoring ASCII case.
     pub search: String,
@@ -138,6 +140,10 @@ impl DecisionQuery {
         if let Some(verdict) = self.verdict {
             conditions.push("verdict = ?".to_owned());
             args.push(Value::Text(verdict.to_string()));
+        }
+        if let Some(reason) = self.reason {
+            conditions.push("reason = ?".to_owned());
+            args.push(Value::Text(reason.to_string()));
         }
         if !self.search.is_empty() {
             let pattern = like_pattern(&self.search);

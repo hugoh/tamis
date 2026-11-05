@@ -13,6 +13,7 @@ pub const DIM: Style = "2";
 pub const RED: Style = "31";
 pub const GREEN: Style = "32";
 pub const YELLOW: Style = "33";
+pub const BLUE: Style = "34";
 pub const MAGENTA: Style = "35";
 pub const BOLD_RED: Style = "1;31";
 pub const BOLD_YELLOW: Style = "1;33";

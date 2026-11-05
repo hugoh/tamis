@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Upgrade dependencies, including breaking bumps"
+set -e
+mise run depup -- --incompatible

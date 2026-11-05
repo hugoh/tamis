@@ -273,7 +273,7 @@ async fn guard(State(app): State<App>, request: Request, next: Next) -> Response
     if !path.starts_with("/static/") {
         headers.insert(header::CACHE_CONTROL, header_value("no-store"));
     }
-    debug!(%method, %path, status = response.status().as_u16(), duration = ?started.elapsed(), "web request");
+    debug!(%method, %path, status = response.status().as_u16(), duration = ?started.elapsed(), "{}", crate::live::WEB_REQUEST);
     response
 }
 

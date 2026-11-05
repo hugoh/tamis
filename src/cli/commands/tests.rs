@@ -105,6 +105,24 @@ async fn log_shows_decisions_newest_first_with_what_happened_to_them() {
 }
 
 #[tokio::test]
+async fn log_shows_where_a_move_goes_and_marks_rule_decisions() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, store) = setup(dir.path(), "");
+    store
+        .record_decision(&decision("good", "move:Receipts", true, "<a@x>", "rule"))
+        .unwrap();
+
+    let (_, out, _) = run(&["-c", &config, "--color", "never", "log"]).await;
+    assert!(
+        out.lines().nth(1).unwrap().contains("INBOX → Receipts"),
+        "{out}"
+    );
+
+    let (_, out, _) = run(&["-c", &config, "--color", "always", "log"]).await;
+    assert!(out.contains("\x1b[34mrule"), "{out:?}");
+}
+
+#[tokio::test]
 async fn status_summarises_the_configuration_and_what_has_been_learnt() {
     let dir = tempfile::tempdir().unwrap();
     let (config, store) = setup(dir.path(), "port = 1993\n[policy]\nmode = \"live\"\n");

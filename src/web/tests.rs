@@ -106,6 +106,17 @@ async fn text(response: Response) -> String {
 }
 
 fn record(site: &Site, subject: &str, reason: &str, applied: bool) -> i64 {
+    record_as(site, subject, ("spam", 0.97), reason, "move:Junk", applied)
+}
+
+fn record_as(
+    site: &Site,
+    subject: &str,
+    (verdict, score): (&str, f64),
+    reason: &str,
+    action: &str,
+    applied: bool,
+) -> i64 {
     site.db
         .record_decision(&Decision {
             at: Timestamp::now(),
@@ -114,10 +125,10 @@ fn record(site: &Site, subject: &str, reason: &str, applied: bool) -> i64 {
             message_id: format!("<{subject}@x>"),
             from: "alice@example.org".into(),
             subject: subject.into(),
-            score: 0.97,
-            verdict: crate::journal::Verdict::Spam,
+            score,
+            verdict: verdict.parse().unwrap(),
             reason: reason.parse().unwrap(),
-            action: crate::journal::Action::Move("Junk".into()),
+            action: action.parse().unwrap(),
             applied,
             ..Decision::default()
         })
@@ -217,6 +228,117 @@ async fn the_decisions_page_lists_filters_and_escapes() {
             && !found.contains("script&#62;"),
         "{found}"
     );
+}
+
+#[tokio::test]
+async fn a_rule_decision_gets_a_second_pill_and_a_move_shows_its_destination() {
+    let site = site();
+    record(&site, "filed", "rule", true);
+    record(&site, "plain", "bayes", true);
+
+    let page = text(site.get("/").await).await;
+
+    assert_eq!(page.matches("badge-info").count(), 1, "{page}");
+    assert!(page.contains("INBOX → Junk"), "{page}");
+}
+
+#[tokio::test]
+async fn decisions_can_be_filtered_by_reason() {
+    let site = site();
+    record(&site, "by-rule", "rule", true);
+    record(&site, "by-bayes", "bayes", true);
+
+    let page = text(site.get("/").await).await;
+    let found = text(site.get_htmx("/?reason=rule").await).await;
+
+    assert!(
+        page.contains("name=\"reason\"") && page.contains("value=\"whitelisted\""),
+        "{page}"
+    );
+    assert!(
+        found.contains("1 decision match")
+            && found.contains("by-rule")
+            && !found.contains("by-bayes"),
+        "{found}"
+    );
+}
+
+/// Writes a standalone decisions page (CSS inlined) for eyeballing or docs:
+/// `mise run mock-web`; set `TAMIS_MOCK_PAGE` to write elsewhere
+#[tokio::test]
+#[ignore = "writes a file; run by hand"]
+async fn mock_decisions_page() {
+    let site = site();
+    record_as(
+        &site,
+        "Your receipt from Acme",
+        ("good", 0.03),
+        "rule",
+        "move:Receipts",
+        true,
+    );
+    record_as(
+        &site,
+        "Weekly digest",
+        ("good", 0.08),
+        "rule",
+        "move:Newsletters",
+        true,
+    );
+    record_as(
+        &site,
+        "Meeting notes",
+        ("good", 0.02),
+        "bayes",
+        "none",
+        true,
+    );
+    record_as(
+        &site,
+        "Newsletter",
+        ("good", 0.0),
+        "whitelisted",
+        "none",
+        true,
+    );
+    record_as(
+        &site,
+        "Is this you?",
+        ("uncertain", 0.52),
+        "bayes",
+        "none",
+        true,
+    );
+    record_as(
+        &site,
+        "You won a prize!!!",
+        ("spam", 0.99),
+        "bayes",
+        "move:Junk",
+        true,
+    );
+    let rescued = record_as(
+        &site,
+        "Lunch on Friday?",
+        ("spam", 0.91),
+        "bayes",
+        "move:Junk",
+        true,
+    );
+    site.db.mark_undone(rescued).unwrap();
+
+    let page = text(site.get("/").await).await;
+    let css =
+        std::fs::read_to_string("web/static/vendor/theme.css").expect("run mise run vendor-web");
+    let page = page
+        .replace(
+            "<link rel=\"stylesheet\" href=\"/static/vendor/theme.css\">",
+            &format!("<style>{css}</style>"),
+        )
+        .replace("<script src=\"/static/vendor/htmx.min.js\"></script>", "");
+    let out =
+        std::env::var("TAMIS_MOCK_PAGE").unwrap_or_else(|_| "target/mock-decisions.html".into());
+    std::fs::write(out, page).unwrap();
 }
 
 #[tokio::test]

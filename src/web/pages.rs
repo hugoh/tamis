@@ -15,7 +15,7 @@ use tracing::warn;
 use super::listing::{Column, PAGE_SIZE, SortChoice, TableState, count_label};
 use super::{App, Job, fail};
 use crate::classify::Label;
-use crate::journal::{Reason, Verdict};
+use crate::journal::{Action, Reason, Verdict};
 use crate::live::Waiting;
 use crate::store::{self, Decision, DecisionQuery, DecisionSort};
 use crate::{health, rules};
@@ -109,6 +109,11 @@ struct VerdictChoice {
     checked: bool,
 }
 
+struct ReasonChoice {
+    value: &'static str,
+    checked: bool,
+}
+
 struct DecisionsBody {
     sort: &'static str,
     dir: &'static str,
@@ -117,6 +122,8 @@ struct DecisionsBody {
     count: String,
     verdict: String,
     verdicts: Vec<VerdictChoice>,
+    reason: String,
+    reasons: Vec<ReasonChoice>,
     columns: Vec<Column>,
     more_href: String,
     only_id: i64,
@@ -226,7 +233,10 @@ fn decision_row(decision: &Decision) -> DecisionRow {
         reason: decision.reason.to_string(),
         score: format!("{:.2}", decision.score),
         action: action_label(decision),
-        folder: decision.mailbox.clone(),
+        folder: match &decision.action {
+            Action::Move(target) => format!("{} → {target}", decision.mailbox),
+            _ => decision.mailbox.clone(),
+        },
         from: decision.from.clone(),
         subject: decision.subject.clone(),
         can_undo: undoable(decision),
@@ -250,6 +260,9 @@ pub(super) async fn decisions(
     let chosen: Option<Verdict> = query.get("verdict").and_then(|v| v.parse().ok());
     let verdict = chosen.map_or_else(String::new, |v| v.to_string());
     state.filters.insert("verdict", verdict.clone());
+    let chosen_reason: Option<Reason> = query.get("reason").and_then(|v| v.parse().ok());
+    let reason = chosen_reason.map_or_else(String::new, |r| r.to_string());
+    state.filters.insert("reason", reason.clone());
     let only_id = query
         .get("id")
         .and_then(|id| id.parse::<i64>().ok())
@@ -262,6 +275,7 @@ pub(super) async fn decisions(
     let (found, total) = match app.db.query_decisions(&DecisionQuery {
         id: only_id,
         verdict: chosen,
+        reason: chosen_reason,
         search: state.search.clone(),
         sort: DecisionSort::from_name(state.sort),
         asc: state.asc,
@@ -281,6 +295,13 @@ pub(super) async fn decisions(
             checked: value == verdict,
         })
         .collect();
+    let reasons = std::iter::once("")
+        .chain(Reason::ALL.map(Reason::as_str))
+        .map(|value| ReasonChoice {
+            value,
+            checked: value == reason,
+        })
+        .collect();
     let body = DecisionsBody {
         sort: state.sort,
         dir: state.dir(),
@@ -289,13 +310,15 @@ pub(super) async fn decisions(
             total,
             "decision",
             "decisions",
-            !verdict.is_empty() || !state.search.is_empty() || only_id > 0,
+            !verdict.is_empty() || !reason.is_empty() || !state.search.is_empty() || only_id > 0,
         ),
         more_href: state.more_href(rows.len(), total),
         columns: state.columns(&DECISION_SORTS),
         rows,
         verdict,
         verdicts,
+        reason,
+        reasons,
         only_id,
     };
 

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Write a standalone decisions page with sample data to target/mock-decisions.html"
+#MISE depends=["vendor-web"]
+#MISE sources=["templates/*.html", "src/web/*.rs", "web/static/vendor/theme.css"]
+#MISE outputs=["target/mock-decisions.html"]
+set -euo pipefail
+
+cargo test mock_decisions_page -- --ignored
+echo "target/mock-decisions.html"

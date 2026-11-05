@@ -350,7 +350,7 @@ pub fn write_report(
             format!("{:.1}", first.ham_unsure),
         ]);
     }
-    crate::report::write_table(out, &rows)
+    crate::output::write_table(out, &rows)
 }
 
 #[cfg(test)]

@@ -3,11 +3,11 @@ use std::io::Write;
 use anyhow::Result;
 
 use super::super::App;
-use super::super::style::{
-    BLUE, BOLD, Cell, DIM, GREEN, MAGENTA, RED, Style, YELLOW, cell, write_table,
-};
 use super::common::{local, open, palette};
 use crate::journal::{Action, Reason, Verdict};
+use crate::output::style::{
+    BLUE, BOLD, Cell, DIM, GREEN, MAGENTA, PLAIN, RED, Style, YELLOW, cell, write_table,
+};
 use crate::store::Decision;
 
 pub(in super::super) fn log(app: &mut App, number: i64) -> Result<()> {
@@ -42,7 +42,7 @@ fn write_decisions(app: &mut App, decisions: &[Decision]) -> Result<()> {
     for decision in decisions {
         let style = verdict_style(decision.verdict);
         rows.push(vec![
-            cell(&decision.id.to_string(), ""),
+            cell(&decision.id.to_string(), PLAIN),
             cell(&local(decision.at), DIM),
             cell(decision.verdict.as_str(), style),
             cell(
@@ -55,9 +55,9 @@ fn write_decisions(app: &mut App, decisions: &[Decision]) -> Result<()> {
             ),
             cell(&format!("{:.2}", decision.score), style),
             action_cell(decision),
-            cell(&folder_text(decision), ""),
-            cell(&decision.from, ""),
-            cell(&decision.subject, ""),
+            cell(&folder_text(decision), PLAIN),
+            cell(&decision.from, PLAIN),
+            cell(&decision.subject, PLAIN),
         ]);
     }
     write_table(&mut app.env.stdout, colors, &rows)
@@ -72,7 +72,7 @@ fn action_cell(decision: &Decision) -> Cell {
     } else if !decision.applied {
         cell(&format!("would {text}"), DIM)
     } else {
-        cell(&text, "")
+        cell(&text, PLAIN)
     };
 
     if decision.undone {

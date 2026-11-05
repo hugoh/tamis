@@ -20,10 +20,11 @@ use std::sync::Arc;
 use jiff::Timestamp;
 use sha2::{Digest, Sha256};
 
-pub use authid::{AuthPin, AuthSource, NO_AUTH_SERVER_ID, resolve_auth_pin};
 pub use bootstrap::{BootstrapOptions, BootstrapSummary, Source};
 pub use domain::{Action, Judgement, Reason, Summary, Verdict, keyword};
 pub use error::{Context, Error, Result};
+pub use learn::can_learn;
+pub use undo::can_undo;
 
 use crate::auth;
 use crate::classify::{self, Label};
@@ -404,22 +405,7 @@ impl<M: Mailbox> Engine<M> {
         tokens: &[String],
         reason: Reason,
     ) -> Result<()> {
-        self.store
-            .train(&training_key(message), tokens, Label::Good)
-            .context("learn good")?;
-        if !message.from.is_empty() {
-            self.store
-                .add_address(&message.from, reason.as_str())
-                .context("learn good")?;
-        }
-
-        let score = self.rescore(&message.raw).context("learn good")?;
-        let judgement = Judgement {
-            verdict: Verdict::Good,
-            reason,
-            score,
-        };
-        self.record(folder, message, &judgement, &Action::TrainGood, true)
+        self.learn_as(Label::Good, folder, message, tokens, reason)
     }
 
     /// Trains a message as spam and takes its sender off the whitelist: the
@@ -431,22 +417,39 @@ impl<M: Mailbox> Engine<M> {
         tokens: &[String],
         reason: Reason,
     ) -> Result<()> {
+        self.learn_as(Label::Spam, folder, message, tokens, reason)
+    }
+
+    fn learn_as(
+        &self,
+        label: Label,
+        folder: &str,
+        message: &Message,
+        tokens: &[String],
+        reason: Reason,
+    ) -> Result<()> {
+        let (what, verdict, action) = match label {
+            Label::Good => ("learn good", Verdict::Good, Action::TrainGood),
+            Label::Spam => ("learn spam", Verdict::Spam, Action::TrainSpam),
+        };
         self.store
-            .train(&training_key(message), tokens, Label::Spam)
-            .context("learn spam")?;
+            .train(&training_key(message), tokens, label)
+            .context(what)?;
         if !message.from.is_empty() {
-            self.store
-                .remove_address(&message.from)
-                .context("learn spam")?;
+            match label {
+                Label::Good => self.store.add_address(&message.from, reason.as_str()),
+                Label::Spam => self.store.remove_address(&message.from),
+            }
+            .context(what)?;
         }
 
-        let score = self.rescore(&message.raw).context("learn spam")?;
+        let score = self.rescore(&message.raw).context(what)?;
         let judgement = Judgement {
-            verdict: Verdict::Spam,
+            verdict,
             reason,
             score,
         };
-        self.record(folder, message, &judgement, &Action::TrainSpam, true)
+        self.record(folder, message, &judgement, &action, true)
     }
 
     fn entry(

@@ -1,10 +1,13 @@
-//! What the health and probe reports share.
+//! Output formatting shared by the CLI and the tools: JSON, aligned tables and
+//! colour.
+
+pub mod style;
 
 use std::io::{self, Write};
 
 use serde::Serialize;
 
-const COLUMN_PADDING: usize = 2;
+use style::{Cell, PLAIN, Palette, cell};
 
 /// Renders `value` as indented JSON followed by a newline.
 ///
@@ -18,37 +21,14 @@ pub fn write_json(out: &mut impl Write, value: &impl Serialize) -> io::Result<()
 /// Lays out `rows` in aligned columns: every cell but a row's last is padded
 /// to the widest in its column plus two spaces.
 ///
-/// shortcut: one width per column for the whole table, where Go's tabwriter
-/// restarts it after a row that lacks the column; upgrade if a report mixes
-/// row shapes.
-///
 /// # Errors
 /// Fails when `out` can't be written.
 pub fn write_table<R: AsRef<[String]>>(out: &mut impl Write, rows: &[R]) -> io::Result<()> {
-    let mut widths: Vec<usize> = Vec::new();
-    for row in rows {
-        let cells = row.as_ref();
-        for (column, cell) in cells.iter().take(cells.len().saturating_sub(1)).enumerate() {
-            if widths.len() <= column {
-                widths.push(0);
-            }
-            widths[column] = widths[column].max(cell.chars().count());
-        }
-    }
-
-    for row in rows {
-        let cells = row.as_ref();
-        let mut line = String::new();
-        for (column, cell) in cells.iter().enumerate() {
-            line.push_str(cell);
-            if column + 1 < cells.len() {
-                let padding = widths[column] + COLUMN_PADDING - cell.chars().count();
-                line.push_str(&" ".repeat(padding));
-            }
-        }
-        writeln!(out, "{line}")?;
-    }
-    Ok(())
+    let rows: Vec<Vec<Cell>> = rows
+        .iter()
+        .map(|row| row.as_ref().iter().map(|text| cell(text, PLAIN)).collect())
+        .collect();
+    out.write_all(style::render_table(Palette::off(), &rows).as_bytes())
 }
 
 #[cfg(test)]
@@ -69,6 +49,22 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_table_write_keeps_its_error_kind() {
+        struct Closed;
+        impl Write for Closed {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let err = write_table(&mut Closed, &[row(&["a"])]).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+    }
+
+    #[test]
     fn tables_align_their_columns() {
         let cases = [
             (
@@ -78,6 +74,10 @@ mod tests {
             (
                 vec![row(&["é", "x", "tail"]), row(&["ab", "yy", "z"])],
                 "é   x   tail\nab  yy  z\n",
+            ),
+            (
+                vec![row(&["日本", "x"]), row(&["ab", "y"])],
+                "日本  x\nab    y\n",
             ),
             (vec![row(&["only"])], "only\n"),
             (vec![], ""),

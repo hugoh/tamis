@@ -197,10 +197,10 @@ impl<M: Mailbox> Engine<M> {
         // The domain first: if the second write fails, the value is stale,
         // which is safe, and not wrongly trusted for a new host.
         self.store
-            .set_setting(super::authid::AUTH_SETTING, &domain)
+            .set_setting(crate::auth_pin::AUTH_SETTING, &domain)
             .context("learn authserv-id")?;
         self.store
-            .set_setting(super::authid::AUTH_HOST_SETTING, &self.cfg.account.host)
+            .set_setting(crate::auth_pin::AUTH_HOST_SETTING, &self.cfg.account.host)
             .context("learn authserv-id")?;
         self.auth_id = None;
         tracing::info!(%domain, sample = tally.total(), "learnt the provider's authserv-id");

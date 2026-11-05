@@ -5,7 +5,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use super::{Check, ConfigInfo, RulesInfo, Status, Web, name};
-use crate::engine::{AuthPin, AuthSource};
+use crate::auth_pin::{AuthPin, AuthSource};
 use crate::store::{Decision, Stats};
 
 /// Fewer than this many of one kind makes the balance a warning.
@@ -29,7 +29,18 @@ pub(super) fn config_file(info: &ConfigInfo) -> Check {
     Check::new(
         name::CONFIG,
         Status::Ok,
-        format!("{}: {}, {} mode", info.path, info.account, info.mode),
+        format!(
+            "{}: {}, {} mode; state {}",
+            info.path, info.account, info.mode, info.state
+        ),
+    )
+}
+
+pub(super) fn folders(info: &ConfigInfo) -> Check {
+    Check::new(
+        name::FOLDERS,
+        Status::Ok,
+        format!("watching [{}], training {}", info.watch, info.train),
     )
 }
 
@@ -129,6 +140,10 @@ pub(super) fn balance(stats: &Stats) -> Check {
     } else {
         Check::new(name::BALANCE, Status::Ok, detail)
     }
+}
+
+pub(super) fn database(stats: &Stats) -> Check {
+    Check::new(name::DATABASE, Status::Ok, stats.database_line())
 }
 
 pub(super) fn uncertain_rate(judged: &[&Decision]) -> Check {

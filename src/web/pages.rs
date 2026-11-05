@@ -15,6 +15,7 @@ use tracing::warn;
 use super::listing::{Column, PAGE_SIZE, SortChoice, TableState, count_label};
 use super::{App, Job, fail};
 use crate::classify::Label;
+use crate::engine;
 use crate::journal::{Action, Reason, Verdict};
 use crate::live::Waiting;
 use crate::store::{self, Decision, DecisionQuery, DecisionSort};
@@ -204,19 +205,6 @@ const DECISION_SORTS: [SortChoice; 9] = [
     },
 ];
 
-fn own_judgement(decision: &Decision) -> bool {
-    decision.reason.is_own_judgement()
-}
-
-fn undoable(decision: &Decision) -> bool {
-    decision.applied && !decision.undone && own_judgement(decision)
-}
-
-fn learnable(decision: &Decision) -> bool {
-    decision.corrected_by == 0
-        && ((!decision.applied && own_judgement(decision)) || decision.reason == Reason::Correction)
-}
-
 fn action_label(decision: &Decision) -> String {
     if !decision.action.is_none() && !decision.applied {
         format!("would {}", decision.action)
@@ -239,8 +227,8 @@ fn decision_row(decision: &Decision) -> DecisionRow {
         },
         from: decision.from.clone(),
         subject: decision.subject.clone(),
-        can_undo: undoable(decision),
-        can_learn: learnable(decision),
+        can_undo: engine::can_undo(decision),
+        can_learn: engine::can_learn(decision),
         undone: decision.undone,
         undone_by: decision.undone_by,
         corrected_by: decision.corrected_by,
@@ -407,8 +395,13 @@ struct DaemonView {
     recovered: bool,
 }
 
-struct HealthBody {
+struct HealthSection {
+    name: String,
     checks: Vec<CheckRow>,
+}
+
+struct HealthBody {
+    sections: Vec<HealthSection>,
     daemon: Option<DaemonView>,
 }
 
@@ -471,13 +464,18 @@ pub(super) async fn health(State(app): State<App>) -> Response {
         Ok(report) => report,
         Err(err) => return fail("check health", &err),
     };
-    let checks = report
-        .checks
-        .iter()
-        .map(|c| CheckRow {
-            status: c.status.as_str(),
-            name: c.name.clone(),
-            detail: c.detail.clone(),
+    let sections = report
+        .sections()
+        .map(|(name, checks)| HealthSection {
+            name: name.to_owned(),
+            checks: checks
+                .iter()
+                .map(|c| CheckRow {
+                    status: c.status.as_str(),
+                    name: c.name.clone(),
+                    detail: c.detail.clone(),
+                })
+                .collect(),
         })
         .collect();
     render(&HealthPage {
@@ -485,7 +483,7 @@ pub(super) async fn health(State(app): State<App>) -> Response {
         nav: "health",
         version: app.options.version.clone(),
         body: HealthBody {
-            checks,
+            sections,
             daemon: daemon_view(&app),
         },
     })

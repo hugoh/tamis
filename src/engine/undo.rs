@@ -31,6 +31,14 @@ fn undoer_for(decision: &Decision) -> Result<Undoer> {
     }
 }
 
+/// Whether the decision can still be undone, and is not a flag a later
+/// correction has already settled.
+#[must_use]
+pub fn can_undo(decision: &Decision) -> bool {
+    undoer_for(decision).is_ok()
+        && !(super::learn::flagged_uncertain(decision) && decision.corrected_by > 0)
+}
+
 /// What undoing a move teaches: the keyword tamis set, and the label and
 /// verdict the message really deserved.
 struct Reversal {

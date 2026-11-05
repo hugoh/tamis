@@ -11,14 +11,6 @@ use sha2::{Digest, Sha256};
 const TOKEN_BYTES: usize = 32;
 const MAX_ITEMS: usize = 1000;
 
-#[derive(Debug, thiserror::Error)]
-pub enum PutError {
-    #[error("the system has no randomness to give: {0}")]
-    Random(#[from] getrandom::Error),
-    #[error("too many pending entries")]
-    Full,
-}
-
 /// 256 random bits as unpadded base64url.
 ///
 /// # Errors
@@ -56,28 +48,39 @@ impl<T> Default for Table<T> {
 }
 
 impl<T> Table<T> {
-    /// Stores `value` for `ttl` and returns its key.
+    /// Stores `value` for `ttl` and returns its key. When the table is full it
+    /// drops the entry that expires first, so unauthenticated callers can't
+    /// lock everyone else out.
     ///
     /// # Errors
-    /// When a key can't be generated, or the table still holds `MAX_ITEMS`
-    /// live values.
-    pub fn put(&self, value: T, ttl: Duration) -> Result<String, PutError> {
+    /// When a key can't be generated.
+    pub fn put(&self, value: T, ttl: Duration) -> Result<String, getrandom::Error> {
         let key = new_token()?;
         let now = Instant::now();
         let mut items = self.lock();
         items.retain(|_, (_, expires)| *expires > now);
         if items.len() >= MAX_ITEMS {
-            return Err(PutError::Full);
+            let oldest = items
+                .iter()
+                .min_by_key(|(_, (_, expires))| *expires)
+                .map(|(key, _)| key.clone());
+            if let Some(oldest) = oldest {
+                items.remove(&oldest);
+            }
         }
         items.insert(key.clone(), (value, now + ttl));
         Ok(key)
     }
 
     #[must_use]
-    pub fn contains(&self, key: &str) -> bool {
+    pub fn get(&self, key: &str) -> Option<T>
+    where
+        T: Clone,
+    {
         self.lock()
             .get(key)
-            .is_some_and(|(_, expires)| *expires > Instant::now())
+            .filter(|(_, expires)| *expires > Instant::now())
+            .map(|(value, _)| value.clone())
     }
 
     /// Removes a value and returns it unless it expired, so it can be used
@@ -123,29 +126,25 @@ mod tests {
         let table = Table::default();
         let key = table.put(7, Duration::from_secs(60)).unwrap();
 
-        assert!(table.contains(&key));
+        assert_eq!(table.get(&key), Some(7));
         assert_eq!(table.take(&key), Some(7));
-        assert!(!table.contains(&key));
+        assert_eq!(table.get(&key), None);
 
         let gone = table.put(8, Duration::ZERO).unwrap();
         assert_eq!(table.take(&gone), None);
     }
 
     #[test]
-    fn a_full_table_refuses_more_until_something_expires() {
+    fn an_evicting_put_replaces_the_oldest_when_full() {
         let table = Table::default();
-        for n in 0..MAX_ITEMS {
+        let first = table.put(0, Duration::from_secs(60)).unwrap();
+        for n in 1..MAX_ITEMS {
             table.put(n, Duration::from_secs(60)).unwrap();
         }
-        assert!(matches!(
-            table.put(0, Duration::from_secs(60)),
-            Err(PutError::Full)
-        ));
 
-        let table = Table::default();
-        for n in 0..MAX_ITEMS {
-            table.put(n, Duration::ZERO).unwrap();
-        }
-        assert!(table.put(0, Duration::from_secs(60)).is_ok());
+        let newest = table.put(0, Duration::from_secs(60)).unwrap();
+
+        assert_eq!(table.get(&first), None);
+        assert!(table.get(&newest).is_some());
     }
 }

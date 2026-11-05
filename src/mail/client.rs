@@ -8,12 +8,10 @@ use std::time::Duration;
 use imap_client::client::tokio::{Client as Imap, ClientError};
 use imap_client::imap_types::IntoStatic;
 use imap_client::imap_types::core::{AString, Atom, IString, Quoted, Vec1};
-use imap_client::imap_types::datetime::NaiveDate;
-use imap_client::imap_types::envelope::{Address, Envelope};
 use imap_client::imap_types::fetch::{
     MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName,
 };
-use imap_client::imap_types::flag::{Flag, FlagFetch, FlagPerm, StoreType};
+use imap_client::imap_types::flag::{Flag, FlagPerm, StoreType};
 use imap_client::imap_types::mailbox::Mailbox as ImapMailbox;
 use imap_client::imap_types::search::SearchKey;
 use imap_client::imap_types::secret::Secret;
@@ -22,9 +20,11 @@ use imap_client::imap_types::status::StatusDataItemName;
 use imap_client::tasks::tasks::TaskError;
 use imap_client::tasks::tasks::login::LoginTask;
 use jiff::Timestamp;
-use mail_parser::MessageParser;
 use tokio::time::timeout;
 
+use super::convert::{
+    address_of, bracket, date, invalid, keyword_flag, mailbox_name, text, to_message, uid_set,
+};
 use super::tasks::{StatusTask, StatusValues, UidExpungeTask};
 use super::utf7;
 use super::{Error, MAX_MESSAGE_BYTES, Mailbox, Message, ModState, Result, State};
@@ -126,10 +126,6 @@ fn quoted(value: &str) -> Result<AString<'static>> {
         Err(_) => AString::try_from(value.to_owned())
             .map_err(|_| Error::Server("invalid credentials".to_owned())),
     }
-}
-
-fn invalid<E: std::fmt::Display>(err: E) -> Error {
-    Error::Server(format!("invalid argument: {err}"))
 }
 
 impl Client {
@@ -427,102 +423,6 @@ impl Client {
     }
 }
 
-fn uid_set(uids: &[u32]) -> Result<SequenceSet> {
-    let list = uids
-        .iter()
-        .map(u32::to_string)
-        .collect::<Vec<_>>()
-        .join(",");
-    SequenceSet::try_from(list.as_str()).map_err(invalid)
-}
-
-fn text(value: &imap_client::imap_types::core::NString<'_>) -> String {
-    value
-        .0
-        .as_ref()
-        .map(|s| String::from_utf8_lossy(s.as_ref()).into_owned())
-        .unwrap_or_default()
-}
-
-/// Normalises a Message-ID to its `<...>` form.
-fn bracket(message_id: &str) -> String {
-    if message_id.is_empty() || message_id.starts_with('<') {
-        message_id.to_owned()
-    } else {
-        format!("<{message_id}>")
-    }
-}
-
-fn address_of(address: &Address<'_>) -> String {
-    let (mailbox, host) = (text(&address.mailbox), text(&address.host));
-    if mailbox.is_empty() || host.is_empty() {
-        String::new()
-    } else {
-        format!("{mailbox}@{host}").to_lowercase()
-    }
-}
-
-/// The subject with RFC 2047 encoded words decoded.
-fn decode_subject(raw: &str) -> String {
-    if !raw.contains("=?") {
-        return raw.to_owned();
-    }
-    MessageParser::default()
-        .parse(format!("Subject: {raw}\r\n\r\n").as_bytes())
-        .and_then(|m| m.subject().map(str::to_owned))
-        .unwrap_or_else(|| raw.to_owned())
-}
-
-fn to_message(uid: u32, items: &[MessageDataItem<'static>]) -> Message {
-    let mut message = Message {
-        uid,
-        ..Message::default()
-    };
-    for item in items {
-        match item {
-            MessageDataItem::Flags(flags) => {
-                message.flags = flags
-                    .iter()
-                    .map(|flag| flag_name(flag).to_lowercase())
-                    .collect();
-            }
-            MessageDataItem::BodyExt { data, .. } => {
-                message.raw = data
-                    .0
-                    .as_ref()
-                    .map(|d| d.as_ref().to_vec())
-                    .unwrap_or_default();
-            }
-            MessageDataItem::Envelope(envelope) => fill_from_envelope(&mut message, envelope),
-            _ => {}
-        }
-    }
-    message
-}
-
-fn fill_from_envelope(message: &mut Message, envelope: &Envelope<'_>) {
-    message.subject = decode_subject(&text(&envelope.subject));
-    message.message_id = bracket(&text(&envelope.message_id));
-    message.from = envelope.from.first().map(address_of).unwrap_or_default();
-}
-
-fn flag_name(flag: &FlagFetch<'_>) -> String {
-    match flag {
-        FlagFetch::Flag(flag) => flag.to_string(),
-        FlagFetch::Recent => "\\Recent".to_owned(),
-    }
-}
-
-fn date(timestamp: Timestamp) -> NaiveDate {
-    let day = chrono::DateTime::from_timestamp(timestamp.as_second(), 0)
-        .map_or(chrono::NaiveDate::MIN, |at| at.date_naive());
-    NaiveDate::unvalidated(day)
-}
-
-fn keyword_flag(keyword: &str) -> Result<Flag<'static>> {
-    Ok(Flag::try_from(keyword).map_err(invalid)?.into_static())
-}
-
 impl Mailbox for Client {
     async fn state(&mut self, mailbox: &str) -> Result<State> {
         let values = self
@@ -718,13 +618,6 @@ impl Mailbox for Client {
             .into_iter()
             .map(|(mailbox, _, _)| mailbox_name(&mailbox))
             .collect())
-    }
-}
-
-fn mailbox_name(mailbox: &ImapMailbox<'_>) -> String {
-    match mailbox {
-        ImapMailbox::Inbox => "INBOX".to_owned(),
-        ImapMailbox::Other(other) => utf7::decode(&String::from_utf8_lossy(other.inner().as_ref())),
     }
 }
 

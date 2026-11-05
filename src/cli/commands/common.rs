@@ -8,10 +8,10 @@ use jiff::tz::TimeZone;
 
 use super::super::App;
 use super::super::password::Who;
-use super::super::style::Palette;
 use crate::config::Config;
 use crate::engine::Engine;
 use crate::mail::client::{Client, DialConfig};
+use crate::output::style::Palette;
 use crate::rules::Rules;
 use crate::store::Store;
 

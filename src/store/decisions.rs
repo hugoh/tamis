@@ -1,8 +1,8 @@
 use jiff::Timestamp;
 use rusqlite::types::Value;
-use rusqlite::{OptionalExtension, Row, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
 
-use super::{DEFAULT_QUERY_LIMIT, Error, Result, Store, unix};
+use super::{Error, Result, Store, push_page, unix};
 use crate::journal::{Action, Reason, Verdict};
 
 /// One journal entry: what tamis concluded about a message and what it did
@@ -57,6 +57,44 @@ pub struct Stats {
     /// The journal's size; `oldest_decision` is `None` when it is empty.
     pub decisions: i64,
     pub oldest_decision: Option<Timestamp>,
+    /// Tokens seen in a single message: the first to go if the model is pruned.
+    pub single_use_tokens: i64,
+    /// The database's size, write-ahead log included, and the part of it that is free pages.
+    pub bytes: i64,
+    pub free_bytes: i64,
+}
+
+impl Stats {
+    /// One line on the database: its size, what vacuuming would give back, and
+    /// what fills it.
+    #[must_use]
+    pub fn database_line(&self) -> String {
+        format!(
+            "{} ({} free); {} tokens ({} seen once), {} addresses, {} decisions",
+            human_bytes(self.bytes),
+            human_bytes(self.free_bytes),
+            self.tokens,
+            self.single_use_tokens,
+            self.addresses,
+            self.decisions,
+        )
+    }
+}
+
+#[allow(clippy::cast_precision_loss, reason = "a size for display")]
+fn human_bytes(bytes: i64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{size:.1} {}", UNITS[unit])
+    }
 }
 
 /// The columns a decision query can sort by.
@@ -248,6 +286,28 @@ where
     })
 }
 
+fn insert_decision(conn: &Connection, decision: &Decision, applied: bool) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO decisions
+         (at, mailbox, uid, message_id, sender, subject, score, verdict, reason, action, applied)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            decision.at.as_second(),
+            decision.mailbox,
+            decision.uid,
+            decision.message_id,
+            decision.from,
+            decision.subject,
+            decision.score,
+            decision.verdict.as_str(),
+            decision.reason.as_str(),
+            decision.action.to_string(),
+            applied,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
 impl Store {
     /// Appends to the journal and returns the entry's ID. The ID and derived
     /// fields of `decision` are ignored.
@@ -255,26 +315,7 @@ impl Store {
     /// # Errors
     /// Fails on a database error.
     pub fn record_decision(&self, decision: &Decision) -> Result<i64> {
-        let conn = self.conn();
-        conn.execute(
-            "INSERT INTO decisions
-             (at, mailbox, uid, message_id, sender, subject, score, verdict, reason, action, applied)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![
-                decision.at.as_second(),
-                decision.mailbox,
-                decision.uid,
-                decision.message_id,
-                decision.from,
-                decision.subject,
-                decision.score,
-                decision.verdict.as_str(),
-                decision.reason.as_str(),
-                decision.action.to_string(),
-                decision.applied,
-            ],
-        )?;
-        Ok(conn.last_insert_rowid())
+        insert_decision(&self.conn(), decision, decision.applied)
     }
 
     /// Journals a move that is about to happen, as not yet applied, together
@@ -290,24 +331,7 @@ impl Store {
         keyword: &str,
     ) -> Result<i64> {
         self.in_tx(|tx| {
-            tx.execute(
-                "INSERT INTO decisions
-                 (at, mailbox, uid, message_id, sender, subject, score, verdict, reason, action, applied)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-                params![
-                    decision.at.as_second(),
-                    decision.mailbox,
-                    decision.uid,
-                    decision.message_id,
-                    decision.from,
-                    decision.subject,
-                    decision.score,
-                    decision.verdict.as_str(),
-                    decision.reason.as_str(),
-                    decision.action.to_string(),
-                ],
-            )?;
-            let id = tx.last_insert_rowid();
+            let id = insert_decision(tx, decision, false)?;
             tx.execute(
                 "INSERT INTO pending_moves (decision_id, source, dest, message_id, keyword)
                  VALUES (?, ?, ?, ?, ?)",
@@ -399,13 +423,7 @@ impl Store {
             |row| row.get(0),
         )?;
 
-        let limit = if query.limit <= 0 {
-            DEFAULT_QUERY_LIMIT
-        } else {
-            query.limit
-        };
-        args.push(Value::Integer(limit));
-        args.push(Value::Integer(query.offset.max(0)));
+        push_page(&mut args, query.limit, query.offset);
 
         let decisions = self.read_decisions(
             &format!(
@@ -485,14 +503,22 @@ impl Store {
     /// # Errors
     /// Fails on a database error.
     pub fn stats(&self) -> Result<Stats> {
-        Ok(self.conn().query_row(
+        let conn = self.conn();
+        let wal = conn
+            .path()
+            .and_then(|path| std::fs::metadata(format!("{path}-wal")).ok())
+            .map_or(0, |meta| i64::try_from(meta.len()).unwrap_or(i64::MAX));
+        let mut stats: Stats = conn.query_row(
             "SELECT
              (SELECT COALESCE(SUM(label = ?), 0) FROM trained),
              (SELECT COALESCE(SUM(label = ?), 0) FROM trained),
              (SELECT COUNT(*) FROM tokens),
              (SELECT COUNT(*) FROM addresses),
              (SELECT COUNT(*) FROM decisions),
-             (SELECT MIN(at) FROM decisions)",
+             (SELECT MIN(at) FROM decisions),
+             (SELECT COUNT(*) FROM tokens WHERE spam + good = 1),
+             (SELECT page_count * page_size FROM pragma_page_count, pragma_page_size),
+             (SELECT freelist_count * page_size FROM pragma_freelist_count, pragma_page_size)",
             params![1, 0],
             |row| {
                 Ok(Stats {
@@ -502,9 +528,14 @@ impl Store {
                     addresses: row.get(3)?,
                     decisions: row.get(4)?,
                     oldest_decision: row.get::<_, Option<i64>>(5)?.map(unix),
+                    single_use_tokens: row.get(6)?,
+                    bytes: row.get(7)?,
+                    free_bytes: row.get(8)?,
                 })
             },
-        )?)
+        )?;
+        stats.bytes += wal;
+        Ok(stats)
     }
 
     fn read_decisions(&self, sql: &str, args: &[Value]) -> Result<Vec<Decision>> {

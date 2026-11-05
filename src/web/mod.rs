@@ -114,7 +114,7 @@ pub(crate) struct Shared {
     secure: bool,
     options: Options,
     action_lock: tokio::sync::Mutex<()>,
-    sessions: token::Table<()>,
+    sessions: token::Table<String>,
     ceremonies: token::Table<Ceremony>,
 }
 
@@ -313,7 +313,9 @@ fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
 }
 
 fn signed_in(app: &Shared, headers: &HeaderMap) -> bool {
-    cookie(headers, SESSION_COOKIE).is_some_and(|id| app.sessions.contains(&id))
+    cookie(headers, SESSION_COOKIE)
+        .and_then(|id| app.sessions.get(&id))
+        .is_some_and(|credential_id| app.db.has_passkey(&credential_id).unwrap_or(false))
 }
 
 /// A `Set-Cookie` value. `Secure` follows the configured origin: plain HTTP is

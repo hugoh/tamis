@@ -192,8 +192,8 @@ async fn bootstrap_seeds_the_filter_from_the_mailbox() {
 
     let (_, out, _) = tamis(&account.config, &["whitelist", "list"]).await;
     assert!(out.contains("bob@friends.example"), "{out}");
-    let (_, out, _) = tamis(&account.config, &["status"]).await;
-    assert!(out.contains("3 spam, 0 good messages"), "{out}");
+    let (_, out, _) = tamis(&account.config, &["doctor"]).await;
+    assert!(out.contains("3 spam, 0 good"), "{out}");
 }
 
 #[tokio::test]
@@ -349,7 +349,7 @@ async fn the_daemon_passes_when_mail_arrives_and_stops_on_shutdown() {
         .unwrap();
     assert_eq!(code, 0);
 
-    let (_, status, _) = tamis(&account.config, &["status"]).await;
+    let (_, status, _) = tamis(&account.config, &["doctor"]).await;
     assert!(
         status.contains("last pass") || status.contains("running since"),
         "{status}"

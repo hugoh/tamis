@@ -6,8 +6,8 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use super::{ConfigInfo, Input, Report, RulesInfo, WINDOW, Web, load_daemon, run};
+use crate::auth_pin::resolve_auth_pin;
 use crate::config::{self, Config};
-use crate::engine::resolve_auth_pin;
 use crate::rules::Rules;
 use crate::store::{self, Store};
 
@@ -61,6 +61,9 @@ fn config_info(cfg: &Config) -> ConfigInfo {
             "shadow"
         }
         .to_owned(),
+        watch: cfg.folders.watch.join(" "),
+        train: format!("{}, {}", cfg.folders.train_spam, cfg.folders.train_good),
+        state: cfg.state.display().to_string(),
     }
 }
 

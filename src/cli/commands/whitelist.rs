@@ -1,13 +1,11 @@
 use std::io::Write;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use super::super::App;
-use super::super::style::{BOLD, Cell, DIM, cell, write_table};
 use super::common::{local, open, palette};
-use crate::store::{Address, AddressQuery, Store, parse_address};
-
-const MANUAL_SOURCE: &str = "manual";
+use crate::output::style::{BOLD, Cell, DIM, PLAIN, cell, write_table};
+use crate::store::{Address, AddressQuery, Store, parse_addresses};
 
 pub(in super::super) fn list(app: &mut App) -> Result<()> {
     let (_, store) = open(app)?;
@@ -28,7 +26,7 @@ fn write_addresses(app: &mut App, addresses: &[Address]) -> Result<()> {
     ]];
     for address in addresses {
         rows.push(vec![
-            cell(&address.address, ""),
+            cell(&address.address, PLAIN),
             cell(&address.source, DIM),
             cell(&local(address.added_at), DIM),
         ]);
@@ -39,8 +37,7 @@ fn write_addresses(app: &mut App, addresses: &[Address]) -> Result<()> {
 pub(in super::super) fn add(app: &mut App, addresses: &[String]) -> Result<()> {
     let (_, store) = open(app)?;
     for given in addresses {
-        let address = parse_address(given)?;
-        store.add_address(&address, MANUAL_SOURCE)?;
+        let address = store.whitelist(given)?;
         writeln!(app.env.stdout, "whitelisted {address}")?;
     }
     Ok(())
@@ -61,15 +58,8 @@ pub(in super::super) fn remove(
 
 /// Removes the named addresses, once all of them have been checked.
 fn remove_listed(app: &mut App, store: &Store, given: &[String]) -> Result<()> {
-    let mut addresses = Vec::with_capacity(given.len());
-    for arg in given {
-        let address = parse_address(arg)?;
-        if !store.has_address(&address)? {
-            bail!("{address} is not whitelisted");
-        }
-        addresses.push(address);
-    }
-    store.remove_addresses(&addresses)?;
+    let addresses = parse_addresses(given)?;
+    store.remove_listed(&addresses)?;
     for address in addresses {
         writeln!(app.env.stdout, "removed {address}")?;
     }

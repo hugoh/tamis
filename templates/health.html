@@ -13,12 +13,13 @@
 <table class="table table-sm">
 <thead><tr><th>Status</th><th>Check</th><th>Detail</th></tr></thead>
 <tbody>
-{% for check in body.checks %}<tr>
+{% for section in body.sections %}<tr><th colspan="3" class="pt-4">{{ section.name }}</th></tr>
+{% for check in section.checks %}<tr>
 <td><span class="badge badge-sm {% if check.status == "ok" %}badge-success{% else if check.status == "warn" %}badge-warning{% else if check.status == "fail" %}badge-error{% else %}badge-ghost{% endif %}">{{ check.status }}</span></td>
 <td>{{ check.name }}</td>
 <td>{{ check.detail }}</td>
 </tr>
-{% endfor %}</tbody>
+{% endfor %}{% endfor %}</tbody>
 </table>
 </div>
 {% endblock %}

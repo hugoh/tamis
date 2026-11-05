@@ -5,18 +5,19 @@ use std::io::Write;
 use anyhow::{Context as _, Result, bail};
 use unicode_width::UnicodeWidthStr as _;
 
-/// An ANSI SGR code.
-pub type Style = &'static str;
+use anstyle::AnsiColor;
+pub use anstyle::Style;
 
-pub const BOLD: Style = "1";
-pub const DIM: Style = "2";
-pub const RED: Style = "31";
-pub const GREEN: Style = "32";
-pub const YELLOW: Style = "33";
-pub const BLUE: Style = "34";
-pub const MAGENTA: Style = "35";
-pub const BOLD_RED: Style = "1;31";
-pub const BOLD_YELLOW: Style = "1;33";
+pub const PLAIN: Style = Style::new();
+pub const BOLD: Style = Style::new().bold();
+pub const DIM: Style = Style::new().dimmed();
+pub const RED: Style = AnsiColor::Red.on_default();
+pub const GREEN: Style = AnsiColor::Green.on_default();
+pub const YELLOW: Style = AnsiColor::Yellow.on_default();
+pub const BLUE: Style = AnsiColor::Blue.on_default();
+pub const MAGENTA: Style = AnsiColor::Magenta.on_default();
+pub const BOLD_RED: Style = RED.bold();
+pub const BOLD_YELLOW: Style = YELLOW.bold();
 
 /// Paints text, or leaves it alone when colour is off.
 #[derive(Clone, Copy, Debug)]
@@ -50,11 +51,16 @@ impl Palette {
     }
 
     #[must_use]
+    pub const fn off() -> Self {
+        Self { on: false }
+    }
+
+    #[must_use]
     pub fn paint(self, text: &str, style: Style) -> String {
-        if !self.on || style.is_empty() || text.is_empty() {
+        if !self.on || style == PLAIN || text.is_empty() {
             text.to_owned()
         } else {
-            format!("\x1b[{style}m{text}\x1b[0m")
+            format!("{style}{text}{style:#}")
         }
     }
 }
@@ -82,6 +88,13 @@ const TABLE_GAP: usize = 2;
 /// # Errors
 /// When `out` can't be written.
 pub fn write_table(out: &mut dyn Write, colors: Palette, rows: &[Vec<Cell>]) -> Result<()> {
+    out.write_all(render_table(colors, rows).as_bytes())
+        .context("write table")
+}
+
+/// The text [`write_table`] writes.
+#[must_use]
+pub fn render_table(colors: Palette, rows: &[Vec<Cell>]) -> String {
     let mut widths: Vec<usize> = Vec::new();
     for row in rows {
         for (index, cell) in row.iter().take(row.len().saturating_sub(1)).enumerate() {
@@ -96,7 +109,7 @@ pub fn write_table(out: &mut dyn Write, colors: Palette, rows: &[Vec<Cell>]) -> 
     for row in rows {
         for (index, cell) in row.iter().enumerate() {
             for (part, style) in cell {
-                text.push_str(&colors.paint(part, style));
+                text.push_str(&colors.paint(part, *style));
             }
             if index + 1 < row.len() {
                 text.push_str(&" ".repeat(widths[index] - width(cell) + TABLE_GAP));
@@ -104,7 +117,7 @@ pub fn write_table(out: &mut dyn Write, colors: Palette, rows: &[Vec<Cell>]) -> 
         }
         text.push('\n');
     }
-    out.write_all(text.as_bytes()).context("write table")
+    text
 }
 
 #[cfg(test)]
@@ -148,14 +161,14 @@ mod tests {
 
         assert_eq!(on.paint("hi", RED), "\x1b[31mhi\x1b[0m");
         assert_eq!(on.paint("", RED), "");
-        assert_eq!(on.paint("hi", ""), "hi");
+        assert_eq!(on.paint("hi", PLAIN), "hi");
     }
 
     #[test]
     fn tables_align_by_visible_width_whatever_the_colour() {
         let rows = vec![
-            vec![cell("a", BOLD), cell("long", ""), cell("tail", DIM)],
-            vec![cell("bbbb", ""), cell("x", "")],
+            vec![cell("a", BOLD), cell("long", PLAIN), cell("tail", DIM)],
+            vec![cell("bbbb", PLAIN), cell("x", PLAIN)],
             vec![cell("heading", BOLD)],
         ];
         for mode in ["never", "always"] {
@@ -175,8 +188,8 @@ mod tests {
     #[test]
     fn tables_align_wide_characters_by_the_columns_they_take() {
         let rows = vec![
-            vec![cell("日本", ""), cell("x", "")],
-            vec![cell("ab", ""), cell("y", "")],
+            vec![cell("日本", PLAIN), cell("x", PLAIN)],
+            vec![cell("ab", PLAIN), cell("y", PLAIN)],
         ];
         let off = Palette::new("never", false, &env(&[])).unwrap();
         let mut out = Vec::new();

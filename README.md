@@ -110,9 +110,8 @@ Then:
 tamis bootstrap   # whitelist Sent recipients, train on Junk and old read mail
 tamis run         # judge new mail as it arrives (IDLE), or every poll_interval (--once for one pass)
 tamis log         # what it decided, and in shadow mode what it would have done
-tamis status      # mode, folders, how much it has learnt, how the daemon is doing
 tamis monitor     # the healthchecks.io checks to set up for [monitor], and when they alert
-tamis doctor      # does the config load, do the rules compile, is the daemon and the filter in good shape? (--json; exits 1 on failure)
+tamis doctor      # the configuration, the rules, the daemon, the filter and its database: are they in good shape? (--json; exits 1 on failure; same report as the web Health page)
 tamis undo 42     # reverse decision 42 from the log
 tamis learn 42    # learn the opposite of decision 42's verdict (shadow mode, or to change a correction)
 tamis whitelist list   # also: add ADDRESS..., rm ADDRESS... or rm --matching TEXT
@@ -229,7 +228,7 @@ Everything it does has a command-line counterpart:
 | In the browser | On the command line |
 |---|---|
 | Decisions, with Undo / Spam / Good | `tamis log`, `tamis undo`, `tamis learn` |
-| Health, including the daemon's failures and recoveries | `tamis doctor`, `tamis status` |
+| Health, including the daemon's failures and recoveries | `tamis doctor`, the web Health page |
 | Whitelist | `tamis whitelist list`, `add`, `rm` (also `rm --matching TEXT`) |
 | Rules | `tamis rules show`, `check`, `test` |
 | Passkeys | `tamis web enroll`, `web passkeys`, `web revoke` |
@@ -261,7 +260,9 @@ default the server speaks plain HTTP. So either:
 - **Behind a TLS reverse proxy** (Caddy, nginx, `tailscale serve`...): proxy
   your `origin` to `listen`, which can stay on loopback. The proxy must pass the
   browser's `Origin` header through. If `listen` is not a loopback address,
-  tamis refuses to start unless `origin` is `https://`.
+  tamis refuses to start unless `origin` is `https://`. Sign-in has no rate
+  limit of its own: if the port is reachable from the internet, limit `/auth/`
+  requests in the proxy.
 - **Over an SSH tunnel**, with nothing else set up: use
   `origin = "http://localhost:8484"`, run `ssh -L 8484:127.0.0.1:8484 yourserver`
   on the machine with the browser, and browse `http://localhost:8484`.

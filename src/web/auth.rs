@@ -78,8 +78,8 @@ fn restart() -> Response {
     (StatusCode::UNAUTHORIZED, "start again").into_response()
 }
 
-fn sign_in(app: &App) -> Response {
-    let id = match app.sessions.put((), SESSION_TTL) {
+fn sign_in(app: &App, credential_id: &str) -> Response {
+    let id = match app.sessions.put(credential_id.to_owned(), SESSION_TTL) {
         Ok(id) => id,
         Err(err) => return fail("start session", &err),
     };
@@ -163,8 +163,9 @@ pub(super) async fn register_finish(
         Err(err) => return fail("encode passkey", &err),
     };
     let name = passkey_name(query.get("name").map_or("", String::as_str));
-    match app.db.add_passkey(&b64(passkey.cred_id()), &name, &blob) {
-        Ok(()) => sign_in(&app),
+    let credential_id = b64(passkey.cred_id());
+    match app.db.add_passkey(&credential_id, &name, &blob) {
+        Ok(()) => sign_in(&app, &credential_id),
         Err(store::Error::Exists(_)) => {
             (StatusCode::CONFLICT, "that passkey is already enrolled").into_response()
         }
@@ -225,7 +226,7 @@ pub(super) async fn login_finish(
             Err(err) => return fail("encode passkey", &err),
         }
     }
-    sign_in(&app)
+    sign_in(&app, &stored_id)
 }
 
 pub(super) async fn logout(State(app): State<App>, headers: HeaderMap) -> Response {

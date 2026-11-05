@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod auth_pin;
 pub mod classify;
 pub mod cli;
 pub mod config;
@@ -10,8 +11,8 @@ pub mod journal;
 pub mod live;
 pub mod mail;
 pub mod monitor;
+pub mod output;
 pub mod probe;
-pub mod report;
 pub mod retry;
 pub mod rules;
 pub mod secret;

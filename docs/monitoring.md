@@ -34,8 +34,10 @@ Two independent checks, both optional.
 
 **Quality** (`quality_url`). Once a day (and right after the first pass), the
 checks `tamis doctor` makes of the filter's training and decisions: class
-balance, uncertain rate, correction rate, a recent decision, the journal. All ok
-is a success ping; otherwise `/fail`, listing what looks wrong. The setup
+balance, uncertain rate, correction rate, a recent decision, the journal. A
+success ping unless one of them fails (say, no examples of one kind), then
+`/fail`, listing what failed. Warnings, such as a high correction rate, are for
+`tamis doctor` and don't ping. The setup
 (configuration, rules, web interface) and the daemon itself are not part of it;
 the heartbeat covers the daemon.
 

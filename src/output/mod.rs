@@ -7,7 +7,7 @@ use std::io::{self, Write};
 
 use serde::Serialize;
 
-use style::{Cell, Palette, cell};
+use style::{Cell, PLAIN, Palette, cell};
 
 /// Renders `value` as indented JSON followed by a newline.
 ///
@@ -26,7 +26,7 @@ pub fn write_json(out: &mut impl Write, value: &impl Serialize) -> io::Result<()
 pub fn write_table<R: AsRef<[String]>>(out: &mut impl Write, rows: &[R]) -> io::Result<()> {
     let rows: Vec<Vec<Cell>> = rows
         .iter()
-        .map(|row| row.as_ref().iter().map(|text| cell(text, "")).collect())
+        .map(|row| row.as_ref().iter().map(|text| cell(text, PLAIN)).collect())
         .collect();
     style::write_table(out, Palette::off(), &rows).map_err(io::Error::other)
 }

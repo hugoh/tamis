@@ -3780,6 +3780,7 @@ dependencies = [
 name = "tamis"
 version = "0.0.0"
 dependencies = [
+ "anstyle",
  "anyhow",
  "askama",
  "axum",

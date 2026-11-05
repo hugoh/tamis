@@ -12,7 +12,7 @@ use crate::config::Config;
 use crate::health::{self, Report, Status};
 use crate::monitor::{self, Check as MonitorCheck, Inputs, Pinger};
 use crate::output::style::{
-    BOLD, BOLD_RED, BOLD_YELLOW, Cell, DIM, GREEN, Style, cell, write_table,
+    BOLD, BOLD_RED, BOLD_YELLOW, Cell, DIM, GREEN, PLAIN, Style, cell, write_table,
 };
 use crate::output::{write_json, write_table as write_plain_table};
 
@@ -72,8 +72,8 @@ fn write_health_text(app: &mut App, report: &Report) -> Result<()> {
                 check.status.as_str().to_owned()
             };
             rows.push(vec![
-                vec![("  ".to_owned(), ""), (text, status_style(check.status))],
-                cell(&check.name, ""),
+                vec![("  ".to_owned(), PLAIN), (text, status_style(check.status))],
+                cell(&check.name, PLAIN),
                 cell(&check.detail, DIM),
             ]);
         }

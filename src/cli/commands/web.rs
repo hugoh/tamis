@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use super::super::App;
 use super::common::{local, open, palette};
 use crate::config::Config;
-use crate::output::style::{BOLD, Cell, DIM, cell, write_table};
+use crate::output::style::{BOLD, Cell, DIM, PLAIN, cell, write_table};
 use crate::web::{hash_token, new_token};
 
 const ENROLL_TTL: Duration = Duration::from_mins(15);
@@ -55,8 +55,8 @@ pub(in super::super) fn passkeys(app: &mut App) -> Result<()> {
     ]];
     for key in &keys {
         rows.push(vec![
-            cell(&key.id.to_string(), ""),
-            cell(&key.name, ""),
+            cell(&key.id.to_string(), PLAIN),
+            cell(&key.name, PLAIN),
             cell(&local(key.created_at), DIM),
             cell(
                 &key.last_used.map_or_else(|| "never".to_owned(), local),

@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 
 use super::super::App;
 use super::common::{local, open, palette};
-use crate::output::style::{BOLD, Cell, DIM, cell, write_table};
+use crate::output::style::{BOLD, Cell, DIM, PLAIN, cell, write_table};
 use crate::store::{Address, AddressQuery, Store, parse_address};
 
 const MANUAL_SOURCE: &str = "manual";
@@ -28,7 +28,7 @@ fn write_addresses(app: &mut App, addresses: &[Address]) -> Result<()> {
     ]];
     for address in addresses {
         rows.push(vec![
-            cell(&address.address, ""),
+            cell(&address.address, PLAIN),
             cell(&address.source, DIM),
             cell(&local(address.added_at), DIM),
         ]);

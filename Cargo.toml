@@ -20,6 +20,7 @@ axum = "0.8.9"
 axum-server = { version = "0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
 base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false }
+anstyle = "1.0.14"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 fastrand = "2.5.0"
 getrandom = "0.4.3"

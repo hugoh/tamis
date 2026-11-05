@@ -1,6 +1,10 @@
 # Installing tamis
 
-## Homebrew (macOS/Linux)
+Release binaries are currently built for Linux only (x86_64 and aarch64).
+macOS and Windows are tracked in
+[#22](https://github.com/hugoh/tamis/issues/22).
+
+## Homebrew (Linux)
 
 ```sh
 brew install hugoh/tap/tamis

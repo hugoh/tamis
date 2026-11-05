@@ -1,13 +1,13 @@
 # tamis
 
-A second-opinion spam filter and mail sorter for remote mailboxes.
+A spam filter and Sieve mail sorter for remote mailboxes.
 
-`tamis` connects to a mail account over IMAP (later JMAP), watches the folders
-you choose, and re-checks what your provider's own filter decided: it catches
-spam that slipped into the inbox, rescues mail from people you know out of the
-junk folder, and learns from the corrections you make in any mail client. It
-can also file the good mail that remains into folders with Sieve rules, for
-providers like iCloud that have no server-side filtering to speak of. The
+`tamis` connects to a mail account over IMAP (later JMAP) and watches the folders
+you choose. It files good mail into folders with Sieve rules, for providers like
+iCloud that have no server-side filtering to speak of. It also re-checks what
+your provider's own spam filter decided: it catches spam that slipped into the
+inbox, rescues mail from people you know out of the junk folder, and learns
+from the corrections you make in any mail client. The
 training model is inspired by SpamSieve's drone setup, but runs as a
 server-side daemon instead of on a Mac running Apple Mail.
 

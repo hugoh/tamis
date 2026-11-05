@@ -1,8 +1,8 @@
 # Filing rules
 
-Status: implemented. Good mail can be filed into folders by a Sieve script, in
-addition to spam filtering and rescue. Spam filtering remains tamis's core job;
-filing is a second stage that runs only on mail already judged good.
+Status: implemented. Good mail can be filed into folders by a Sieve script,
+alongside spam filtering and rescue. Filing runs only on mail already judged good, so a rule can never hide mail the filter was
+unsure about.
 
 ## Why Sieve, and why here
 

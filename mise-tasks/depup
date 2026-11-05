@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Upgrade dependencies within their semver ranges"
+#MISE description="Upgrade dependencies within their semver ranges; extra arguments go to cargo upgrade"
+set -e
+cargo upgrade "$@"
 cargo update

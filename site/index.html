@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tamis: a spam filter and Sieve mail sorter for remote mailboxes</title>
+<meta name="description" content="tamis re-checks what your mail provider's spam filter decided: it catches spam in the inbox, rescues good mail from Junk, learns from your corrections and files the rest with Sieve rules.">
+<link rel="canonical" href="https://tamis.larve.net/">
+<meta property="og:title" content="tamis: a spam filter and Sieve mail sorter for remote mailboxes">
+<meta property="og:description" content="Catches spam your provider missed, rescues mail from people you know, learns from every correction you make.">
+<meta property="og:url" content="https://tamis.larve.net/">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-base-100 text-base-content">
+
+<div class="navbar bg-base-200 sticky top-0 z-10">
+  <div class="navbar-start px-2 text-xl font-bold text-primary">tamis</div>
+  <div class="navbar-end gap-2 px-2">
+    <a class="btn btn-ghost btn-sm" href="#demo">Demo</a>
+    <a class="btn btn-ghost btn-sm" href="#start">Quick start</a>
+    <a class="btn btn-ghost btn-sm" href="https://github.com/hugoh/tamis">GitHub</a>
+  </div>
+</div>
+
+<section class="hero bg-gradient-to-br from-primary to-secondary text-primary-content py-20">
+  <div class="hero-content flex-col text-center max-w-3xl">
+    <div class="badge badge-accent badge-lg">a tamis is a drum sieve</div>
+    <h1 class="text-5xl font-extrabold">Spam filtered. Mail sorted.</h1>
+    <p class="text-xl">
+      tamis watches your mailbox over IMAP: it files good mail into folders with Sieve rules, and re-checks what your provider's spam filter decided.
+      It catches the spam that slipped through, rescues mail from people you know, and learns from
+      every correction you make, in any mail client.
+    </p>
+    <div class="flex gap-3 flex-wrap justify-center">
+      <a class="btn btn-accent btn-lg" href="#start">Get started</a>
+      <a class="btn btn-lg bg-transparent border-primary-content text-primary-content hover:bg-primary-content hover:text-primary" href="https://github.com/hugoh/tamis">View on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<section class="max-w-6xl mx-auto px-4 py-16">
+  <h2 class="text-3xl font-bold text-center mb-10">What it does</h2>
+  <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+    <div class="card bg-base-200 border-t-4 border-error shadow">
+      <div class="card-body"><h3 class="card-title">🚫 Catches missed spam</h3>
+        <p>A Bayes filter trained on your mail scores everything that lands in the inbox and moves the spam to Junk.</p></div>
+    </div>
+    <div class="card bg-base-200 border-t-4 border-success shadow">
+      <div class="card-body"><h3 class="card-title">🛟 Rescues good mail</h3>
+        <p>Mail from verified senders you have written to comes straight out of Junk. The whitelist is built from your Sent folder and needs DKIM/DMARC to pass.</p></div>
+    </div>
+    <div class="card bg-base-200 border-t-4 border-info shadow">
+      <div class="card-body"><h3 class="card-title">🎓 Learns from you</h3>
+        <p>Drop mail in TrainSpam or TrainGood, move it to or from Junk, or press Junk / Not Junk. tamis picks it all up.</p></div>
+    </div>
+    <div class="card bg-base-200 border-t-4 border-warning shadow">
+      <div class="card-body"><h3 class="card-title">🗂️ Files the rest</h3>
+        <p>Sieve rules sort good mail into folders, for providers like iCloud that have no server-side filtering to speak of.</p></div>
+    </div>
+    <div class="card bg-base-200 border-t-4 border-accent shadow">
+      <div class="card-body"><h3 class="card-title">🕶️ Starts in shadow mode</h3>
+        <p>It only records what it would do until you trust it. Every decision is logged and can be undone.</p></div>
+    </div>
+    <div class="card bg-base-200 border-t-4 border-secondary shadow">
+      <div class="card-body"><h3 class="card-title">🩺 Tells you when it breaks</h3>
+        <p>A built-in health report and healthchecks.io pings alert you when tamis stops working.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="bg-base-200 py-16">
+  <div class="max-w-4xl mx-auto px-4">
+    <h2 class="text-3xl font-bold text-center mb-10">How it works</h2>
+    <ul class="steps steps-vertical md:steps-horizontal w-full">
+      <li class="step step-primary">Your provider files new mail</li>
+      <li class="step step-primary">tamis re-checks it: whitelist, Bayes score, your corrections</li>
+      <li class="step step-secondary">Spam goes to Junk, good mail is rescued or filed by Sieve</li>
+      <li class="step step-accent">You correct it anywhere; tamis learns</li>
+    </ul>
+  </div>
+</section>
+
+<section id="demo" class="max-w-6xl mx-auto px-4 py-16">
+  <h2 class="text-3xl font-bold text-center mb-2">The web interface</h2>
+  <p class="text-center mb-10">Decisions, whitelist, rules, health and logs, protected by a passkey. This is the real page, rendered with sample data.</p>
+  <div class="mockup-browser border border-base-300 bg-base-300">
+    <div class="mockup-browser-toolbar"><div class="input">https://tamis.example.net/</div></div>
+    <iframe src="mock/decisions.html" title="tamis decisions page with sample data" class="w-full h-[40rem] bg-base-100" loading="lazy"></iframe>
+  </div>
+</section>
+
+<section id="start" class="bg-base-200 py-16">
+  <div class="max-w-3xl mx-auto px-4">
+    <h2 class="text-3xl font-bold text-center mb-10">Quick start</h2>
+    <div class="mockup-code w-full">
+      <pre data-prefix="$"><code>tamis init --host imap.mail.me.com --user you@icloud.com</code></pre>
+      <pre data-prefix="$"><code>tamis login      # password goes to the system keychain</code></pre>
+      <pre data-prefix="$"><code>tamis bootstrap  # whitelist Sent recipients, train on Junk</code></pre>
+      <pre data-prefix="$" class="text-success"><code>tamis run        # starts in shadow mode</code></pre>
+    </div>
+    <div class="text-center mt-8 flex gap-3 justify-center flex-wrap">
+      <a class="btn btn-primary" href="https://github.com/hugoh/tamis/blob/main/INSTALL.md">Install</a>
+      <a class="btn btn-secondary" href="https://github.com/hugoh/tamis/blob/main/README.md">README</a>
+      <a class="btn btn-accent" href="https://github.com/hugoh/tamis/tree/main/docs">Docs</a>
+    </div>
+  </div>
+</section>
+
+<footer class="footer footer-center p-6 bg-neutral text-neutral-content">
+  <p>tamis is open source under the AGPL. © 2026 Hugo Haas.</p>
+</footer>
+
+</body>
+</html>

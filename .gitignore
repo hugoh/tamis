@@ -20,3 +20,7 @@ eval-data/
 # Rust
 /target
 !tests/fixtures/golden/state.db
+
+# Built by mise run site-build.
+/site/style.css
+/site/mock/

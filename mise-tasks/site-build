@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Build the GitHub Pages site into site/: daisyUI stylesheet and the mock decisions page"
+#MISE depends=["mock-web"]
+#MISE sources=["site/index.html", "target/mock-decisions.html", "mise-tasks/site-build"]
+#MISE outputs=["site/style.css", "site/mock/decisions.html"]
+set -euo pipefail
+
+mise=${TAMIS_MISE:-mise}
+cli=$("$mise" where npm:@tailwindcss/cli)/node_modules
+tailwind=("$cli"/.mise/tailwindcss@*/node_modules/tailwindcss)
+daisyui=$("$mise" where npm:daisyui)/node_modules/daisyui
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+cat >"$work/input.css" <<CSS
+@import "${tailwind[0]}/index.css" source(none);
+@plugin "$daisyui";
+@source "$PWD/site/index.html";
+CSS
+"$cli/.bin/tailwindcss" --input "$work/input.css" --output site/style.css --minify
+
+mkdir -p site/mock
+cp target/mock-decisions.html site/mock/decisions.html

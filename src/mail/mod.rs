@@ -4,6 +4,7 @@
 //! `EXPUNGE`). [`fake::Fake`] is an in-memory implementation for tests.
 
 pub mod client;
+mod convert;
 pub mod fake;
 mod tasks;
 pub mod utf7;

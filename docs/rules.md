@@ -103,11 +103,17 @@ decisions. Move the message back by hand.
 | `tamis rules show` | print the configured script |
 | `tamis rules check [file]` | compile a script (default: the configured one); exits 1 with the parse error |
 | `tamis rules check --folders [file]` | also connect to the mailbox and exit 1 if the script files into a folder that doesn't exist, suggesting the nearest name for a typo |
-| `tamis rules test message.eml` | print the folder the configured script files a message into, or that it stays |
+| `tamis rules test message.eml...` | print the folder the configured script files each message into, or that it stays |
+| `tamis rules test --script file message.eml...` | the same with another script, without needing a configuration file |
+| `tamis rules test --expect-header X-Want message.eml...` | compare with the folder each message names in that header (`stay` when no rule files it); exit 1 if any differ |
 | web **Rules** page | the script's path, valid or invalid, its source, and a form that tries a pasted message |
 
 `check` with a file argument and no `--folders` needs no configuration, so a
-new script can be vetted before it is switched on. `--folders` needs the
+new script can be vetted before it is switched on. `test --script` likewise,
+and with `--expect-header` it makes a regression suite for a script: keep sample
+messages next to it, each with a header such as `X-Want: Trash`, and run
+`tamis rules test --script rules.sieve --expect-header X-Want tests/*.eml` from
+CI or a pre-commit hook. `--folders` needs the
 account (and its password), since it lists the mailbox. It reads the targets
 from the script's text, so a folder name built from a variable
 (`fileinto "${dir}/x"`) can't be checked and is left out. The web page re-reads the file on every

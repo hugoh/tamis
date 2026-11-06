@@ -150,6 +150,30 @@ fn with_body_separator(raw: &[u8]) -> Cow<'_, [u8]> {
     Cow::Owned(padded)
 }
 
+/// The trimmed value of the first header called `name` (case-insensitive) in a
+/// raw message, or `None` when it has none. Folded continuation lines are not
+/// joined.
+#[must_use]
+pub fn header_value(raw: &[u8], name: &str) -> Option<String> {
+    for line in raw.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.is_empty() {
+            return None;
+        }
+        let Some(colon) = line.iter().position(|&b| b == b':') else {
+            continue;
+        };
+        if line[..colon].eq_ignore_ascii_case(name.as_bytes()) {
+            return Some(
+                String::from_utf8_lossy(&line[colon + 1..])
+                    .trim()
+                    .to_owned(),
+            );
+        }
+    }
+    None
+}
+
 /// The lower-cased address in a raw message's From header, or "" when it has
 /// none.
 #[must_use]

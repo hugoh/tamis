@@ -210,7 +210,11 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
             RulesAction::Check { file, folders } => {
                 commands::rules_check(app, file.as_deref(), folders).await
             }
-            RulesAction::Test { message } => commands::rules_test(app, &message),
+            RulesAction::Test {
+                messages,
+                script,
+                expect_header,
+            } => commands::rules_test(app, &messages, script.as_deref(), expect_header.as_deref()),
         },
     }
 }

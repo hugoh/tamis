@@ -261,6 +261,18 @@ pub(super) enum RulesAction {
         #[arg(long)]
         folders: bool,
     },
-    /// Show where the rules would file a message
-    Test { message: PathBuf },
+    /// Show where the rules would file messages
+    #[command(
+        long_about = "Run the script on each message and print where it would be filed. With\n--expect-header, compare that with the folder the message names in that header\n(`stay` for a message no rule files) and exit 1 if any differ. --script tries a\nscript other than rules.script, without needing a configuration file."
+    )]
+    Test {
+        #[arg(required = true)]
+        messages: Vec<PathBuf>,
+        /// Try this script instead of rules.script
+        #[arg(long)]
+        script: Option<PathBuf>,
+        /// Header naming the folder each message should be filed into, or `stay`
+        #[arg(long, value_name = "HEADER")]
+        expect_header: Option<String>,
+    },
 }

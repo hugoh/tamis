@@ -83,17 +83,69 @@ async fn check_folders(app: &mut App, targets: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub(in super::super) fn test(app: &mut App, message: &Path) -> Result<()> {
-    let path = rules_path(app, None)?;
-    let loaded = Rules::load(&path).map_err(|err| anyhow!("{}: {err}", path.display()))?;
-    let raw = std::fs::read(message).context("read message")?;
+/// What a message with no expected folder in its header is expected to do.
+const STAY: &str = "stay";
 
-    let folder = loaded
-        .folder(&raw, &rules::sender_of(&raw))
-        .context("run rules")?;
-    match folder {
-        None => writeln!(app.env.stdout, "stays in the inbox")?,
-        Some(folder) => writeln!(app.env.stdout, "filed into {folder}")?,
+pub(in super::super) fn test(
+    app: &mut App,
+    messages: &[PathBuf],
+    script: Option<&Path>,
+    expect_header: Option<&str>,
+) -> Result<()> {
+    let path = rules_path(app, script)?;
+    let loaded = Rules::load(&path).map_err(|err| anyhow!("{}: {err}", path.display()))?;
+
+    let mut failed = 0_usize;
+    for message in messages {
+        let raw = std::fs::read(message).with_context(|| format!("read {}", message.display()))?;
+        let folder = loaded
+            .folder(&raw, &rules::sender_of(&raw))
+            .with_context(|| format!("run rules on {}", message.display()))?;
+        let Some(header) = expect_header else {
+            let result = match &folder {
+                None => "stays in the inbox".to_owned(),
+                Some(folder) => format!("filed into {folder}"),
+            };
+            if let [_] = messages {
+                writeln!(app.env.stdout, "{result}")?;
+            } else {
+                writeln!(app.env.stdout, "{}: {result}", message.display())?;
+            }
+            continue;
+        };
+        let got = folder.as_deref().unwrap_or(STAY);
+        match rules::header_value(&raw, header) {
+            Some(want) if want == got => writeln!(app.env.stdout, "ok {}", message.display())?,
+            Some(want) => {
+                failed += 1;
+                writeln!(
+                    app.env.stdout,
+                    "FAIL {}: want {want:?}, got {got:?}",
+                    message.display()
+                )?;
+            }
+            None => {
+                failed += 1;
+                writeln!(
+                    app.env.stdout,
+                    "FAIL {}: no {header} header",
+                    message.display()
+                )?;
+            }
+        }
+    }
+    if expect_header.is_some() {
+        writeln!(
+            app.env.stdout,
+            "{} passed, {failed} failed",
+            messages.len() - failed
+        )?;
+        if failed > 0 {
+            bail!(
+                "{failed} of {} message(s) not filed as expected",
+                messages.len()
+            );
+        }
     }
     Ok(())
 }

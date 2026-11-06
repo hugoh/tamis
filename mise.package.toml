@@ -1,0 +1,2 @@
+[tools]
+"aqua:goreleaser/nfpm" = "2.48.0"

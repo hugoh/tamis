@@ -64,7 +64,7 @@ jobs:
     permissions:
       contents: read
     env:
-      MISE_ENV: release
+      MISE_ENV: release,package
     steps:
       - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
       - run: rustup toolchain install

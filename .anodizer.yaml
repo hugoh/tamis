@@ -36,6 +36,8 @@ crates:
         formats: [deb, rpm]
         bindir: /usr/bin
     release:
+      preflight:
+        fail_on_error: false
       github:
         owner: hugoh
         name: tamis
@@ -47,6 +49,7 @@ crates:
           token: "{{ .Env.TAP_GITHUB_TOKEN }}"
           pull_request:
             enabled: true
+        required: true
         directory: Formula
         description: "A second-opinion spam filter and mail sorter for remote mailboxes"
         homepage: "https://github.com/hugoh/tamis"
@@ -63,6 +66,13 @@ cloudsmiths:
       deb: any-distro/any-version
       rpm: any-distro/any-version
     secret_name: CLOUDSMITH_API_KEY
+    required: true
+
+verify_release:
+  enabled: true
+
+git:
+  tag_sort: smartsemver
 
 changelog:
   sort: asc

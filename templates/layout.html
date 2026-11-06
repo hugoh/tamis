@@ -25,7 +25,9 @@
 {% block content %}{% endblock %}
 </main>
 {% if !version.is_empty() %}<footer class="p-4 text-center text-xs opacity-60">tamis {{ version }}</footer>{% endif %}
+<div id="toasts" class="toast toast-end" role="status" aria-live="polite"></div>
 <script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/feedback.js"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

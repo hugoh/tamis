@@ -253,6 +253,9 @@ new UID. Undo refuses:
 The decision is marked undone last, so an undo that fails partway (say the
 move back fails) can simply be run again.
 
+The `undo` entry it journals carries the message's score after the retraining,
+so the log shows how the filter now rates it, not 0.00.
+
 ## Learn
 
 `tamis learn [--good|--spam] ID...` teaches tamis the right answer for a

@@ -1410,6 +1410,8 @@ async fn undoing_a_rescue_sends_it_back_as_spam() {
     assert_eq!(env.mail().uids("Junk").len(), 1);
     assert_eq!(env.store().trained("<r1@x>").unwrap(), Some(Label::Spam));
     assert!(!env.store().has_address("alice@friends.example").unwrap());
+    let undo = decision_where(&env, |d| d.reason == "undo");
+    assert!(env.store().decision(undo).unwrap().score > 0.0);
 }
 
 #[tokio::test]

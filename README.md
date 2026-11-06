@@ -320,6 +320,11 @@ requests whose `Origin` is not yours, and serves its own copies of
 [Tailwind](https://tailwindcss.com) stylesheet: nothing is loaded from another
 site.
 
+Undo, Spam and Good show "Working…" while they run, then a toast with what
+happened or why it failed, and the decision list reloads to show the new entry.
+If the request never reaches tamis (the session expired, or the connection
+dropped), the toast says to reload the page.
+
 The decision journal and the whitelist can be large, so their tables are paged
 on the server: rows load as you scroll, columns sort when you click their
 headers, and the search box and the verdict buttons filter the whole journal,

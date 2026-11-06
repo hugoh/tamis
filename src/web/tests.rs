@@ -696,3 +696,31 @@ async fn revoking_a_passkey_ends_its_sessions() {
 
     assert_eq!(site.get("/").await.status(), StatusCode::SEE_OTHER);
 }
+
+#[tokio::test]
+async fn pages_load_the_feedback_script_and_a_toast_area() {
+    let site = site();
+
+    let page = text(site.get("/").await).await;
+    let script = site.get("/static/feedback.js").await;
+
+    assert!(
+        page.contains("id=\"toasts\"") && page.contains("/static/feedback.js"),
+        "{page}"
+    );
+    assert_eq!(script.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn an_action_note_is_marked_for_the_toast() {
+    let run: RunJobs = Arc::new(|_| Box::pin(async { Err("the mailbox moved on".to_owned()) }));
+    let site = site_with(Options {
+        run: Some(run),
+        ..Options::default()
+    });
+    let id = record(&site, "oops", "bayes", true);
+
+    let row = text(site.post(&format!("/decisions/{id}/undo"), "").await).await;
+
+    assert!(row.contains("data-note data-failed"), "{row}");
+}

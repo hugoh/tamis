@@ -118,7 +118,7 @@ impl<M: Mailbox> Engine<M> {
         let judgement = Judgement {
             verdict: reversal.verdict,
             reason: Reason::Undo,
-            score: 0.0,
+            score: self.rescore(&messages[0].raw)?,
         };
         self.record(
             &decision.mailbox,
@@ -148,7 +148,7 @@ impl<M: Mailbox> Engine<M> {
         let judgement = Judgement {
             verdict: Verdict::Uncertain,
             reason: Reason::Undo,
-            score: 0.0,
+            score: self.rescore(&messages[0].raw)?,
         };
         self.record(
             &decision.mailbox,

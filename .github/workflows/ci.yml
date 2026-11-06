@@ -144,6 +144,10 @@ jobs:
           TAG: ${{ needs.tag.outputs.tag }}
         run: git checkout --detach "$TAG"
       - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: anodizer-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build this runner's targets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

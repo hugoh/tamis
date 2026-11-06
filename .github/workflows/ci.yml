@@ -88,8 +88,8 @@ jobs:
         env:
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         run: |
-          org=$(awk '$1 == "organization:" {print $2; exit}' .anodizer.yaml)
-          repo=$(awk '$1 == "repository:" && prev ~ /organization/ {print $2; exit} {prev=$0}' .anodizer.yaml)
+          org=$(awk '$1 == "organization:" || $2 == "organization:" {print $NF; exit}' .anodizer.yaml)
+          repo=$(awk '$1 == "repository:" && prev ~ /organization/ {print $NF; exit} {prev=$0}' .anodizer.yaml)
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Api-Key: ${CLOUDSMITH_API_KEY}" "https://api.cloudsmith.io/v1/repos/${org}/${repo}/")
           if [ "$code" != "200" ]; then
             echo "::error::Cloudsmith repo ${org}/${repo} not reachable (HTTP ${code})"

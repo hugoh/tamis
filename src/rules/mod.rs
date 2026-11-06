@@ -9,7 +9,8 @@ use std::fs;
 use std::path::Path;
 
 use mail_parser::MessageParser;
-use sieve::{Compiler, Envelope, Event, Input, Runtime, Sieve};
+use serde::Serialize;
+use sieve::{Compiler, Envelope, Event, Input, Recipient, Runtime, Sieve};
 use thiserror::Error;
 
 /// How far a folder may be from a target and still be offered as its
@@ -26,12 +27,23 @@ pub enum Error {
     Run(String),
 }
 
+/// What a script decides for one message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Decision {
+    /// The first `fileinto` without `:copy`, or `None` when the message stays.
+    pub folder: Option<String>,
+    /// Actions the script took that tamis does not carry out, such as a
+    /// `redirect`, a flag, a `discard` or a second `fileinto`.
+    pub ignored: Vec<String>,
+}
+
 /// A loaded Sieve script.
 pub struct Rules {
     script: Sieve,
     runtime: Runtime,
     targets: Vec<String>,
     copy_only: HashSet<String>,
+    unsupported: Vec<String>,
 }
 
 impl std::fmt::Debug for Rules {
@@ -60,7 +72,9 @@ impl Rules {
             .compile(source)
             .map_err(|err| Error::Parse(err.to_string()))?;
 
-        let found = scan::file_intos(&String::from_utf8_lossy(source));
+        let text = String::from_utf8_lossy(source);
+        let unsupported = scan::unsupported(&text);
+        let found = scan::file_intos(&text);
         let mut targets: Vec<String> = found.iter().map(|f| f.folder.clone()).collect();
         targets.sort_unstable();
         targets.dedup();
@@ -81,6 +95,7 @@ impl Rules {
             runtime: Runtime::new(),
             targets,
             copy_only,
+            unsupported,
         };
         // The compiler accepts extensions the interpreter lacks and only
         // complains when the script runs, so run it once now.
@@ -98,10 +113,28 @@ impl Rules {
         &self.targets
     }
 
+    /// The commands the script uses that tamis ignores or denies (`redirect`,
+    /// `reject`, `vacation`, `discard`, `keep`, flags, `fileinto :copy`, ...),
+    /// sorted. Found by scanning the text, so it covers branches no message
+    /// has taken yet.
+    #[must_use]
+    pub fn unsupported(&self) -> &[String] {
+        &self.unsupported
+    }
+
     /// Runs the script on a raw message and returns the folder its first
     /// `fileinto` names, or `None` when the message stays where it is.
     /// Redirects and every other action are ignored: only filing makes sense
-    /// over IMAP.
+    /// over IMAP. [`Rules::decide`] also says what was ignored.
+    ///
+    /// # Errors
+    /// Fails when the interpreter stops with an error.
+    pub fn folder(&self, raw: &[u8], from: &str) -> Result<Option<String>, Error> {
+        Ok(self.decide(raw, from)?.folder)
+    }
+
+    /// Runs the script on a raw message and returns what tamis would do and
+    /// what the script asked for that it will not.
     ///
     /// shortcut: the interpreter doesn't say which `fileinto` had `:copy`, so
     /// a folder counts as a copy only when every `fileinto` naming it does; a
@@ -109,20 +142,64 @@ impl Rules {
     ///
     /// # Errors
     /// Fails when the interpreter stops with an error.
-    pub fn folder(&self, raw: &[u8], from: &str) -> Result<Option<String>, Error> {
+    pub fn decide(&self, raw: &[u8], from: &str) -> Result<Decision, Error> {
         let raw = with_body_separator(raw);
         let mut instance = self.runtime.filter(&raw);
         instance.set_envelope(Envelope::From, from.to_owned());
 
         let mut input = Input::script("rules", self.script.clone());
-        let mut first = None;
+        let mut decision = Decision {
+            folder: None,
+            ignored: Vec::new(),
+        };
+        let mut keeps = Vec::new();
+        let mut has_flags = false;
 
         while let Some(step) = instance.run(input) {
             input = match step.map_err(|err| Error::Run(format!("{err:?}")))? {
-                Event::FileInto { folder, .. } => {
-                    if first.is_none() && !self.copy_only.contains(&folder) {
-                        first = Some(folder);
+                Event::FileInto { folder, flags, .. } => {
+                    if self.copy_only.contains(&folder) {
+                        decision.ignored.push(format!("fileinto {folder} :copy"));
+                    } else if decision.folder.is_none() {
+                        if !flags.is_empty() {
+                            decision
+                                .ignored
+                                .push(format!("flags {} on fileinto {folder}", flags.join(" ")));
+                        }
+                        decision.folder = Some(folder);
+                    } else {
+                        decision
+                            .ignored
+                            .push(format!("fileinto {folder} (after the first)"));
                     }
+                    Input::True
+                }
+                // The interpreter also reports the implicit keep, so a keep only
+                // counts when it adds something: flags, or a copy left behind
+                // next to a `fileinto`.
+                Event::Keep { flags, .. } => {
+                    keeps.push(with_flags("keep", &flags));
+                    has_flags |= !flags.is_empty();
+                    Input::True
+                }
+                Event::Discard => {
+                    decision.ignored.push("discard".to_owned());
+                    Input::True
+                }
+                Event::Reject { extended, .. } => {
+                    decision
+                        .ignored
+                        .push(if extended { "ereject" } else { "reject" }.to_owned());
+                    Input::True
+                }
+                Event::SendMessage { recipient, .. } => {
+                    decision
+                        .ignored
+                        .push(format!("send message to {}", describe(&recipient)));
+                    Input::True
+                }
+                Event::Notify { method, .. } => {
+                    decision.ignored.push(format!("notify {method}"));
                     Input::True
                 }
                 Event::MailboxExists { .. }
@@ -133,7 +210,26 @@ impl Rules {
                 _ => Input::True,
             };
         }
-        Ok(first)
+        if decision.folder.is_some() || has_flags {
+            keeps.dedup();
+            decision.ignored.extend(keeps);
+        }
+        Ok(decision)
+    }
+}
+
+fn with_flags(action: &str, flags: &[String]) -> String {
+    if flags.is_empty() {
+        action.to_owned()
+    } else {
+        format!("{action} with flags {}", flags.join(" "))
+    }
+}
+
+fn describe(recipient: &Recipient) -> String {
+    match recipient {
+        Recipient::Address(address) | Recipient::List(address) => address.clone(),
+        Recipient::Group(addresses) => addresses.join(", "),
     }
 }
 
@@ -148,6 +244,30 @@ fn with_body_separator(raw: &[u8]) -> Cow<'_, [u8]> {
     let mut padded = raw.to_vec();
     padded.extend_from_slice(b"\r\n\r\n");
     Cow::Owned(padded)
+}
+
+/// The trimmed value of the first header called `name` (case-insensitive) in a
+/// raw message, or `None` when it has none. Folded continuation lines are not
+/// joined.
+#[must_use]
+pub fn header_value(raw: &[u8], name: &str) -> Option<String> {
+    for line in raw.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.is_empty() {
+            return None;
+        }
+        let Some(colon) = line.iter().position(|&b| b == b':') else {
+            continue;
+        };
+        if line[..colon].eq_ignore_ascii_case(name.as_bytes()) {
+            return Some(
+                String::from_utf8_lossy(&line[colon + 1..])
+                    .trim()
+                    .to_owned(),
+            );
+        }
+    }
+    None
 }
 
 /// The lower-cased address in a raw message's From header, or "" when it has
@@ -278,6 +398,51 @@ if body :text :contains "invoice" { fileinto "Invoices"; }
         ] {
             assert_eq!(folder(script, &raw), None, "{script}");
         }
+    }
+
+    #[test]
+    fn a_decision_lists_what_the_script_asked_for_beyond_filing() {
+        let script = "require [\"fileinto\", \"imap4flags\", \"copy\"];\n\
+            fileinto :copy \"Copy\";\n\
+            fileinto :flags \"\\\\Flagged\" \"A\";\n\
+            fileinto \"B\";\n\
+            redirect \"x@y.z\";\n\
+            discard;\n";
+        let rules = Rules::parse(script.as_bytes()).unwrap();
+        let decision = rules
+            .decide(&message("From: a@b.c", "hi"), "a@b.c")
+            .unwrap();
+        assert_eq!(decision.folder.as_deref(), Some("A"));
+        assert_eq!(
+            decision.ignored,
+            [
+                "fileinto Copy :copy",
+                "flags \\Flagged on fileinto A",
+                "fileinto B (after the first)",
+                "send message to x@y.z",
+                "discard",
+            ]
+        );
+        assert_eq!(
+            rules.unsupported(),
+            ["discard", "fileinto :copy", "redirect"]
+        );
+    }
+
+    #[test]
+    fn the_implicit_keep_is_not_reported() {
+        let rules = Rules::parse(b"require [\"fileinto\"];\nif false { fileinto \"A\"; }").unwrap();
+        let decision = rules
+            .decide(&message("From: a@b.c", "hi"), "a@b.c")
+            .unwrap();
+        assert_eq!(
+            decision,
+            Decision {
+                folder: None,
+                ignored: Vec::new()
+            }
+        );
+        assert!(rules.unsupported().is_empty());
     }
 
     #[test]

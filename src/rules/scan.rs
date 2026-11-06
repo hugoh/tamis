@@ -58,6 +58,44 @@ pub(super) fn file_intos(source: &str) -> Vec<FileInto> {
     found
 }
 
+/// Commands tamis can't honour, since it only moves mail over IMAP.
+const UNSUPPORTED: &[&str] = &[
+    "addflag",
+    "addheader",
+    "deleteheader",
+    "discard",
+    "ereject",
+    "keep",
+    "notify",
+    "redirect",
+    "reject",
+    "removeflag",
+    "setflag",
+    "vacation",
+];
+
+/// The sorted, distinct commands in `source` that tamis ignores or denies,
+/// plus `fileinto :copy` when the script uses it.
+pub(super) fn unsupported(source: &str) -> Vec<String> {
+    let tokens = tokenize(source);
+    let mut found: Vec<String> = tokens
+        .iter()
+        .filter_map(|token| match token {
+            Token::Word(word) => UNSUPPORTED
+                .iter()
+                .find(|name| word.eq_ignore_ascii_case(name))
+                .map(|name| (*name).to_owned()),
+            _ => None,
+        })
+        .collect();
+    if file_intos(source).iter().any(|f| f.copy) {
+        found.push("fileinto :copy".to_owned());
+    }
+    found.sort_unstable();
+    found.dedup();
+    found
+}
+
 /// The index after the argument starting at `at`: one string, or a bracketed
 /// list of them.
 fn skip_argument(tokens: &[Token], at: usize) -> usize {

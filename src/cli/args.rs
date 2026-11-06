@@ -247,6 +247,12 @@ pub(super) enum WhitelistAction {
     },
 }
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TestFormat {
+    Text,
+    Json,
+}
+
 #[derive(Subcommand, Debug)]
 pub(super) enum RulesAction {
     /// Print the configured rules script
@@ -260,10 +266,13 @@ pub(super) enum RulesAction {
         /// Also check the folders the script files into exist in the mailbox
         #[arg(long)]
         folders: bool,
+        /// Fail, not just warn, when the script uses commands tamis ignores
+        #[arg(long)]
+        strict: bool,
     },
     /// Show where the rules would file messages
     #[command(
-        long_about = "Run the script on each message and print where it would be filed. With\n--expect-header, compare that with the folder the message names in that header\n(`stay` for a message no rule files) and exit 1 if any differ. --script tries a\nscript other than rules.script, without needing a configuration file."
+        long_about = "Run the script on each message and print where it would be filed. With\n--expect-header, compare that with the folder the message names in that header\n(`stay` for a message no rule files) and exit 1 if any differ. --strict also\nfails when the script asks for something tamis ignores. --script tries a\nscript other than rules.script, without needing a configuration file."
     )]
     Test {
         #[arg(required = true)]
@@ -274,5 +283,11 @@ pub(super) enum RulesAction {
         /// Header naming the folder each message should be filed into, or `stay`
         #[arg(long, value_name = "HEADER")]
         expect_header: Option<String>,
+        /// Fail when the script asks for something tamis ignores (redirect, flags, discard, ...)
+        #[arg(long)]
+        strict: bool,
+        /// `json` prints one object per message: folder, ignored, and with --expect-header the expectation
+        #[arg(long, value_enum, default_value_t = TestFormat::Text)]
+        format: TestFormat,
     },
 }

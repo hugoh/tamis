@@ -451,6 +451,70 @@ async fn rules_test_checks_messages_against_the_folder_their_header_names() {
 }
 
 #[tokio::test]
+async fn rules_check_and_test_report_what_tamis_ignores() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("rules.sieve");
+    std::fs::write(
+        &script,
+        "require [\"fileinto\"];\nif header :contains \"subject\" \"x\" { redirect \"a@b.c\"; fileinto \"X\"; }\n",
+    )
+    .unwrap();
+    let hit = dir.path().join("hit.eml");
+    std::fs::write(&hit, "From: a@b.c\r\nSubject: x\r\nX-Want: X\r\n\r\nhi").unwrap();
+    let (script, hit) = (script.to_str().unwrap(), hit.to_str().unwrap());
+
+    let (code, out, _) = run(&["rules", "check", script]).await;
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("warning: the script uses redirect, which tamis ignores"),
+        "{out}"
+    );
+
+    let (code, _, err) = run(&["rules", "check", "--strict", script]).await;
+    assert_eq!(code, 1);
+    assert!(err.contains("1 command(s) tamis ignores"), "{err}");
+
+    let (_, out, _) = run(&["rules", "test", "--script", script, hit]).await;
+    assert_eq!(out, "filed into X\n  ignored: send message to a@b.c\n");
+
+    let (code, out, _) = run(&[
+        "rules",
+        "test",
+        "--script",
+        script,
+        "--expect-header",
+        "X-Want",
+        "--strict",
+        hit,
+    ])
+    .await;
+    assert_eq!(code, 1);
+    assert!(
+        out.contains(&format!("FAIL {hit}: ignored: send message to a@b.c")),
+        "{out}"
+    );
+
+    let (code, out, _) = run(&[
+        "rules",
+        "test",
+        "--script",
+        script,
+        "--expect-header",
+        "X-Want",
+        "--format",
+        "json",
+        hit,
+    ])
+    .await;
+    assert_eq!(code, 0);
+    let object: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(object["folder"], "X");
+    assert_eq!(object["expected"], "X");
+    assert_eq!(object["ok"], true);
+    assert_eq!(object["ignored"][0], "send message to a@b.c");
+}
+
+#[tokio::test]
 async fn a_script_that_does_not_compile_is_reported_before_the_configuration_is_needed() {
     let dir = tempfile::tempdir().unwrap();
     let bad = dir.path().join("bad.sieve");

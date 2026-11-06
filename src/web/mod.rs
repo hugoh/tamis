@@ -25,6 +25,7 @@ use axum::routing::{get, post};
 use rust_embed::RustEmbed;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
+use tower_http::compression::CompressionLayer;
 use tracing::{debug, error};
 use url::Url;
 use webauthn_rs::prelude::{
@@ -240,6 +241,7 @@ fn routes(shared: App) -> Router {
         .merge(signed_in)
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .layer(middleware::from_fn_with_state(Arc::clone(&shared), guard))
+        .layer(CompressionLayer::new())
         .with_state(shared)
 }
 
@@ -343,14 +345,42 @@ fn content_type(path: &str) -> &'static str {
     }
 }
 
-async fn static_file(axum::extract::Path(path): axum::extract::Path<String>) -> Response {
-    match Assets::get(&path) {
-        Some(file) => Response::builder()
+async fn static_file(
+    axum::extract::Path(path): axum::extract::Path<String>,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    let Some(file) = Assets::get(&path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let etag = format!("\"{}\"", hex::encode(file.metadata.sha256_hash()));
+    let unchanged = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|sent| {
+            sent.split(',')
+                .any(|tag| tag.trim().trim_start_matches("W/") == etag)
+        });
+    let versioned = query
+        .as_deref()
+        .and_then(|query| query.split('&').find_map(|pair| pair.strip_prefix("v=")))
+        .is_some_and(|version| !version.is_empty());
+    let cache_control = if versioned {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    let builder = Response::builder()
+        .header(header::ETAG, &etag)
+        .header(header::CACHE_CONTROL, cache_control);
+    let response = if unchanged {
+        builder.status(StatusCode::NOT_MODIFIED).body(Body::empty())
+    } else {
+        builder
             .header(header::CONTENT_TYPE, content_type(&path))
             .body(Body::from(file.data.into_owned()))
-            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
+    };
+    response.unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// Logs an unexpected failure and says only that it happened.

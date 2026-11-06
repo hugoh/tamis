@@ -10,6 +10,7 @@ on:
       - rust-toolchain.toml
       - mise.toml
       - .goreleaser.yml
+      - .anodizer.yaml
       - .github/workflows/cross.yml
   pull_request:
     branches: [main]
@@ -41,6 +42,7 @@ jobs:
               - rust-toolchain.toml
               - mise.toml
               - .goreleaser.yml
+              - .anodizer.yaml
               - .github/workflows/cross.yml
 
   cross:
@@ -62,3 +64,28 @@ jobs:
       - run: mise run prebuild
       - name: Build every release target
         run: goreleaser build --snapshot --clean
+
+  anodizer:
+    name: anodizer (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: ci
+    steps:
+      - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: anodizer-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: anodizer check config
+      - name: Build this runner's targets natively
+        run: anodizer release --split --snapshot --clean

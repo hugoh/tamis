@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/tj-smith47/anodizer/main/schema.json
+# Releases run in ci.yml: one --split build per OS on native runners, then a
+# --merge job that publishes.
+project_name: tamis
+dist: ./dist
+
+before:
+  hooks:
+    - mise run prebuild
+
+defaults:
+  targets:
+    - x86_64-unknown-linux-gnu
+    - aarch64-unknown-linux-gnu
+    - aarch64-apple-darwin
+  cross: auto
+
+crates:
+  - name: tamis
+    path: .
+    tag_template: "v{{ .Version }}"
+    builds:
+      - binary: tamis
+        flags: ["--release"]
+        env:
+          x86_64-unknown-linux-gnu: &version {TAMIS_VERSION: "{{ .Version }}"}
+          aarch64-unknown-linux-gnu: *version
+          aarch64-apple-darwin: *version
+    archives:
+      - name_template: "tamis_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    nfpms:
+      - maintainer: "Hugo Haas <hugoh@hugoh.net>"
+        description: "A second-opinion spam filter and mail sorter for remote mailboxes"
+        homepage: "https://github.com/hugoh/tamis"
+        license: "AGPL-3.0-only"
+        formats: [deb, rpm]
+        bindir: /usr/bin
+    release:
+      github:
+        owner: hugoh
+        name: tamis
+    publish:
+      homebrew:
+        repository:
+          owner: hugoh
+          name: homebrew-tap
+          token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+          pull_request:
+            enabled: true
+        directory: Formula
+        description: "A second-opinion spam filter and mail sorter for remote mailboxes"
+        homepage: "https://github.com/hugoh/tamis"
+        license: "AGPL-3.0-only"
+
+cloudsmiths:
+  - organization: hugoh-oss
+    repository: tamis
+    formats: [deb, rpm]
+    secret_name: CLOUDSMITH_API_KEY
+
+changelog:
+  sort: asc
+  groups:
+    - {title: "⚠️ Breaking Changes", regexp: '^.*?(\w+)(\(.+\))??!:.+$', order: 0}
+    - {title: Features, regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$', order: 1}
+    - {title: Bug Fixes, regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$', order: 2}
+    - {title: Documentation, regexp: '^.*?docs?(\([[:word:]]+\))??!?:.+$', order: 3}
+    - {title: Dependency Updates, regexp: '^.*?(feat|fix|chore)\(deps\).*:.+$', order: 900}
+    - {title: Others, order: 999}
+  filters:
+    exclude:
+      - "^chore\\(release\\): prepare for"
+      - "^chore\\(deps"
+      - "Merge pull request"
+      - "Merge branch"

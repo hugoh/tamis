@@ -1,0 +1,3 @@
+[tools]
+"aqua:rust-cross/cargo-zigbuild" = "0.24.1"
+zig = "0.17.1"

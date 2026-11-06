@@ -1,10 +1,12 @@
-# Design
+---
+title: Design
+---
 
 Status: partly built. The core (token Bayes, whitelist, train folders, inferred
 corrections, rescue, shadow mode, undo, filing rules, the web interface) is
-implemented; [engine.md](engine.md) describes what the code does today. The
+implemented; [engine.md](../../how-it-works/engine/) describes what the code does today. The
 rest of this page is the plan around it, and says where it hasn't been built.
-The iCloud probe has run: see [iCloud notes](#icloud-notes).
+The iCloud probe has run: see [iCloud notes](../design/#icloud-notes).
 
 ## Goal
 
@@ -17,7 +19,7 @@ which also double-checks the provider's own filtering:
 - flag or move messages, in both directions: catch spam the provider missed,
   rescue good mail the provider junked;
 - file the good mail that remains into folders, with user-written Sieve rules
-  ([rules.md](rules.md));
+  ([rules.md](../../how-it-works/rules/));
 - learn from the user's corrections, made in any mail client.
 
 Filing is a first-class job next to spam filtering, but it runs only after a
@@ -28,7 +30,7 @@ Non-goals for now: hosting it for other people, sending mail, replacing the
 provider's delivery-time checks (DNS blocklists, SPF/DKIM/DMARC), being a
 general mail-rules engine (of Sieve, tamis acts only on `fileinto`), and editing
 rules: they are written offline in a text editor, and tamis neither edits them
-nor speaks ManageSieve ([rules.md](rules.md#editing)).
+nor speaks ManageSieve ([rules.md](../../how-it-works/rules/#editing)).
 
 ## Prior art
 
@@ -118,15 +120,15 @@ The daemon runs remotely, so training must come from what the user already
 does in their mail client. Three channels, all on by default and all built:
 
 1. **Train folders**: `TrainSpam` and `TrainGood` per account. See
-   [Where messages go](engine.md#where-messages-go) and
-   [Learn](engine.md#learn).
+   [Where messages go](../../how-it-works/engine/#where-messages-go) and
+   [Learn](../../how-it-works/engine/#learn).
 2. **Inferred moves**: every message tamis touches is journalled and tagged
    with a `$TamisFiled` keyword, so a message filed as spam and later back in
    the Inbox is a false positive (train good), and one left in the Inbox and
    later in Junk is missed spam (train spam). See
-   [Missed spam](engine.md#missed-spam) and [Rescue](engine.md#rescue).
+   [Missed spam](../../how-it-works/engine/#missed-spam) and [Rescue](../../how-it-works/engine/#rescue).
 3. **Client junk keywords**: `$Junk` / `$NotJunk`, plus Apple Mail's `Junk` /
-   `NotJunk`. See [Junk and Not Junk marks](engine.md#junk-and-not-junk-marks).
+   `NotJunk`. See [Junk and Not Junk marks](../../how-it-works/engine/#junk-and-not-junk-marks).
 
 ### Open question: should learned tokens age out?
 
@@ -161,15 +163,15 @@ Sketch, if it earns its place:
 Decide with data, not by argument: `tamis-eval` replays a corpus oldest first,
 scoring each message before learning it, so a variant that downweights old
 training can be compared with today's behaviour on real mail. See
-[evaluation.md](evaluation.md).
+[evaluation.md](../../how-it-works/evaluation/).
 
 ## Actions and safety
 
-Built, and described in [engine.md](engine.md): [actions](engine.md#actions)
+Built, and described in [engine.md](../../how-it-works/engine/): [actions](../../how-it-works/engine/#actions)
 (spam to Junk, uncertain flagged in place with `$TamisUncertain`, good mail
-filed by [rules](rules.md)), [rescue](engine.md#rescue) from the provider's
-Junk, [undo](engine.md#undo), shadow mode for the first one to two weeks,
-and the [safety rules](engine.md#safety-rules): never delete, always journal,
+filed by [rules](../../how-it-works/rules/)), [rescue](../../how-it-works/engine/#rescue) from the provider's
+Junk, [undo](../../how-it-works/engine/#undo), shadow mode for the first one to two weeks,
+and the [safety rules](../../how-it-works/engine/#safety-rules): never delete, always journal,
 always fetch with `BODY.PEEK`.
 
 Not built: a `Junk/Uncertain` folder, a flag-only option for spam, and rate
@@ -182,13 +184,13 @@ Planned, not built: a daily digest message delivered into the mailbox itself
 (caught, uncertain, rescued, with undo links). What exists instead is the web
 interface (decisions with undo and learn, whitelist, health, rules, logs),
 `tamis log`, `tamis doctor`, and dead-man's-switch pings that alert when the
-daemon stops or the filter's quality drops; see [monitoring.md](monitoring.md).
+daemon stops or the filter's quality drops; see [monitoring.md](../../user-guide/monitoring/).
 A revoked app-specific password shows up there too, through a channel other
 than the mailbox.
 
 ## Onboarding
 
-[Bootstrap](engine.md#bootstrap) does the seeding: the whitelist from Sent
+[Bootstrap](../../how-it-works/engine/#bootstrap) does the seeding: the whitelist from Sent
 recipients, Junk as spam, read-and-kept mail as good, then shadow mode and
 going live. Server auto-discovery and a folder-confirmation step were planned
 and are not built; the folders come from the configuration.
@@ -200,8 +202,8 @@ providers:
 
 - IMAP only (`imap.mail.me.com:993`), app-specific password, no OAuth, no JMAP.
 - No MOVE, and CONDSTORE/QRESYNC are advertised but have been buggy: how
-  tamis copes is in [imap.md](imap.md#server-behaviour-tamis-relies-on) and
-  [capabilities](imap.md#capabilities). `tamis probe` measures what a given
+  tamis copes is in [imap.md](../../how-it-works/imap/#server-behaviour-tamis-relies-on) and
+  [capabilities](../../how-it-works/imap/#capabilities). `tamis probe` measures what a given
   server's extensions actually do.
 - Measured with `tamis probe --write` on a real account (2026-11-03): IDLE,
   UIDPLUS and custom keywords (`PERMANENTFLAGS` includes `\*`) work;
@@ -210,11 +212,11 @@ providers:
   SPECIAL-USE are absent, so the Junk folder is found by name, not by
   `\Junk`; the COPY + STORE + UID EXPUNGE fallback works.
 - Connection limits are undocumented: IDLE on the watched folders only, poll the
-  rest ([Idle and polling](imap.md#idle-and-polling)).
+  rest ([Idle and polling](../../how-it-works/imap/#idle-and-polling)).
 - Apple's server filter, Mail.app's local filter and SpamSieve all move mail
   too; tamis must tolerate other actors.
 - No server-side Sieve, which is part of why this project exists. Good mail is
-  filed by running a Sieve script client-side instead; see [rules.md](rules.md).
+  filed by running a Sieve script client-side instead; see [rules.md](../../how-it-works/rules/).
 
 ## Architecture
 
@@ -235,9 +237,9 @@ web UI / API, TOML config
 | Phase | Scope |
 |---|---|
 | 0 | iCloud capability probe: which extensions actually work (`tamis probe`) |
-| MVP (done, see [engine.md](engine.md)) | IMAP, Train folders, token Bayes, whitelist from Sent, shadow mode, SQLite, CLI |
-| Filing (done, see [rules.md](rules.md)) | Sieve rules file good mail into folders; `tamis rules`; web Rules page |
-| Corrections and rescue (done, see [engine.md](engine.md)) | Inferred corrections, `$Junk`/`$NotJunk` marks, rescue from Junk, undo and learn |
+| MVP (done, see [engine.md](../../how-it-works/engine/)) | IMAP, Train folders, token Bayes, whitelist from Sent, shadow mode, SQLite, CLI |
+| Filing (done, see [rules.md](../../how-it-works/rules/)) | Sieve rules file good mail into folders; `tamis rules`; web Rules page |
+| Corrections and rescue (done, see [engine.md](../../how-it-works/engine/)) | Inferred corrections, `$Junk`/`$NotJunk` marks, rescue from Junk, undo and learn |
 | Web interface (done) | Passkey sign-in, decisions with undo and learn, whitelist, rules, health, logs |
 | Next | Opt-in Jev signal and the combiner, digest, Hide My Email alias check, token aging (open question above) |
 | Later | JMAP, OAuth (Gmail, Microsoft), local embeddings, optional Rspamd signal |

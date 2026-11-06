@@ -4,5 +4,5 @@ title = "tamis"
 useDefault = true
 
 [allowlist]
-description = "Build output embeds the test keys of crypto dependencies"
-paths = ['''(^|/)target/''']
+description = "Build output embeds the test keys of crypto dependencies, and the docs build caches page text"
+paths = ['''(^|/)target/''', '''(^|/)site-docs/(\.astro|node_modules|dist)/''', '''(^|/)site/docs/''']

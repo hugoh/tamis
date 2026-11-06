@@ -3,7 +3,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: [site/**, templates/**, src/web/**, mise-tasks/site-build, .github/workflows/pages.yml]
+    paths: [site/**, site-docs/**, docs/**, templates/**, src/web/**, mise-tasks/site-build, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions: {}

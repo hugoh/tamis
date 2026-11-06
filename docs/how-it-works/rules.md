@@ -1,4 +1,6 @@
-# Filing rules
+---
+title: Filing rules
+---
 
 Status: implemented. Good mail can be filed into folders by a Sieve script,
 alongside spam filtering and rescue. Filing runs only on mail already judged good, so a rule can never hide mail the filter was
@@ -8,7 +10,7 @@ unsure about.
 
 Sieve ([RFC 5228](https://www.rfc-editor.org/rfc/rfc5228)) is the standard
 language for mail filtering. Servers such as Dovecot, Cyrus, Stalwart and
-Fastmail run it at delivery. iCloud doesn't (see [design.md](design.md)), so
+Fastmail run it at delivery. iCloud doesn't (see [design.md](../../how-it-works/design/)), so
 tamis runs the script itself, client-side, over IMAP. Because the rules are
 plain Sieve, they move to a server-side filter unchanged if the provider
 changes.

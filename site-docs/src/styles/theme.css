@@ -1,0 +1,19 @@
+/* Starlight takes its accent and background from the landing page's daisyUI
+   light/dark themes (see site/index.html), so the two sites look like one. */
+:root {
+  --sl-color-accent-low: oklch(28% 0.12 277);
+  --sl-color-accent: oklch(58% 0.233 277.117);
+  --sl-color-accent-high: oklch(82% 0.1 277);
+  --sl-color-bg: oklch(25.33% 0.016 252.42);
+  --sl-color-bg-nav: oklch(23.26% 0.014 253.1);
+  --sl-color-bg-sidebar: oklch(23.26% 0.014 253.1);
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: oklch(92% 0.04 277);
+  --sl-color-accent: oklch(45% 0.24 277.023);
+  --sl-color-accent-high: oklch(33% 0.2 277);
+  --sl-color-bg: oklch(100% 0 0);
+  --sl-color-bg-nav: oklch(98% 0 0);
+  --sl-color-bg-sidebar: oklch(98% 0 0);
+}

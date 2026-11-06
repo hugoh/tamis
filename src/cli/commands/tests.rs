@@ -367,6 +367,154 @@ async fn the_rules_can_be_shown_checked_and_tried() {
 }
 
 #[tokio::test]
+async fn rules_test_checks_messages_against_the_folder_their_header_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("rules.sieve");
+    std::fs::write(&script, SCRIPT).unwrap();
+    let go = dir.path().join("go.eml");
+    let other = dir.path().join("other.eml");
+    std::fs::write(
+        &go,
+        "From: a@b.c\r\nList-Id: <golang-nuts.example>\r\nX-Want: Lists/Go\r\n\r\nhi",
+    )
+    .unwrap();
+    std::fs::write(&other, "From: a@b.c\r\nx-want: stay\r\n\r\nhi").unwrap();
+    let (script, go, other) = (
+        script.to_str().unwrap(),
+        go.to_str().unwrap(),
+        other.to_str().unwrap(),
+    );
+
+    // No configuration file is needed when --script names the rules.
+    let (code, out, _) = run(&[
+        "rules",
+        "test",
+        "--script",
+        script,
+        "--expect-header",
+        "X-Want",
+        go,
+        other,
+    ])
+    .await;
+    assert_eq!(
+        (code, out),
+        (0, format!("ok {go}\nok {other}\n2 passed, 0 failed\n"))
+    );
+
+    // Several messages without expectations are labelled with their path.
+    let (code, out, _) = run(&["rules", "test", "--script", script, go, other]).await;
+    assert_eq!(
+        (code, out),
+        (
+            0,
+            format!("{go}: filed into Lists/Go\n{other}: stays in the inbox\n")
+        )
+    );
+
+    // A mismatch and a missing header both fail the run.
+    std::fs::write(other, "From: a@b.c\r\nX-Want: Lists/Go\r\n\r\nhi").unwrap();
+    let (code, out, err) = run(&[
+        "rules",
+        "test",
+        "--script",
+        script,
+        "--expect-header",
+        "X-Want",
+        go,
+        other,
+    ])
+    .await;
+    assert_eq!(code, 1);
+    assert!(
+        out.contains(&format!("FAIL {other}: want \"Lists/Go\", got \"stay\"")),
+        "{out}"
+    );
+    assert!(out.ends_with("1 passed, 1 failed\n"), "{out}");
+    assert!(err.contains("1 of 2 message(s)"), "{err}");
+
+    let (code, out, _) = run(&[
+        "rules",
+        "test",
+        "--script",
+        script,
+        "--expect-header",
+        "X-Nope",
+        go,
+    ])
+    .await;
+    assert_eq!(code, 1);
+    assert!(
+        out.contains("FAIL") && out.contains("no X-Nope header"),
+        "{out}"
+    );
+}
+
+#[tokio::test]
+async fn rules_check_and_test_report_what_tamis_ignores() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("rules.sieve");
+    std::fs::write(
+        &script,
+        "require [\"fileinto\"];\nif header :contains \"subject\" \"x\" { redirect \"a@b.c\"; fileinto \"X\"; }\n",
+    )
+    .unwrap();
+    let hit = dir.path().join("hit.eml");
+    std::fs::write(&hit, "From: a@b.c\r\nSubject: x\r\nX-Want: X\r\n\r\nhi").unwrap();
+    let (script, hit) = (script.to_str().unwrap(), hit.to_str().unwrap());
+
+    let (code, out, _) = run(&["rules", "check", script]).await;
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("warning: the script uses redirect, which tamis ignores"),
+        "{out}"
+    );
+
+    let (code, _, err) = run(&["rules", "check", "--strict", script]).await;
+    assert_eq!(code, 1);
+    assert!(err.contains("1 command(s) tamis ignores"), "{err}");
+
+    let (_, out, _) = run(&["rules", "test", "--script", script, hit]).await;
+    assert_eq!(out, "filed into X\n  ignored: send message to a@b.c\n");
+
+    let (code, out, _) = run(&[
+        "rules",
+        "test",
+        "--script",
+        script,
+        "--expect-header",
+        "X-Want",
+        "--strict",
+        hit,
+    ])
+    .await;
+    assert_eq!(code, 1);
+    assert!(
+        out.contains(&format!("FAIL {hit}: ignored: send message to a@b.c")),
+        "{out}"
+    );
+
+    let (code, out, _) = run(&[
+        "rules",
+        "test",
+        "--script",
+        script,
+        "--expect-header",
+        "X-Want",
+        "--format",
+        "json",
+        hit,
+    ])
+    .await;
+    assert_eq!(code, 0);
+    let object: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(object["folder"], "X");
+    assert_eq!(object["expected"], "X");
+    assert_eq!(object["ok"], true);
+    assert_eq!(object["ignored"][0], "send message to a@b.c");
+}
+
+#[tokio::test]
 async fn a_script_that_does_not_compile_is_reported_before_the_configuration_is_needed() {
     let dir = tempfile::tempdir().unwrap();
     let bad = dir.path().join("bad.sieve");

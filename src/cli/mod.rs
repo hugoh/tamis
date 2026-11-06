@@ -207,10 +207,27 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
         },
         Command::Rules { action } => match action {
             RulesAction::Show => commands::rules_show(app),
-            RulesAction::Check { file, folders } => {
-                commands::rules_check(app, file.as_deref(), folders).await
-            }
-            RulesAction::Test { message } => commands::rules_test(app, &message),
+            RulesAction::Check {
+                file,
+                folders,
+                strict,
+            } => commands::rules_check(app, file.as_deref(), folders, strict).await,
+            RulesAction::Test {
+                messages,
+                script,
+                expect_header,
+                strict,
+                format,
+            } => commands::rules_test(
+                app,
+                &messages,
+                &commands::RulesTest {
+                    script: script.as_deref(),
+                    expect_header: expect_header.as_deref(),
+                    strict,
+                    json: format == args::TestFormat::Json,
+                },
+            ),
         },
     }
 }

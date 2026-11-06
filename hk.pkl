@@ -22,7 +22,7 @@ local linters = new Mapping<String, Step> {
   ["duplication"] {
     check = "jscpd"
   }
-  ["goreleaser"] {
+  ["anodizer"] {
     check = "mise run lint-release"
   }
 }

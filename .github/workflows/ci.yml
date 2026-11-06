@@ -59,15 +59,17 @@ jobs:
       - name: Tests and coverage
         run: mise run ci-core
 
-  release:
+  tag:
     needs: [hk, test]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 30
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      tag: ${{ steps.validate.outputs.tag }}
     env:
-      MISE_ENV: ci
+      MISE_ENV: release
     concurrency:
       group: release
       cancel-in-progress: false
@@ -75,7 +77,6 @@ jobs:
       - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
         with:
           fetch-depth: "0"
-      - run: rustup toolchain install
       - name: Guard manual dispatch to main
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
         env:
@@ -83,18 +84,17 @@ jobs:
         run: |
           echo "::error::Manual bump_type dispatch must run on main (got ${GITHUB_REF})"
           exit 1
-      - name: Check Cloudsmith repos exist
+      - name: Check Cloudsmith repo exists
         env:
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         run: |
-          repos=$(grep -oE 'cloudsmith push [a-z]+ [^/ ]+/[^/ ]+' .goreleaser.yml | awk '{print $4}' | sort -u)
-          for repo in $repos; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Api-Key: ${CLOUDSMITH_API_KEY}" "https://api.cloudsmith.io/v1/repos/${repo}/")
-            if [ "$code" != "200" ]; then
-              echo "::error::Cloudsmith repo ${repo} not reachable (HTTP ${code})"
-              exit 1
-            fi
-          done
+          org=$(awk '$1 == "organization:" {print $2; exit}' .anodizer.yaml)
+          repo=$(awk '$1 == "repository:" && prev ~ /organization/ {print $2; exit} {prev=$0}' .anodizer.yaml)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Api-Key: ${CLOUDSMITH_API_KEY}" "https://api.cloudsmith.io/v1/repos/${org}/${repo}/")
+          if [ "$code" != "200" ]; then
+            echo "::error::Cloudsmith repo ${org}/${repo} not reachable (HTTP ${code})"
+            exit 1
+          fi
       - name: Semver release
         env:
           BUMP_TYPE: ${{ inputs.bump_type || 'auto' }}
@@ -109,28 +109,100 @@ jobs:
           TAG=$(git tag --points-at HEAD | head -1)
           if [ -z "$TAG" ]; then
             echo "No tag at HEAD — skipping release"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-      - name: Push tag and release
-        if: steps.validate.outputs.skip != 'true'
+      - name: Push tag
+        if: steps.validate.outputs.tag != ''
         env:
           TAG: ${{ steps.validate.outputs.tag }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         run: |
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
           git push origin "${TAG}"
-          goreleaser release --clean
+
+  build:
+    name: build (${{ matrix.os }})
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: release
+    steps:
+      - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
+        with:
+          fetch-depth: "0"
+      - name: Check out the release tag
+        env:
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: git checkout --detach "$TAG"
+      - run: rustup toolchain install
+      - name: Build this runner's targets
+        run: anodizer release --split --clean
+      - name: Check the binary reports the tag's version
+        env:
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          triple=x86_64-unknown-linux-gnu
+          [ "$RUNNER_OS" = macOS ] && triple=aarch64-apple-darwin
+          version=$(dist/tamis_${triple}/tamis --version)
+          got=${version#tamis }
+          [ "$got" = "${TAG#v}" ] || { echo "::error::tamis --version is '${got}', expected '${TAG#v}'"; exit 1; }
+      # Hidden files are dropped by default and would only surface at merge time.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [tag, build]
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      MISE_ENV: release
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+    steps:
+      - uses: hugoh/gh-workflows/setup@20f042d18e1e5318722f808bafc6d7fc18a838f7 # v1.40.17
+        with:
+          fetch-depth: "0"
+      - name: Check out the release tag
+        env:
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: git checkout --detach "$TAG"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist/
+          pattern: dist-*
+          merge-multiple: true
+      # Artifact transfer drops the execute bit, and the merge runs the binary.
+      - name: Restore execute bit
+        run: find dist -type f -name tamis -exec chmod +x {} +
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: anodizer release --merge
       - name: Merge Homebrew tap PR
-        if: steps.validate.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-          TAG: ${{ steps.validate.outputs.tag }}
+          TAG: ${{ needs.tag.outputs.tag }}
         run: |
-          BRANCH="${GITHUB_REPOSITORY#*/}-${TAG#v}"
-          PR_URL=$(gh pr list --repo hugoh/homebrew-tap --head "$BRANCH" --state open --json url -q '.[0].url')
-          [ -n "$PR_URL" ] || { echo "No open homebrew-tap PR for ${BRANCH}"; exit 0; }
+          PR_URL=$(gh pr list --repo hugoh/homebrew-tap --state open --json url,headRefName \
+            --jq ".[] | select(.headRefName | contains(\"${TAG#v}\")) | .url" | head -1)
+          [ -n "$PR_URL" ] || { echo "No open homebrew-tap PR for ${TAG}"; exit 0; }
           gh pr merge "$PR_URL" --repo hugoh/homebrew-tap --squash --delete-branch --auto

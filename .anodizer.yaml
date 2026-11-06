@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/tj-smith47/anodizer/main/schema.json
-# Trial of Anodizer next to GoReleaser (see .goreleaser.yml, which still
-# publishes releases). CI only builds with this file, on native runners.
+# Releases run in ci.yml: one --split build per OS on native runners, then a
+# --merge job that publishes.
 project_name: tamis
 dist: ./dist
 
@@ -12,7 +12,6 @@ defaults:
   targets:
     - x86_64-unknown-linux-gnu
     - aarch64-unknown-linux-gnu
-    - x86_64-apple-darwin
     - aarch64-apple-darwin
   cross: auto
 
@@ -26,7 +25,6 @@ crates:
         env:
           x86_64-unknown-linux-gnu: &version {TAMIS_VERSION: "{{ .Version }}"}
           aarch64-unknown-linux-gnu: *version
-          x86_64-apple-darwin: *version
           aarch64-apple-darwin: *version
     archives:
       - name_template: "tamis_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -46,6 +44,7 @@ crates:
         repository:
           owner: hugoh
           name: homebrew-tap
+          token: "{{ .Env.TAP_GITHUB_TOKEN }}"
           pull_request:
             enabled: true
         directory: Formula

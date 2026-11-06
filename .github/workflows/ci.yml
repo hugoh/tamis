@@ -145,6 +145,8 @@ jobs:
         run: git checkout --detach "$TAG"
       - run: rustup toolchain install
       - name: Build this runner's targets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: anodizer release --split --clean
       - name: Check the binary reports the tag's version
         env:

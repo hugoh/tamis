@@ -2,7 +2,6 @@
 name = "tamis"
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.98"
 description = "A spam filter and Sieve mail sorter for remote mailboxes"
 repository = "https://github.com/hugoh/tamis"
 license = "AGPL-3.0-only"

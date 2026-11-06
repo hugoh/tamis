@@ -56,6 +56,12 @@ cloudsmiths:
   - organization: hugoh-oss
     repository: tamis
     formats: [deb, rpm]
+    # Cloudsmith requires a distribution for deb/rpm uploads (HTTP 422
+    # "distribution: This field is required"); any-distro/any-version matches
+    # what the setup.deb.sh / setup.rpm.sh install scripts serve.
+    distributions:
+      deb: any-distro/any-version
+      rpm: any-distro/any-version
     secret_name: CLOUDSMITH_API_KEY
 
 changelog:

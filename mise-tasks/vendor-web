@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Copy htmx and build the daisyUI/Tailwind stylesheet into web/static/vendor"
-#MISE sources=[".config/mise/conf.d/web.toml", "templates/*.html", "mise-tasks/vendor-web"]
+#MISE sources=[".config/mise/conf.d/web.toml", "templates/*.html", "web/static/rules.js", "mise-tasks/vendor-web"]
 #MISE outputs=["web/static/vendor/htmx.min.js", "web/static/vendor/htmx.LICENSE", "web/static/vendor/theme.css"]
 set -euo pipefail
 
@@ -25,6 +25,7 @@ cat >"$work/input.css" <<CSS
 @import "${tailwind[0]}/index.css" source(none);
 @plugin "$daisyui";
 @source "$PWD/templates";
+@source "$PWD/web/static/rules.js";
 CSS
 "$cli/.bin/tailwindcss" --input "$work/input.css" --output "$new/theme.css" --minify
 

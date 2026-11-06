@@ -25,12 +25,23 @@ struct Site {
 }
 
 fn site_with(options: Options) -> Site {
+    site_with_rules(options, "")
+}
+
+fn site_with_rules(options: Options, rules: &str) -> Site {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("config.toml");
+    let script = dir.path().join("rules.sieve");
+    let rules_section = if rules.is_empty() {
+        String::new()
+    } else {
+        std::fs::write(&script, rules).unwrap();
+        format!("[rules]\nscript = \"{}\"\n", script.display())
+    };
     std::fs::write(
         &config,
         format!(
-            "state = \"{}\"\n[account]\nhost = \"imap.example.org\"\nuser = \"me@example.org\"\n[web]\nenabled = true\norigin = \"{ORIGIN}\"\n",
+            "state = \"{}\"\n[account]\nhost = \"imap.example.org\"\nuser = \"me@example.org\"\n[web]\nenabled = true\norigin = \"{ORIGIN}\"\n{rules_section}",
             dir.path().join("state.db").display()
         ),
     )
@@ -333,10 +344,13 @@ async fn mock_decisions_page() {
         std::fs::read_to_string("web/static/vendor/theme.css").expect("run mise run vendor-web");
     let page = page
         .replace(
-            "<link rel=\"stylesheet\" href=\"/static/vendor/theme.css\">",
+            "<link rel=\"stylesheet\" href=\"/static/vendor/theme.css?v=\">",
             &format!("<style>{css}</style>"),
         )
-        .replace("<script src=\"/static/vendor/htmx.min.js\"></script>", "");
+        .replace(
+            "<script src=\"/static/vendor/htmx.min.js?v=\"></script>",
+            "",
+        );
     let out =
         std::env::var("TAMIS_MOCK_PAGE").unwrap_or_else(|_| "target/mock-decisions.html".into());
     std::fs::write(out, page).unwrap();
@@ -698,6 +712,109 @@ async fn revoking_a_passkey_ends_its_sessions() {
 }
 
 #[tokio::test]
+async fn the_rules_page_hands_its_script_to_the_highlighter() {
+    let site = site_with_rules(
+        Options::default(),
+        "require \"fileinto\";\nfileinto \"A\";\n",
+    );
+
+    let page = text(site.get("/rules").await).await;
+    let script = site.get("/static/rules.js").await;
+
+    assert!(
+        page.contains("<pre id=\"rules-source\"") && page.contains("/static/rules.js?v="),
+        "{page}"
+    );
+    assert_eq!(script.status(), StatusCode::OK);
+    assert!(
+        script.headers()[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .contains("javascript")
+    );
+}
+
+#[tokio::test]
+async fn static_files_carry_an_etag_and_answer_a_matching_one_with_not_modified() {
+    let site = site();
+
+    let first = site.get("/static/rules.js").await;
+    let etag = first.headers()[header::ETAG].to_str().unwrap().to_owned();
+    let revalidate = |tag: String| {
+        let request = Request::get("/static/rules.js")
+            .header(header::IF_NONE_MATCH, tag)
+            .body(Body::empty())
+            .unwrap();
+        site.send(request, true)
+    };
+    let same = revalidate(etag.clone()).await;
+    let weakened = revalidate(format!("W/{etag}")).await;
+    let other = revalidate("\"stale\"".to_owned()).await;
+
+    assert_eq!(first.headers()[header::CACHE_CONTROL], "no-cache");
+    assert_eq!(same.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(same.headers()[header::ETAG].to_str().unwrap(), etag);
+    assert!(text(same).await.is_empty());
+    assert_eq!(weakened.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(other.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn responses_are_compressed_for_clients_that_accept_it() {
+    let site = site();
+    let get = |uri: &'static str, encoding: &'static str| {
+        let request = Request::get(uri)
+            .header(header::ACCEPT_ENCODING, encoding)
+            .body(Body::empty())
+            .unwrap();
+        site.send(request, true)
+    };
+
+    let script = get("/static/vendor/theme.css", "gzip").await;
+    let page = get("/health", "br, gzip").await;
+    let plain = get("/static/vendor/theme.css", "identity").await;
+
+    assert_eq!(script.headers()[header::CONTENT_ENCODING], "gzip");
+    assert_eq!(page.headers()[header::CONTENT_ENCODING], "br");
+    assert!(!plain.headers().contains_key(header::CONTENT_ENCODING));
+}
+
+#[tokio::test]
+async fn versioned_asset_urls_are_cached_for_good_and_bare_ones_are_revalidated() {
+    let site = site_with(Options {
+        version: "1.2.3".to_owned(),
+        ..Options::default()
+    });
+
+    let page = text(site.get("/").await).await;
+    let login = text(
+        site.send(
+            Request::get("/auth/login").body(Body::empty()).unwrap(),
+            false,
+        )
+        .await,
+    )
+    .await;
+    let versioned = site.get("/static/rules.js?v=1.2.3").await;
+    let bare = site.get("/static/rules.js").await;
+    let empty = site.get("/static/rules.js?v=").await;
+
+    for asset in ["vendor/theme.css", "vendor/htmx.min.js", "feedback.js"] {
+        assert!(
+            page.contains(&format!("/static/{asset}?v=1.2.3\"")),
+            "{page}"
+        );
+    }
+    assert!(login.contains("/static/webauthn.js?v=1.2.3\""), "{login}");
+    assert_eq!(
+        versioned.headers()[header::CACHE_CONTROL],
+        "public, max-age=31536000, immutable"
+    );
+    assert_eq!(bare.headers()[header::CACHE_CONTROL], "no-cache");
+    assert_eq!(empty.headers()[header::CACHE_CONTROL], "no-cache");
+}
+
+#[tokio::test]
 async fn pages_load_the_feedback_script_and_a_toast_area() {
     let site = site();
 
@@ -705,7 +822,7 @@ async fn pages_load_the_feedback_script_and_a_toast_area() {
     let script = site.get("/static/feedback.js").await;
 
     assert!(
-        page.contains("id=\"toasts\"") && page.contains("/static/feedback.js"),
+        page.contains("id=\"toasts\"") && page.contains("/static/feedback.js?v="),
         "{page}"
     );
     assert_eq!(script.status(), StatusCode::OK);

@@ -19,7 +19,7 @@ permissions: {}
 
 concurrency:
   group: cross-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -40,7 +40,7 @@ jobs:
               - Cargo.lock
               - rust-toolchain.toml
               - mise.toml
-                      - .anodizer.yaml
+              - .anodizer.yaml
               - .github/workflows/cross.yml
 
   anodizer:
@@ -67,3 +67,27 @@ jobs:
       - run: anodizer check config
       - name: Build this runner's targets natively
         run: anodizer release --split --snapshot --clean
+
+  # Stable check name for branch protection: matrix leg names carry the runner
+  # label, and a skipped `anodizer` job (unrelated paths) posts no check at
+  # all. This wrapper always runs and passes trivially when the build was
+  # skipped, so it's what's pinned as the required context.
+  cross-gate:
+    if: always()
+    needs: [changes, anodizer]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require every anodizer leg to have passed, when relevant
+        env:
+          BUILD_CHANGED: ${{ needs.changes.outputs.build }}
+          ANODIZER_RESULT: ${{ needs.anodizer.result }}
+        run: |
+          set -euo pipefail
+          echo "build_changed=$BUILD_CHANGED anodizer=$ANODIZER_RESULT"
+          if [ "$BUILD_CHANGED" != "true" ]; then
+            echo "no build-relevant changes; skipping"
+            exit 0
+          fi
+          [ "$ANODIZER_RESULT" = success ] || exit 1

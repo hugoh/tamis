@@ -154,7 +154,12 @@ jobs:
         run: |
           triple=x86_64-unknown-linux-gnu
           [ "$RUNNER_OS" = macOS ] && triple=aarch64-apple-darwin
-          version=$(dist/tamis_${triple}/tamis --version)
+          # --split only writes dist/<platform>/context.json; the binary stays in
+          # cargo's target/<triple>/release/ until --merge archives it.
+          bin=$(find target dist -type f -name tamis -path "*${triple}*" -perm -u=x 2>/dev/null | head -n1)
+          [ -n "$bin" ] || { echo "::error::no tamis binary for ${triple} under target/ or dist/"; find target dist -maxdepth 4 -name 'tamis*' 2>/dev/null; exit 1; }
+          echo "checking $bin"
+          version=$("$bin" --version)
           got=${version#tamis }
           [ "$got" = "${TAG#v}" ] || { echo "::error::tamis --version is '${got}', expected '${TAG#v}'"; exit 1; }
       # Hidden files are dropped by default and would only surface at merge time.

@@ -9,6 +9,7 @@
 <select name="reason" aria-label="Reason" class="select select-sm w-auto" hx-get="/" hx-trigger="change">
 {% for choice in body.reasons %}<option value="{{ choice.value }}"{% if choice.checked %} selected{% endif %}>{% if choice.value.is_empty() %}Any reason{% else %}{{ choice.value }}{% endif %}</option>
 {% endfor %}</select>
+<button type="submit" class="btn btn-sm">Refresh</button>
 </form>
 {% include "decisions_results.html" %}
 {% endblock %}

@@ -529,7 +529,7 @@ async fn health_and_rules_pages_render() {
     let logs = text(site.get("/logs").await).await;
 
     assert!(
-        health.contains("<h1 class=\"text-2xl font-semibold mb-4\">Health</h1>"),
+        health.contains("<h1 class=\"text-2xl font-semibold\">Health</h1>"),
         "{health}"
     );
     assert!(rules.contains("No rules script configured"), "{rules}");
@@ -723,4 +723,21 @@ async fn an_action_note_is_marked_for_the_toast() {
     let row = text(site.post(&format!("/decisions/{id}/undo"), "").await).await;
 
     assert!(row.contains("data-note data-failed"), "{row}");
+}
+
+#[tokio::test]
+async fn decisions_and_health_offer_a_refresh_that_does_not_reload_the_page() {
+    let site = site();
+
+    let decisions = text(site.get("/").await).await;
+    let health = text(site.get("/health").await).await;
+
+    assert!(
+        decisions.contains("<button type=\"submit\" class=\"btn btn-sm\">Refresh</button>"),
+        "{decisions}"
+    );
+    assert!(
+        health.contains("hx-get=\"/health\" hx-select=\"main\" hx-target=\"main\""),
+        "{health}"
+    );
 }

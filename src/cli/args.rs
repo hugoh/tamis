@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(
     name = "tamis",
-    about = "A second-opinion spam filter and mail sorter for remote mailboxes",
+    about = "A spam filter and Sieve mail sorter for remote mailboxes",
     disable_version_flag = true,
     disable_help_subcommand = true
 )]

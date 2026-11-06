@@ -243,7 +243,7 @@ mod tests {
         let (code, out, _) = Harness::new(&[], "").run(&["--help"]).await;
         assert_eq!(code, 0);
         assert!(
-            out.text().contains("A second-opinion spam filter"),
+            out.text().contains("A spam filter and Sieve mail sorter"),
             "{}",
             out.text()
         );

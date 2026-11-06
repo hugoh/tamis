@@ -20,7 +20,7 @@ builds:
 
 nfpms:
   - maintainer: "Hugo Haas <hugoh@hugoh.net>"
-    description: "A second-opinion spam filter and mail sorter for remote mailboxes"
+    description: "A spam filter and Sieve mail sorter for remote mailboxes"
     homepage: "https://github.com/hugoh/tamis"
     license: "AGPL-3.0-only"
     formats:
@@ -60,7 +60,7 @@ brews:
       pull_request:
         enabled: true
     directory: Formula
-    description: "A second-opinion spam filter and mail sorter for remote mailboxes"
+    description: "A spam filter and Sieve mail sorter for remote mailboxes"
     homepage: "https://github.com/hugoh/tamis"
 changelog:
   use: git

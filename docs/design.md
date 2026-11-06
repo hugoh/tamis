@@ -8,8 +8,8 @@ The iCloud probe has run: see [iCloud notes](#icloud-notes).
 
 ## Goal
 
-Complement a mail provider's spam filtering with a personal, self-hosted
-second opinion:
+Give a remote mailbox a personal, self-hosted spam filter and Sieve sorter,
+which also double-checks the provider's own filtering:
 
 - connect a remote account (IMAP first, JMAP later);
 - watch configurable inbox folders and junk folders;
@@ -20,7 +20,7 @@ second opinion:
   ([rules.md](rules.md));
 - learn from the user's corrections, made in any mail client.
 
-Spam filtering stays the core. Filing is a second job that runs only after a
+Filing is a first-class job next to spam filtering, but it runs only after a
 message has been judged good, so a rule can never hide mail the filter was
 unsure about.
 

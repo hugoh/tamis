@@ -22,6 +22,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Limitation: this filter only lists build inputs (dependencies, toolchain,
+  # release config), not `src/**`, so a pull request that changes only source
+  # skips the anodizer legs and `cross-gate` passes trivially. Platform-specific
+  # code that compiles on the `test` job's runner but not on a release target
+  # (or macOS) is therefore not caught until a build-relevant change or the
+  # release itself. Add `src/**` here, and to the `push` paths above, to build
+  # every release target on every code change, at the cost of the 30-minute,
+  # two-OS matrix on each one.
   changes:
     timeout-minutes: 5
     runs-on: ubuntu-latest

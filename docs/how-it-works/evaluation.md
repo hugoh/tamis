@@ -1,4 +1,6 @@
-# Evaluating the filter
+---
+title: Evaluating the filter
+---
 
 `tamis-eval` (`src/bin/tamis-eval.rs`) measures how a change to the tokenizer or the features
 affects the filter, on mail you label. It is a development tool and is not
@@ -6,7 +8,7 @@ part of the `tamis` binary.
 
 ## How it measures
 
-[`src/eval`](../src/eval) does progressive validation: each message
+[`src/eval`](https://github.com/hugoh/tamis/tree/main/src/eval) does progressive validation: each message
 is scored by a model that has learnt only from the messages before it, then
 learnt from. That is how tamis meets mail, and it needs no train/test split.
 
@@ -73,7 +75,7 @@ tokenizer as it was then:
   recipient improved the ranking in every run, by about 15% together. 36% of
   the spam went to an address not seen in recent good mail, against 0.7% of
   the good mail. These are now in the tokenizer (see Recipients in
-  [`engine.md`](engine.md)), and the `- recipient tokens` variant shows what
+  [`engine.md`](../../how-it-works/engine/)), and the `- recipient tokens` variant shows what
   they contribute.
 
 One mailbox is one data point: run your own.

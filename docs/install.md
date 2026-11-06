@@ -1,4 +1,6 @@
-# Installing tamis
+---
+title: Install
+---
 
 Release binaries are currently built for Linux only (x86_64 and aarch64).
 macOS and Windows are tracked in
@@ -46,3 +48,20 @@ sudo dnf install ./tamis_*.rpm
 ```sh
 mise use -g github:hugoh/tamis
 ```
+
+See [INSTALL.md](../install/) for installation instructions.
+
+## From source
+
+The web interface's files are built, not committed, so use the `mise` tasks:
+
+```sh
+git clone https://github.com/hugoh/tamis
+cd tamis
+mise install
+mise run build
+```
+
+A plain `cargo build --release` also works, but run `mise run vendor-web` first:
+without the files it embeds, the web interface refuses to start; see
+[Development](../contributing/).

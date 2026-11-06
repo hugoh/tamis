@@ -1,9 +1,11 @@
-# Engine
+---
+title: Engine
+---
 
 How tamis processes mail: it judges each new message (spam, good or
 uncertain), moves spam to Junk, rescues good mail from Junk, and can file good
-mail into folders with [Sieve rules](rules.md). This describes what the code in
-[`src/engine`](../src/engine) does today; [`design.md`](design.md)
+mail into folders with [Sieve rules](../../how-it-works/rules/). This describes what the code in
+[`src/engine`](https://github.com/hugoh/tamis/tree/main/src/engine) does today; [`design.md`](../../how-it-works/design/)
 covers where it is heading.
 
 ## Components
@@ -28,11 +30,11 @@ flowchart LR
 
 | Package | Role |
 |---|---|
-| `mail` | IMAP operations: folder state, UID search, peeked fetch, move, keywords, IDLE watching (see [imap.md](imap.md)) |
+| `mail` | IMAP operations: folder state, UID search, peeked fetch, move, keywords, IDLE watching (see [imap.md](../../how-it-works/imap/)) |
 | `classify` | Turns a message into tokens and scores them (SpamBayes-style chi-square) |
 | `auth` | Decides whether the provider authenticated the `From` domain |
 | `store` | Token counts, trained messages, whitelist, folder cursors and mod-sequences, decision journal |
-| `rules` | Runs the user's Sieve script on a message and names the folder to file it in (see [rules.md](rules.md)) |
+| `rules` | Runs the user's Sieve script on a message and names the folder to file it in (see [rules.md](../../how-it-works/rules/)) |
 | `engine` | Runs passes: trains, judges, files and records |
 
 ## A pass
@@ -44,7 +46,7 @@ IDLE connection, kept across passes, so a junk mark set in another client is
 learnt straight away and a quiet mailbox costs no logins. A folder whose
 connection fails is retried with a growing wait; one whose server can't IDLE is
 given up on, and the poll covers it. Everything else (training folders, Sent, Junk, including marks
-set in Junk) is still only looked at on a pass. [imap.md](imap.md) lists the
+set in Junk) is still only looked at on a pass. [imap.md](../../how-it-works/imap/) lists the
 commands behind each step.
 
 ```mermaid
@@ -81,7 +83,7 @@ A dropped connection is different: the connection is gone for the rest of the
 pass too, so it fails the pass, which is retried after a wait that grows from
 the poll interval while passes keep failing. How the passes are going is saved
 in the state database for `tamis doctor` to show; see
-[imap.md](imap.md).
+[imap.md](../../how-it-works/imap/).
 
 Training folders are processed in both modes. Dropping a message into one is
 an explicit request, not a judgement tamis makes on its own. The same goes for
@@ -253,6 +255,9 @@ new UID. Undo refuses:
 The decision is marked undone last, so an undo that fails partway (say the
 move back fails) can simply be run again.
 
+The `undo` entry it journals carries the message's score after the retraining,
+so the log shows how the filter now rates it, not 0.00.
+
 ## Learn
 
 `tamis learn [--good|--spam] ID...` teaches tamis the right answer for a
@@ -403,7 +408,7 @@ stateDiagram-v2
     TrainGood --> Inbox: trained as good
 ```
 
-Mail a rule filed carries `$TamisSorted`; see [rules.md](rules.md) for why it
+Mail a rule filed carries `$TamisSorted`; see [rules.md](../../how-it-works/rules/) for why it
 isn't `$TamisFiled` and what is not undoable.
 
 ## Bootstrap

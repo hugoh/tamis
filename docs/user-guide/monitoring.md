@@ -1,4 +1,20 @@
-# Monitoring
+---
+title: Monitoring
+---
+
+To be told when tamis stops working, point it at a dead-man's-switch service such
+as [healthchecks.io](https://healthchecks.io):
+
+```toml
+[monitor]
+ping_url = "https://hc-ping.com/your-heartbeat-uuid"   # a secret: keep the file private
+quality_url = "https://hc-ping.com/your-quality-uuid"  # optional, once a day
+fail_after = 3                                         # passes that fail in a row before telling it
+```
+
+`tamis monitor` works out the period and grace time to give the checks, and how
+soon each kind of trouble alerts; `tamis monitor test` sends a ping to see that
+the URLs work. [docs/monitoring.md](../../user-guide/monitoring/) has the details.
 
 `tamis run` can report to a dead-man's-switch service such as
 [healthchecks.io](https://healthchecks.io), which alerts you when the pings stop

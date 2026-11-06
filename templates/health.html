@@ -1,6 +1,9 @@
 {% extends "layout.html" %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-4">Health</h1>
+<div class="flex items-center gap-3 mb-4">
+<h1 class="text-2xl font-semibold">Health</h1>
+<button class="btn btn-sm" hx-get="/health" hx-select="main" hx-target="main" hx-swap="outerHTML" hx-disabled-elt="this">Refresh</button>
+</div>
 {% if let Some(daemon) = body.daemon %}<h2 class="text-lg font-semibold mb-2">Daemon</h2>
 <div class="stats stats-vertical sm:stats-horizontal shadow-sm bg-base-200 mb-4">
 <div class="stat"><div class="stat-title">Doing</div><div class="stat-value text-xl">{% if daemon.doing.is_empty() %}nothing yet{% else %}{{ daemon.doing }}{% endif %}</div><div class="stat-desc">since {{ daemon.started }}</div></div>

@@ -1,4 +1,6 @@
-# IMAP interface
+---
+title: IMAP interface
+---
 
 How tamis talks to the server. The code is `src/mail` (the client) and
 `src/engine` (what it asks for); `tamis probe` measures what a given server
@@ -92,4 +94,4 @@ in a training folder, or mail the watchers missed waits to be seen.
 - Other actors (a server filter, a mail client's rules) move mail too; tamis
   treats anything it didn't file as theirs.
 - iCloud advertises `CONDSTORE`/`QRESYNC` but has been unreliable with them and
-  lacks `MOVE`; see [design.md](design.md).
+  lacks `MOVE`; see [design.md](../../how-it-works/design/).

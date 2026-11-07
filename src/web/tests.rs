@@ -213,6 +213,7 @@ async fn every_response_carries_the_security_headers() {
             .starts_with("default-src 'self'")
     );
     assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    assert_eq!(headers[header::REFERRER_POLICY], "no-referrer");
     assert_eq!(headers[header::CACHE_CONTROL], "no-store");
     assert!(text(response).await.contains("Sign in with a passkey"));
 }

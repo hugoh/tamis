@@ -65,12 +65,16 @@ the filter was unsure about.
 
 The result is the first `fileinto` without `:copy`. Everything else a Sieve
 script can do is ignored, since only filing makes sense over IMAP: `redirect`
-is denied, `keep` and `discard` leave the message where it is, and flags are
-not applied. `tamis rules check` warns about each such command it finds in the
-script (`redirect`, `reject`, `ereject`, `vacation`, `keep`, `discard`,
-`notify`, the flag and header-editing commands, and `fileinto :copy`), and
+is denied, and `keep` and `discard` leave the message where it is. The flags a
+script sets with `imap4flags` (`setflag`, `addflag`, `removeflag`, `fileinto
+:flags`) are applied to the message, before it is moved. They are set along
+with the `$TamisSorted` keyword, so a move that fails or is cut off clears all
+of them again. `tamis rules check` warns about each ignored command it finds in
+the script (`redirect`, `reject`, `ereject`, `vacation`, `keep`, `discard`,
+`notify`, the header-editing commands, and `fileinto :copy`) and about each
+`require` of an extension tamis can't honour, and
 `tamis rules test` lists what a message actually triggered as `ignored:` lines
-(a `fileinto` after the first, a copy, flags, a redirect, ...). `--strict` turns
+(a `fileinto` after the first, a copy, a redirect, ...). `--strict` turns
 both into failures. The implicit keep is never reported. A script error on one message is logged and the message is left
 in place, so one odd message can't stall the pass.
 

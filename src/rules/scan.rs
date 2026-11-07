@@ -60,7 +60,6 @@ pub(super) fn file_intos(source: &str) -> Vec<FileInto> {
 
 /// Commands tamis can't honour, since it only moves mail over IMAP.
 const UNSUPPORTED: &[&str] = &[
-    "addflag",
     "addheader",
     "deleteheader",
     "discard",
@@ -69,13 +68,58 @@ const UNSUPPORTED: &[&str] = &[
     "notify",
     "redirect",
     "reject",
-    "removeflag",
-    "setflag",
     "vacation",
 ];
 
-/// The sorted, distinct commands in `source` that tamis ignores or denies,
-/// plus `fileinto :copy` when the script uses it.
+/// Extensions whose commands tamis ignores, or whose data it doesn't have.
+pub(super) const UNSUPPORTED_EXTENSIONS: &[&str] = &[
+    "comparator-elbonia",
+    "convert",
+    "duplicate",
+    "editheader",
+    "enclose",
+    "enotify",
+    "ereject",
+    "extlists",
+    "fcc",
+    "imapsieve",
+    "include",
+    "mboxmetadata",
+    "redirect-deliverby",
+    "redirect-dsn",
+    "reject",
+    "replace",
+    "servermetadata",
+    "spamtest",
+    "spamtestplus",
+    "vacation",
+    "vacation-seconds",
+    "virustest",
+];
+
+/// The extensions named by `require` commands.
+fn required(tokens: &[Token]) -> Vec<&str> {
+    let mut names = Vec::new();
+    let mut at = 0;
+    while at < tokens.len() {
+        at += 1;
+        if !matches!(&tokens[at - 1], Token::Word(word) if word.eq_ignore_ascii_case("require")) {
+            continue;
+        }
+        while let Some(token) = tokens.get(at) {
+            match token {
+                Token::Str(name) => names.push(name.as_str()),
+                Token::Punct('[' | ',') => {}
+                _ => break,
+            }
+            at += 1;
+        }
+    }
+    names
+}
+
+/// The sorted, distinct commands and extensions in `source` that tamis
+/// ignores or denies, plus `fileinto :copy` when the script uses it.
 pub(super) fn unsupported(source: &str) -> Vec<String> {
     let tokens = tokenize(source);
     let mut found: Vec<String> = tokens
@@ -88,6 +132,12 @@ pub(super) fn unsupported(source: &str) -> Vec<String> {
             _ => None,
         })
         .collect();
+    found.extend(
+        required(&tokens)
+            .into_iter()
+            .filter(|name| UNSUPPORTED_EXTENSIONS.contains(name))
+            .map(|name| format!("extension {name}")),
+    );
     if file_intos(source).iter().any(|f| f.copy) {
         found.push("fileinto :copy".to_owned());
     }

@@ -44,7 +44,9 @@ pub struct PendingMove {
     pub source: String,
     pub dest: String,
     pub message_id: String,
-    pub keyword: String,
+    /// Every keyword and flag set on the message before the move, to clear if
+    /// it did not happen.
+    pub keywords: Vec<String>,
 }
 
 /// Summarises what the store has learnt.
@@ -328,14 +330,20 @@ impl Store {
         &self,
         decision: &Decision,
         dest: &str,
-        keyword: &str,
+        keywords: &[&str],
     ) -> Result<i64> {
         self.in_tx(|tx| {
             let id = insert_decision(tx, decision, false)?;
             tx.execute(
                 "INSERT INTO pending_moves (decision_id, source, dest, message_id, keyword)
                  VALUES (?, ?, ?, ?, ?)",
-                params![id, decision.mailbox, dest, decision.message_id, keyword],
+                params![
+                    id,
+                    decision.mailbox,
+                    dest,
+                    decision.message_id,
+                    keywords.join(" ")
+                ],
             )?;
             Ok(id)
         })
@@ -357,7 +365,11 @@ impl Store {
                 source: row.get(1)?,
                 dest: row.get(2)?,
                 message_id: row.get(3)?,
-                keyword: row.get(4)?,
+                keywords: row
+                    .get::<_, String>(4)?
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect(),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)

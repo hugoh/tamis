@@ -10,6 +10,7 @@ use std::path::Path;
 
 use mail_parser::MessageParser;
 use serde::Serialize;
+use sieve::compiler::grammar::Capability;
 use sieve::{Compiler, Envelope, Event, Input, Recipient, Runtime, Sieve};
 use thiserror::Error;
 
@@ -27,13 +28,29 @@ pub enum Error {
     Run(String),
 }
 
+/// The Sieve extensions a script can `require` and tamis honours: everything
+/// the interpreter knows, minus what only matters to a mail server.
+#[must_use]
+pub fn supported_extensions() -> Vec<String> {
+    let mut names: Vec<String> = Capability::all()
+        .iter()
+        .map(ToString::to_string)
+        .filter(|name| !scan::UNSUPPORTED_EXTENSIONS.contains(&name.as_str()))
+        .collect();
+    names.sort_unstable();
+    names
+}
+
 /// What a script decides for one message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Decision {
     /// The first `fileinto` without `:copy`, or `None` when the message stays.
     pub folder: Option<String>,
+    /// The IMAP flags and keywords to set: those of the `fileinto` that
+    /// decided the folder, or of the keep when the message stays.
+    pub flags: Vec<String>,
     /// Actions the script took that tamis does not carry out, such as a
-    /// `redirect`, a flag, a `discard` or a second `fileinto`.
+    /// `redirect`, a `discard` or a second `fileinto`.
     pub ignored: Vec<String>,
 }
 
@@ -150,10 +167,11 @@ impl Rules {
         let mut input = Input::script("rules", self.script.clone());
         let mut decision = Decision {
             folder: None,
+            flags: Vec::new(),
             ignored: Vec::new(),
         };
         let mut keeps = Vec::new();
-        let mut has_flags = false;
+        let mut keep_flags = Vec::new();
 
         while let Some(step) = instance.run(input) {
             input = match step.map_err(|err| Error::Run(format!("{err:?}")))? {
@@ -161,11 +179,7 @@ impl Rules {
                     if self.copy_only.contains(&folder) {
                         decision.ignored.push(format!("fileinto {folder} :copy"));
                     } else if decision.folder.is_none() {
-                        if !flags.is_empty() {
-                            decision
-                                .ignored
-                                .push(format!("flags {} on fileinto {folder}", flags.join(" ")));
-                        }
+                        decision.flags = flags;
                         decision.folder = Some(folder);
                     } else {
                         decision
@@ -175,11 +189,10 @@ impl Rules {
                     Input::True
                 }
                 // The interpreter also reports the implicit keep, so a keep only
-                // counts when it adds something: flags, or a copy left behind
-                // next to a `fileinto`.
+                // counts as ignored when it leaves a copy next to a `fileinto`.
                 Event::Keep { flags, .. } => {
                     keeps.push(with_flags("keep", &flags));
-                    has_flags |= !flags.is_empty();
+                    keep_flags = flags;
                     Input::True
                 }
                 Event::Discard => {
@@ -210,9 +223,11 @@ impl Rules {
                 _ => Input::True,
             };
         }
-        if decision.folder.is_some() || has_flags {
+        if decision.folder.is_some() {
             keeps.dedup();
             decision.ignored.extend(keeps);
+        } else {
+            decision.flags = keep_flags;
         }
         Ok(decision)
     }
@@ -413,11 +428,11 @@ if body :text :contains "invoice" { fileinto "Invoices"; }
             .decide(&message("From: a@b.c", "hi"), "a@b.c")
             .unwrap();
         assert_eq!(decision.folder.as_deref(), Some("A"));
+        assert_eq!(decision.flags, ["\\Flagged"]);
         assert_eq!(
             decision.ignored,
             [
                 "fileinto Copy :copy",
-                "flags \\Flagged on fileinto A",
                 "fileinto B (after the first)",
                 "send message to x@y.z",
                 "discard",
@@ -430,6 +445,81 @@ if body :text :contains "invoice" { fileinto "Invoices"; }
     }
 
     #[test]
+    fn supported_extensions_leave_out_what_tamis_cannot_honour() {
+        let supported = supported_extensions();
+        for name in [
+            "fileinto",
+            "body",
+            "regex",
+            "variables",
+            "relational",
+            "imap4flags",
+        ] {
+            assert!(supported.iter().any(|e| e == name), "{name}");
+        }
+        for name in ["vacation", "reject", "editheader", "include"] {
+            assert!(!supported.iter().any(|e| e == name), "{name}");
+        }
+        assert!(supported.is_sorted());
+    }
+
+    #[test]
+    fn a_required_extension_tamis_cannot_honour_is_unsupported() {
+        let rules = Rules::parse(
+            b"require [\"fileinto\", \"reject\"];\nrequire \"vacation\";\nfileinto \"A\";",
+        )
+        .unwrap();
+        assert_eq!(
+            rules.unsupported(),
+            ["extension reject", "extension vacation"]
+        );
+    }
+
+    #[test]
+    fn flags_follow_the_fileinto_or_the_keep() {
+        let raw = message("From: a@b.c", "hi");
+        let cases = [
+            (
+                "filed",
+                r#"require ["fileinto", "imap4flags"]; setflag "\\Seen"; fileinto "A";"#,
+                Some("A"),
+                vec!["\\Seen"],
+            ),
+            (
+                "staying",
+                r#"require ["imap4flags"]; addflag ["\\Flagged", "x"];"#,
+                None,
+                vec!["\\Flagged", "x"],
+            ),
+            (
+                "per fileinto",
+                r#"require ["fileinto", "imap4flags"]; fileinto :flags "\\Seen" "A";"#,
+                Some("A"),
+                vec!["\\Seen"],
+            ),
+            (
+                "none",
+                r#"require ["fileinto"]; fileinto "A";"#,
+                Some("A"),
+                vec![],
+            ),
+        ];
+        for (name, script, folder, flags) in cases {
+            let decision = Rules::parse(script.as_bytes())
+                .unwrap()
+                .decide(&raw, "a@b.c")
+                .unwrap();
+            assert_eq!(decision.folder.as_deref(), folder, "{name}");
+            assert_eq!(decision.flags, flags, "{name}");
+            assert!(
+                decision.ignored.is_empty(),
+                "{name}: {:?}",
+                decision.ignored
+            );
+        }
+    }
+
+    #[test]
     fn the_implicit_keep_is_not_reported() {
         let rules = Rules::parse(b"require [\"fileinto\"];\nif false { fileinto \"A\"; }").unwrap();
         let decision = rules
@@ -439,6 +529,7 @@ if body :text :contains "invoice" { fileinto "Invoices"; }
             decision,
             Decision {
                 folder: None,
+                flags: Vec::new(),
                 ignored: Vec::new()
             }
         );

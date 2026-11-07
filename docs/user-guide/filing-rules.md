@@ -46,3 +46,10 @@ records what it would do (`tamis log` shows it); in live mode it moves the
 message and creates the folder if needed. `tamis undo` doesn't cover rule-filed
 mail: move it back by hand, and tamis won't file it again.
 [`docs/rules.md`](../../how-it-works/rules/) has the details and limits.
+
+## Supported extensions
+
+A script may `require` only some Sieve extensions: see the
+[list of supported extensions](../../reference/sieve-extensions/).
+`tamis rules check` warns about any other extension a script requires, since
+tamis would ignore what it does.

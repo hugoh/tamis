@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Build the GitHub Pages site into site/: daisyUI stylesheet, the mock decisions page and the documentation"
 #MISE depends=["mock-web"]
-#MISE sources=["site/index.html", "docs/**/*.md", "site-docs/astro.config.mjs", "target/mock-decisions.html", "mise-tasks/site-build"]
+#MISE sources=["site/index.html", "src/rules/**/*.rs", "docs/**/*.md", "site-docs/astro.config.mjs", "target/mock-decisions.html", "mise-tasks/site-build"]
 #MISE outputs=["site/style.css", "site/mock/decisions.html", "site/docs/index.html"]
 set -euo pipefail
 
@@ -21,5 +21,17 @@ CSS
 
 mkdir -p site/mock
 cp target/mock-decisions.html site/mock/decisions.html
+
+{
+  cat <<'MD'
+---
+title: Supported Sieve extensions
+---
+
+The extensions a rules script may `require`, as listed by `tamis rules extensions`.
+
+MD
+  cargo run --quiet -- rules extensions --markdown
+} >docs/reference/sieve-extensions.md
 
 (cd site-docs && npm ci && npm run build)

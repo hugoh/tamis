@@ -388,10 +388,10 @@ mod tests {
     fn a_pending_move_is_confirmed_or_dropped() {
         let (_dir, store) = open();
         let moved = store
-            .record_pending_move(&decision("<a>", "bayes", 10), "Junk", "$TamisFiled")
+            .record_pending_move(&decision("<a>", "bayes", 10), "Junk", &["$TamisFiled"])
             .unwrap();
         let refused = store
-            .record_pending_move(&decision("<b>", "bayes", 20), "Junk", "$TamisFiled")
+            .record_pending_move(&decision("<b>", "bayes", 20), "Junk", &["$TamisFiled"])
             .unwrap();
 
         assert!(!store.decision(moved).unwrap().applied);

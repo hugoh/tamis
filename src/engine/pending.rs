@@ -17,7 +17,7 @@ impl<M: Mailbox> Engine<M> {
         message: &Message,
         verdict: &Judgement,
         dest: &str,
-        keyword: &str,
+        keywords: &[&str],
     ) -> Result<Option<i64>> {
         if message.message_id.is_empty() {
             return Ok(None);
@@ -31,9 +31,64 @@ impl<M: Mailbox> Engine<M> {
         );
         let id = self
             .store
-            .record_pending_move(&entry, dest, keyword)
+            .record_pending_move(&entry, dest, keywords)
             .context("journal move")?;
         Ok(Some(id))
+    }
+
+    /// Moves `message` from `source` to `dest` so that a failure at any step
+    /// leaves nothing half done. `marks` (keywords and flags) are set on the
+    /// message first, and the move is journalled before it is made. If the
+    /// server refuses a step, the marks are cleared and the journal forgets
+    /// the move; if the connection is lost, the journal keeps the move and
+    /// the next pass settles it (see `resolve_pending_moves`).
+    ///
+    /// Every move that sets marks beforehand goes through here.
+    pub(super) async fn move_guarded(
+        &mut self,
+        source: &str,
+        message: &Message,
+        verdict: &Judgement,
+        dest: &str,
+        marks: &[&str],
+        what: &str,
+    ) -> Result<()> {
+        let uids = [message.uid];
+        self.add_marks(source, &uids, marks).await.context(what)?;
+        let intent = self.intend_move(source, message, verdict, dest, marks)?;
+        if let Err(err) = self.mail.move_messages(source, &uids, dest).await {
+            self.clear_marks(source, &uids, marks).await;
+            self.withdraw_move(intent, &err);
+            return Err(err).context(what);
+        }
+        self.settle_move(intent, source, message, verdict, dest)
+    }
+
+    /// Sets `marks`; if one fails, the ones already set are cleared again.
+    pub(super) async fn add_marks(
+        &mut self,
+        folder: &str,
+        uids: &[u32],
+        marks: &[&str],
+    ) -> mail::Result<()> {
+        for (done, mark) in marks.iter().enumerate() {
+            if let Err(err) = self.mail.add_keyword(folder, uids, mark).await {
+                self.clear_marks(folder, uids, &marks[..done]).await;
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// Clears `marks` as far as it can. If the connection is gone and this
+    /// fails too, the journal has no move for the message, so the next pass
+    /// handles it again.
+    pub(super) async fn clear_marks(&mut self, folder: &str, uids: &[u32], marks: &[&str]) {
+        for mark in marks {
+            if let Err(err) = self.mail.remove_keyword(folder, uids, mark).await {
+                tracing::debug!(%err, mark, "could not clear a mark");
+            }
+        }
     }
 
     /// Marks a move that worked as applied. If the store fails here the entry
@@ -111,10 +166,12 @@ impl<M: Mailbox> Engine<M> {
             .await
             .context(&context)?;
         if !left.is_empty() {
-            self.mail
-                .remove_keyword(&pending.source, &left, &pending.keyword)
-                .await
-                .context(&context)?;
+            for keyword in &pending.keywords {
+                self.mail
+                    .remove_keyword(&pending.source, &left, keyword)
+                    .await
+                    .context(&context)?;
+            }
         }
         self.store.drop_move(pending.decision_id).context(&context)
     }

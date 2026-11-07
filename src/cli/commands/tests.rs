@@ -515,6 +515,17 @@ async fn rules_check_and_test_report_what_tamis_ignores() {
 }
 
 #[tokio::test]
+async fn rules_extensions_lists_what_tamis_supports() {
+    let (code, out, _) = run(&["rules", "extensions"]).await;
+    assert_eq!(code, 0);
+    assert!(out.lines().any(|l| l == "fileinto"), "{out}");
+    assert!(!out.lines().any(|l| l == "vacation"), "{out}");
+
+    let (_, out, _) = run(&["rules", "extensions", "--markdown"]).await;
+    assert!(out.lines().any(|l| l == "- `fileinto`"), "{out}");
+}
+
+#[tokio::test]
 async fn a_script_that_does_not_compile_is_reported_before_the_configuration_is_needed() {
     let dir = tempfile::tempdir().unwrap();
     let bad = dir.path().join("bad.sieve");

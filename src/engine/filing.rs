@@ -3,32 +3,54 @@ use crate::mail::{Mailbox, Message};
 use crate::rules;
 
 use super::domain::{Action, Judgement, Reason, Verdict, keyword};
+use super::pending::GuardedMove;
 use super::{Context, Engine, Result};
 
+/// What the rules decided for a message.
+pub(super) struct RulePlan {
+    target: Option<String>,
+    flags: Vec<String>,
+}
+
 impl<M: Mailbox> Engine<M> {
-    /// The folder the rules file a good message into, or `None` to leave it.
-    /// A script that fails on one message must not stall the pass, so that
-    /// message is left where it is.
-    pub(super) async fn rule_target(
+    /// What the rules do to a good message: the folder to file it into and
+    /// the flags to set, or `None` to leave it alone. A script that fails on
+    /// one message must not stall the pass, so that message is left where it
+    /// is.
+    pub(super) async fn rule_plan(
         &mut self,
         folder: &str,
         message: &Message,
         verdict: &Judgement,
-    ) -> Option<String> {
+    ) -> Option<RulePlan> {
         if verdict.verdict != Verdict::Good {
             return None;
         }
         let rules = self.rules.as_ref()?;
 
-        let target = match rules.folder(&message.raw, &message.from) {
-            Ok(target) => target?,
+        let decision = match rules.decide(&message.raw, &message.from) {
+            Ok(decision) => decision,
             Err(err) => {
                 tracing::warn!(folder, uid = message.uid, %err, "rules failed");
                 return None;
             }
         };
 
-        (target != folder && self.target_usable(folder, message, &target).await).then_some(target)
+        let target = match decision.folder {
+            Some(target) if target != folder => {
+                if !self.target_usable(folder, message, &target).await {
+                    return None;
+                }
+                Some(target)
+            }
+            _ => None,
+        };
+        let flags: Vec<String> = decision
+            .flags
+            .into_iter()
+            .filter(|flag| !message.has_flag(flag))
+            .collect();
+        (target.is_some() || !flags.is_empty()).then_some(RulePlan { target, flags })
     }
 
     /// False for a folder that is missing and may not be created. A failed
@@ -55,43 +77,48 @@ impl<M: Mailbox> Engine<M> {
         }
     }
 
-    /// Moves a good message to `target`; in shadow mode it only records what
-    /// it would have done.
+    /// Carries out what the rules decided for a good message; in shadow mode
+    /// it only records what it would have done. The flags are set before the
+    /// move, so they travel with the message, and are cleared again if the
+    /// move fails.
     pub(super) async fn file_by_rule(
         &mut self,
         folder: &str,
         message: &Message,
         mut verdict: Judgement,
-        target: &str,
+        plan: &RulePlan,
     ) -> Result<()> {
         verdict.reason = Reason::Rule;
-        let action = Action::Move(target.to_owned());
-        if self.cfg.policy.mode != Mode::Live {
+        let live = self.cfg.policy.mode == Mode::Live;
+        let flags: Vec<&str> = plan.flags.iter().map(String::as_str).collect();
+
+        let Some(target) = &plan.target else {
+            let action = Action::Keyword(plan.flags.join(" "));
+            if live {
+                self.change_marks(folder, &[message.uid], &flags, &[])
+                    .await
+                    .context("flag by rule")?;
+            }
+            return self.record(folder, message, &verdict, &action, live);
+        };
+
+        let action = Action::Move(target.clone());
+        if !live {
             return self.record(folder, message, &verdict, &action, false);
         }
 
-        let uids = [message.uid];
         self.mail.ensure(target).await.context("file by rule")?;
-        self.mail
-            .add_keyword(folder, &uids, keyword::SORTED)
-            .await
-            .context("file by rule")?;
-        let intent = self.intend_move(folder, message, &verdict, target, keyword::SORTED)?;
-        if let Err(err) = self.mail.move_messages(folder, &uids, target).await {
-            // Take the keyword back off. If the connection is gone and this
-            // fails too, the journal has no move for the message, so the next
-            // pass files it anyway.
-            if let Err(undo) = self
-                .mail
-                .remove_keyword(folder, &uids, keyword::SORTED)
-                .await
-            {
-                tracing::debug!(%undo, "could not clear the sorted keyword");
-            }
-            self.withdraw_move(intent, &err);
-            return Err(err).context("file by rule");
-        }
-        self.settle_move(intent, folder, message, &verdict, target)
+        let marks: Vec<&str> = std::iter::once(keyword::SORTED).chain(flags).collect();
+        let step = GuardedMove {
+            source: folder,
+            uids: &[message.uid],
+            dest: target,
+            set: &marks,
+            clear: &[],
+            undoes: None,
+            what: "file by rule",
+        };
+        self.move_guarded(message, &verdict, &step).await
     }
 
     /// Logs each folder the rules file into that the mailbox lacks, so a typo

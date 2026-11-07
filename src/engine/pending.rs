@@ -4,36 +4,134 @@
 
 use crate::mail::{self, Mailbox, Message};
 
+use crate::store::PendingMarks;
+
 use super::domain::{Action, Judgement};
 use super::{Context, Engine, Result};
+
+/// A move together with the marks changed around it.
+pub(super) struct GuardedMove<'a> {
+    pub source: &'a str,
+    /// The messages to move: all the copies of the one being judged.
+    pub uids: &'a [u32],
+    pub dest: &'a str,
+    /// Keywords and flags set before the move and cleared if it fails.
+    pub set: &'a [&'a str],
+    /// Keywords cleared before the move and restored if it fails.
+    pub clear: &'a [&'a str],
+    /// The decision this move undoes, marked undone once the move is known to
+    /// have happened.
+    pub undoes: Option<i64>,
+    /// Names the step in an error.
+    pub what: &'a str,
+}
 
 impl<M: Mailbox> Engine<M> {
     /// Journals a move that is about to be made, as not yet applied. Without a
     /// Message-ID there is nothing to look for afterwards, so nothing is
     /// journalled yet and `settle_move` records it once the move has worked.
-    pub(super) fn intend_move(
+    fn intend_move(
         &self,
-        folder: &str,
         message: &Message,
         verdict: &Judgement,
-        dest: &str,
-        keyword: &str,
+        step: &GuardedMove<'_>,
     ) -> Result<Option<i64>> {
         if message.message_id.is_empty() {
             return Ok(None);
         }
         let entry = Self::entry(
-            folder,
+            step.source,
             message,
             verdict,
-            &Action::Move(dest.to_owned()),
+            &Action::Move(step.dest.to_owned()),
             false,
         );
         let id = self
             .store
-            .record_pending_move(&entry, dest, keyword)
+            .record_pending_move(
+                &entry,
+                step.dest,
+                PendingMarks {
+                    set: step.set,
+                    clear: step.clear,
+                    undoes: step.undoes,
+                },
+            )
             .context("journal move")?;
         Ok(Some(id))
+    }
+
+    /// Moves `message` so that a failure at any step leaves nothing half
+    /// done. The marks are changed first and the move is journalled before it
+    /// is made. If the server refuses a step, the marks are put back and the
+    /// journal forgets the move; if the connection is lost, the journal keeps
+    /// the move and the next pass settles it (see `resolve_pending_moves`).
+    ///
+    /// Every move that changes marks around it goes through here.
+    pub(super) async fn move_guarded(
+        &mut self,
+        message: &Message,
+        verdict: &Judgement,
+        step: &GuardedMove<'_>,
+    ) -> Result<()> {
+        let uids = step.uids;
+        self.change_marks(step.source, uids, step.set, step.clear)
+            .await
+            .context(step.what)?;
+        let intent = self.intend_move(message, verdict, step)?;
+        if let Err(err) = self.mail.move_messages(step.source, uids, step.dest).await {
+            self.revert_marks(step.source, uids, step.set, step.clear)
+                .await;
+            self.withdraw_move(intent, &err);
+            return Err(err).context(step.what);
+        }
+        self.settle_move(intent, step.source, message, verdict, step.dest)
+    }
+
+    /// Clears `clear` and sets `set`; if a step fails, the ones already done
+    /// are put back.
+    pub(super) async fn change_marks(
+        &mut self,
+        folder: &str,
+        uids: &[u32],
+        set: &[&str],
+        clear: &[&str],
+    ) -> mail::Result<()> {
+        for mark in clear {
+            if let Err(err) = self.mail.remove_keyword(folder, uids, mark).await {
+                self.revert_marks(folder, uids, set, clear).await;
+                return Err(err);
+            }
+        }
+        for mark in set {
+            if let Err(err) = self.mail.add_keyword(folder, uids, mark).await {
+                self.revert_marks(folder, uids, set, clear).await;
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// Puts back what `change_marks` changed, as far as it can; marks it never
+    /// reached are left as they are. If the connection is gone and this fails
+    /// too, the journal (if any) settles the rest next pass.
+    pub(super) async fn revert_marks(
+        &mut self,
+        folder: &str,
+        uids: &[u32],
+        set: &[&str],
+        clear: &[&str],
+    ) {
+        for mark in set {
+            if let Err(err) = self.mail.remove_keyword(folder, uids, mark).await {
+                tracing::debug!(%err, mark, "could not clear a mark");
+            }
+        }
+        for mark in clear {
+            if let Err(err) = self.mail.add_keyword(folder, uids, mark).await {
+                tracing::debug!(%err, mark, "could not restore a mark");
+            }
+        }
     }
 
     /// Marks a move that worked as applied. If the store fails here the entry
@@ -111,10 +209,18 @@ impl<M: Mailbox> Engine<M> {
             .await
             .context(&context)?;
         if !left.is_empty() {
-            self.mail
-                .remove_keyword(&pending.source, &left, &pending.keyword)
-                .await
-                .context(&context)?;
+            for keyword in &pending.keywords {
+                self.mail
+                    .remove_keyword(&pending.source, &left, keyword)
+                    .await
+                    .context(&context)?;
+            }
+            for keyword in &pending.restore {
+                self.mail
+                    .add_keyword(&pending.source, &left, keyword)
+                    .await
+                    .context(&context)?;
+            }
         }
         self.store.drop_move(pending.decision_id).context(&context)
     }

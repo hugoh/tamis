@@ -97,16 +97,16 @@ impl<M: Mailbox> Engine<M> {
         learnt: Label,
     ) -> Result<()> {
         let uids: Vec<u32> = messages.iter().map(|m| m.uid).collect();
-        self.mail
-            .remove_keyword(folder, &uids, keyword::UNCERTAIN)
+        self.change_marks(folder, &uids, &[], &[keyword::UNCERTAIN])
             .await
             .context(format!("clear {}", keyword::UNCERTAIN))?;
         if learnt == Label::Spam {
             let junk = self.cfg.folders.junk.clone();
-            self.mail
-                .move_messages(folder, &uids, &junk)
-                .await
-                .context("move to junk")?;
+            if let Err(err) = self.mail.move_messages(folder, &uids, &junk).await {
+                self.revert_marks(folder, &uids, &[], &[keyword::UNCERTAIN])
+                    .await;
+                return Err(err).context("move to junk");
+            }
         }
         Ok(())
     }

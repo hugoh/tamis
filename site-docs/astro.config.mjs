@@ -38,7 +38,10 @@ export default defineConfig({
         },
         {
           label: "Reference",
-          items: ["reference/where-tamis-keeps-things"],
+          items: [
+            "reference/where-tamis-keeps-things",
+            "reference/sieve-extensions",
+          ],
         },
         {
           label: "How it works",

@@ -270,6 +270,12 @@ pub(super) enum RulesAction {
         #[arg(long)]
         strict: bool,
     },
+    /// List the Sieve extensions a script may require
+    Extensions {
+        /// Print a Markdown list, as used in the documentation
+        #[arg(long)]
+        markdown: bool,
+    },
     /// Show where the rules would file messages
     #[command(
         long_about = "Run the script on each message and print where it would be filed. With\n--expect-header, compare that with the folder the message names in that header\n(`stay` for a message no rule files) and exit 1 if any differ. --strict also\nfails when the script asks for something tamis ignores. --script tries a\nscript other than rules.script, without needing a configuration file."
@@ -283,7 +289,7 @@ pub(super) enum RulesAction {
         /// Header naming the folder each message should be filed into, or `stay`
         #[arg(long, value_name = "HEADER")]
         expect_header: Option<String>,
-        /// Fail when the script asks for something tamis ignores (redirect, flags, discard, ...)
+        /// Fail when the script asks for something tamis ignores (redirect, discard, ...)
         #[arg(long)]
         strict: bool,
         /// `json` prints one object per message: folder, ignored, and with --expect-header the expectation

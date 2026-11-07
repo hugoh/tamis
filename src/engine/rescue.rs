@@ -4,6 +4,7 @@ use crate::config::Mode;
 use crate::mail::{Mailbox, Message};
 
 use super::domain::{Action, Judgement, Reason, Summary, Verdict, keyword};
+use super::pending::GuardedMove;
 use super::{Context, Engine, Result};
 
 impl<M: Mailbox> Engine<M> {
@@ -72,30 +73,20 @@ impl<M: Mailbox> Engine<M> {
         dest: &str,
     ) -> Result<()> {
         let junk = self.cfg.folders.junk.clone();
-        let uids = [message.uid];
 
         self.mail
             .ensure(dest)
             .await
             .context(format!("create {dest}"))?;
-        self.mail
-            .add_keyword(&junk, &uids, keyword::RESCUED)
-            .await
-            .context("flag rescued")?;
-        let intent = self.intend_move(&junk, message, verdict, dest, keyword::RESCUED)?;
-        if let Err(err) = self.mail.move_messages(&junk, &uids, dest).await {
-            // Left in Junk with the keyword, the next pass would read it as
-            // the user moving a rescue back.
-            if let Err(undo) = self
-                .mail
-                .remove_keyword(&junk, &uids, keyword::RESCUED)
-                .await
-            {
-                tracing::debug!(%undo, "could not clear the rescued keyword");
-            }
-            self.withdraw_move(intent, &err);
-            return Err(err).context(format!("move to {dest}"));
-        }
-        self.settle_move(intent, &junk, message, verdict, dest)
+        let step = GuardedMove {
+            source: &junk,
+            uids: &[message.uid],
+            dest,
+            set: &[keyword::RESCUED],
+            clear: &[],
+            undoes: None,
+            what: &format!("move to {dest}"),
+        };
+        self.move_guarded(message, verdict, &step).await
     }
 }

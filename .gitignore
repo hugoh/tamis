@@ -28,3 +28,4 @@ eval-data/
 /site-docs/node_modules/
 /site-docs/dist/
 /site-docs/.astro/
+docs/reference/sieve-extensions.md

@@ -212,6 +212,7 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
                 folders,
                 strict,
             } => commands::rules_check(app, file.as_deref(), folders, strict).await,
+            RulesAction::Extensions { markdown } => commands::rules_extensions(app, markdown),
             RulesAction::Test {
                 messages,
                 script,

@@ -44,7 +44,25 @@ pub struct PendingMove {
     pub source: String,
     pub dest: String,
     pub message_id: String,
-    pub keyword: String,
+    /// Every keyword and flag set on the message before the move, to clear if
+    /// it did not happen.
+    pub keywords: Vec<String>,
+    /// Keywords the move cleared beforehand, to set again if it did not
+    /// happen.
+    pub restore: Vec<String>,
+}
+
+/// The marks a pending move changed on the message, which are put back if
+/// the move did not happen.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PendingMarks<'a> {
+    /// Set before the move.
+    pub set: &'a [&'a str],
+    /// Cleared before the move.
+    pub clear: &'a [&'a str],
+    /// The decision this move undoes, marked undone once the move is
+    /// confirmed.
+    pub undoes: Option<i64>,
 }
 
 /// Summarises what the store has learnt.
@@ -328,14 +346,23 @@ impl Store {
         &self,
         decision: &Decision,
         dest: &str,
-        keyword: &str,
+        marks: PendingMarks<'_>,
     ) -> Result<i64> {
         self.in_tx(|tx| {
             let id = insert_decision(tx, decision, false)?;
             tx.execute(
-                "INSERT INTO pending_moves (decision_id, source, dest, message_id, keyword)
-                 VALUES (?, ?, ?, ?, ?)",
-                params![id, decision.mailbox, dest, decision.message_id, keyword],
+                "INSERT INTO pending_moves
+                     (decision_id, source, dest, message_id, keyword, restore, undoes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                params![
+                    id,
+                    decision.mailbox,
+                    dest,
+                    decision.message_id,
+                    marks.set.join(" "),
+                    marks.clear.join(" "),
+                    marks.undoes.unwrap_or(0)
+                ],
             )?;
             Ok(id)
         })
@@ -348,7 +375,7 @@ impl Store {
     pub fn pending_moves(&self) -> Result<Vec<PendingMove>> {
         let conn = self.conn();
         let mut statement = conn.prepare(
-            "SELECT decision_id, source, dest, message_id, keyword
+            "SELECT decision_id, source, dest, message_id, keyword, restore
              FROM pending_moves ORDER BY decision_id",
         )?;
         let rows = statement.query_map([], |row| {
@@ -357,7 +384,16 @@ impl Store {
                 source: row.get(1)?,
                 dest: row.get(2)?,
                 message_id: row.get(3)?,
-                keyword: row.get(4)?,
+                keywords: row
+                    .get::<_, String>(4)?
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect(),
+                restore: row
+                    .get::<_, String>(5)?
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect(),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -371,6 +407,11 @@ impl Store {
         self.in_tx(|tx| {
             tx.execute(
                 "UPDATE decisions SET applied = 1 WHERE id = ?",
+                [decision_id],
+            )?;
+            tx.execute(
+                "UPDATE decisions SET undone = 1
+                 WHERE undone = 0 AND id = (SELECT undoes FROM pending_moves WHERE decision_id = ?)",
                 [decision_id],
             )?;
             tx.execute(

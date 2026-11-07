@@ -511,6 +511,115 @@ async fn good_mail_is_filed_by_the_rules_in_live_mode() {
     );
 }
 
+const FLAG_RULES: &str = r#"require ["fileinto", "imap4flags"];
+if header :contains "list-id" "golang" { setflag "\\Seen"; addflag "Golang"; fileinto "Lists"; }"#;
+
+fn env_with_flag_rules(mode: Mode) -> Env {
+    let mut env = Env::trained_with(mode, |_| {});
+    env.store()
+        .add_address("alice@friends.example", "sent")
+        .unwrap();
+    env.engine
+        .set_rules(Rules::parse(FLAG_RULES.as_bytes()).unwrap());
+    env.mail().add_folder("Lists");
+    env
+}
+
+#[tokio::test]
+async fn rule_flags_travel_with_the_filed_message() {
+    let mut env = env_with_flag_rules(Mode::Live);
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+
+    env.engine.run_once().await.unwrap();
+
+    let mut flags = env.mail().flags("Lists", 1).unwrap();
+    flags.sort();
+    assert_eq!(flags, ["$tamissorted", "\\seen", "golang"]);
+}
+
+#[tokio::test]
+async fn a_failed_move_clears_the_rule_flags_it_set() {
+    let mut env = env_with_flag_rules(Mode::Live);
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+    env.mail().fail("move", MailError::Server("refused".into()));
+
+    env.engine.run_once().await.unwrap();
+
+    assert_eq!(env.mail().flags("INBOX", 1), Some(vec![]));
+    assert!(env.store().pending_moves().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_move_cut_off_by_a_lost_connection_clears_every_mark_next_pass() {
+    let mut env = env_with_flag_rules(Mode::Live);
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+    env.mail()
+        .fail("move", MailError::Connection("gone".into()));
+    env.mail()
+        .fail("remove_keyword", MailError::Connection("gone".into()));
+    assert!(env.engine.run_once().await.unwrap_err().is_connection());
+    assert_eq!(env.store().pending_moves().unwrap()[0].keywords.len(), 3);
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.store().pending_moves().unwrap().is_empty());
+    let mut flags = env.mail().flags("Lists", 1).unwrap();
+    flags.sort();
+    assert_eq!(
+        flags,
+        ["$tamissorted", "\\seen", "golang"],
+        "retried and filed"
+    );
+}
+
+#[tokio::test]
+async fn flags_alone_are_set_in_place_and_journalled() {
+    let mut env = Env::trained_with(Mode::Live, |_| {});
+    env.store()
+        .add_address("alice@friends.example", "sent")
+        .unwrap();
+    env.engine.set_rules(
+        Rules::parse(
+            br#"require "imap4flags"; if header :contains "list-id" "golang" { addflag "\\Flagged"; }"#,
+        )
+        .unwrap(),
+    );
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+
+    env.engine.run_once().await.unwrap();
+
+    assert_eq!(env.mail().uids("INBOX"), [1]);
+    assert_eq!(
+        env.mail().flags("INBOX", 1),
+        Some(vec!["\\flagged".to_owned()])
+    );
+    let decision = &env.decisions()[0];
+    assert_eq!(
+        (
+            decision.reason.as_str(),
+            decision.action.to_string().as_str(),
+            decision.applied
+        ),
+        ("rule", "keyword:\\Flagged", true)
+    );
+}
+
+#[tokio::test]
+async fn rule_flags_are_only_reported_in_shadow_mode() {
+    let mut env = env_with_flag_rules(Mode::Shadow);
+    env.start().await;
+    env.mail().deliver("INBOX", &listed(), &[]);
+
+    env.engine.run_once().await.unwrap();
+
+    assert_eq!(env.mail().flags("INBOX", 1), Some(vec![]));
+    assert!(!env.decisions()[0].applied);
+}
+
 #[tokio::test]
 async fn the_rules_only_report_in_shadow_mode() {
     let mut env = env_with_rules(Mode::Shadow, |_| {});
@@ -1432,6 +1541,25 @@ async fn undoing_an_uncertain_flag_clears_it() {
 }
 
 #[tokio::test]
+async fn a_refused_move_to_junk_keeps_the_uncertain_flag_for_a_retry() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &unknown("u1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let id = decision_where(&env, |d| d.action == "keyword:$TamisUncertain");
+    env.mail().fail("move", MailError::Server("nope".into()));
+
+    assert!(env.engine.learn(id, Some(Label::Spam)).await.is_err());
+
+    assert_eq!(
+        env.mail().flags("INBOX", 1),
+        Some(vec!["$tamisuncertain".to_owned()])
+    );
+    env.engine.learn(id, Some(Label::Spam)).await.unwrap();
+    assert_eq!(env.mail().uids("Junk").len(), 1);
+}
+
+#[tokio::test]
 async fn learning_an_uncertain_flag_as_spam_clears_it_and_moves_to_junk() {
     let mut env = Env::trained();
     env.start().await;
@@ -1504,9 +1632,62 @@ async fn an_undo_that_cannot_finish_can_be_retried() {
     env.mail().fail("move", MailError::Server("nope".into()));
     assert!(env.engine.undo(id).await.is_err());
     assert!(!env.store().decision(id).unwrap().undone);
+    assert_eq!(
+        env.mail().flags("Junk", 1),
+        Some(vec!["$tamisfiled".to_owned()]),
+        "the keyword it cleared is put back"
+    );
+    assert!(env.store().pending_moves().unwrap().is_empty());
 
     env.engine.undo(id).await.unwrap();
     assert!(env.store().decision(id).unwrap().undone);
+}
+
+#[tokio::test]
+async fn an_undo_whose_reply_was_lost_is_settled_next_pass() {
+    let (mut env, id) = filed_spam().await;
+    env.mail()
+        .fail_after("move", MailError::Connection("gone".into()));
+
+    assert!(env.engine.undo(id).await.unwrap_err().is_connection());
+    assert!(!env.store().decision(id).unwrap().undone);
+    assert_eq!(env.mail().uids("INBOX"), [2], "the server did move it");
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.store().decision(id).unwrap().undone);
+    assert!(env.store().pending_moves().unwrap().is_empty());
+    let undo = decision_where(&env, |d| d.reason == "undo");
+    assert!(env.store().decision(undo).unwrap().applied);
+}
+
+#[tokio::test]
+async fn an_undo_that_never_happened_puts_its_marks_back_next_pass() {
+    let (mut env, id) = filed_spam().await;
+    env.mail()
+        .fail("move", MailError::Connection("gone".into()));
+
+    assert!(env.engine.undo(id).await.unwrap_err().is_connection());
+    assert_eq!(env.store().pending_moves().unwrap().len(), 1);
+    // The connection was gone for the rollback too.
+    env.mail()
+        .remove_keyword("Junk", &[1], "$TamisTrained")
+        .await
+        .unwrap();
+    env.mail()
+        .remove_keyword("Junk", &[1], "$TamisFiled")
+        .await
+        .unwrap();
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.store().pending_moves().unwrap().is_empty());
+    assert!(!env.store().decision(id).unwrap().undone);
+    assert_eq!(
+        env.mail().flags("Junk", 1),
+        Some(vec!["$tamisfiled".to_owned()])
+    );
+    assert_eq!(env.decisions().len(), 1, "no row left for the attempt");
 }
 
 #[tokio::test]

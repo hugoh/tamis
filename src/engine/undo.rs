@@ -3,6 +3,7 @@ use crate::mail::{Mailbox, Message};
 use crate::store::{self, Decision};
 
 use super::domain::{Action, Judgement, Reason, Verdict, keyword};
+use super::pending::GuardedMove;
 use super::{Context, Engine, Error, Result, training_key};
 
 /// How a decision is reversed.
@@ -70,7 +71,12 @@ impl<M: Mailbox> Engine<M> {
         }
         .context(&context)?;
 
-        self.store.mark_undone(decision_id).context(&context)?;
+        // A journalled move marks the decision undone itself once it is known
+        // to have happened.
+        match self.store.mark_undone(decision_id) {
+            Ok(()) | Err(store::Error::AlreadyUndone(_)) => {}
+            Err(err) => return Err(err).context(&context),
+        }
         Ok(summary)
     }
 
@@ -102,31 +108,21 @@ impl<M: Mailbox> Engine<M> {
             self.relearn(message, reversal.label)?;
         }
 
-        self.mail
-            .remove_keyword(moved_to, &uids, reversal.keyword)
-            .await
-            .context(format!("clear {}", reversal.keyword))?;
-        self.mail
-            .add_keyword(moved_to, &uids, keyword::TRAINED)
-            .await
-            .context(format!("flag {}", keyword::TRAINED))?;
-        self.mail
-            .move_messages(moved_to, &uids, &decision.mailbox)
-            .await
-            .context("move back")?;
-
         let judgement = Judgement {
             verdict: reversal.verdict,
             reason: Reason::Undo,
             score: self.rescore(&messages[0].raw)?,
         };
-        self.record(
-            &decision.mailbox,
-            &messages[0],
-            &judgement,
-            &Action::Move(decision.mailbox.clone()),
-            true,
-        )?;
+        let step = GuardedMove {
+            source: moved_to,
+            uids: &uids,
+            dest: &decision.mailbox,
+            set: &[keyword::TRAINED],
+            clear: &[reversal.keyword],
+            undoes: Some(decision.id),
+            what: "move back",
+        };
+        self.move_guarded(&messages[0], &judgement, &step).await?;
 
         let learnt = if reversal.label == Label::Spam {
             "learnt as spam, sender removed from whitelist"

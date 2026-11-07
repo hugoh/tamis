@@ -11,6 +11,7 @@ mod junk;
 mod keywords;
 mod learn;
 mod pending;
+use pending::GuardedMove;
 mod rescue;
 mod train;
 mod undo;
@@ -233,8 +234,8 @@ impl<M: Mailbox> Engine<M> {
         summary.scanned += 1;
         summary.count(verdict.verdict);
 
-        if let Some(target) = self.rule_target(folder, message, &verdict).await {
-            return self.file_by_rule(folder, message, verdict, &target).await;
+        if let Some(plan) = self.rule_plan(folder, message, &verdict).await {
+            return self.file_by_rule(folder, message, verdict, &plan).await;
         }
 
         self.act(folder, message, &verdict).await
@@ -361,26 +362,16 @@ impl<M: Mailbox> Engine<M> {
                     return self.record(folder, message, verdict, &Action::Move(junk), false);
                 }
 
-                self.mail
-                    .add_keyword(folder, &uids, keyword::FILED)
-                    .await
-                    .context("file spam")?;
-                let intent = self.intend_move(folder, message, verdict, &junk, keyword::FILED)?;
-                if let Err(err) = self.mail.move_messages(folder, &uids, &junk).await {
-                    // Left in place with the keyword, the next pass would
-                    // mistake the message for one the user moved back out of
-                    // Junk.
-                    if let Err(undo) = self
-                        .mail
-                        .remove_keyword(folder, &uids, keyword::FILED)
-                        .await
-                    {
-                        tracing::debug!(%undo, "could not clear the filed keyword");
-                    }
-                    self.withdraw_move(intent, &err);
-                    return Err(err).context("file spam");
-                }
-                self.settle_move(intent, folder, message, verdict, &junk)
+                let step = GuardedMove {
+                    source: folder,
+                    uids: &uids,
+                    dest: &junk,
+                    set: &[keyword::FILED],
+                    clear: &[],
+                    undoes: None,
+                    what: "file spam",
+                };
+                self.move_guarded(message, verdict, &step).await
             }
             Verdict::Uncertain => {
                 let action = Action::Keyword(keyword::UNCERTAIN.to_owned());

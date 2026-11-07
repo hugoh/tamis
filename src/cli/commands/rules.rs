@@ -62,6 +62,17 @@ pub(in super::super) async fn check(
     check_folders(app, loaded.targets()).await
 }
 
+pub(in super::super) fn extensions(app: &mut App, markdown: bool) -> Result<()> {
+    for name in rules::supported_extensions() {
+        if markdown {
+            writeln!(app.env.stdout, "- `{name}`")?;
+        } else {
+            writeln!(app.env.stdout, "{name}")?;
+        }
+    }
+    Ok(())
+}
+
 /// Lists the mailbox and reports each target it lacks, with the nearest
 /// existing name when one is close.
 async fn check_folders(app: &mut App, targets: &[String]) -> Result<()> {

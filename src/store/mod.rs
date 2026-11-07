@@ -23,7 +23,7 @@ pub use addresses::{
     Address, AddressQuery, AddressSort, MANUAL_SOURCE, parse_address, parse_addresses,
 };
 pub use cursors::{Cursor, ModSeq};
-pub use decisions::{Decision, DecisionQuery, DecisionSort, PendingMove, Stats};
+pub use decisions::{Decision, DecisionQuery, DecisionSort, PendingMarks, PendingMove, Stats};
 pub use model::Snapshot;
 pub use web::Passkey;
 
@@ -388,10 +388,24 @@ mod tests {
     fn a_pending_move_is_confirmed_or_dropped() {
         let (_dir, store) = open();
         let moved = store
-            .record_pending_move(&decision("<a>", "bayes", 10), "Junk", &["$TamisFiled"])
+            .record_pending_move(
+                &decision("<a>", "bayes", 10),
+                "Junk",
+                PendingMarks {
+                    set: &["$TamisFiled"],
+                    ..PendingMarks::default()
+                },
+            )
             .unwrap();
         let refused = store
-            .record_pending_move(&decision("<b>", "bayes", 20), "Junk", &["$TamisFiled"])
+            .record_pending_move(
+                &decision("<b>", "bayes", 20),
+                "Junk",
+                PendingMarks {
+                    set: &["$TamisFiled"],
+                    ..PendingMarks::default()
+                },
+            )
             .unwrap();
 
         assert!(!store.decision(moved).unwrap().applied);
@@ -409,6 +423,34 @@ mod tests {
         assert!(store.decision(moved).unwrap().applied);
         assert!(matches!(store.decision(refused), Err(Error::NotFound(_))));
         assert!(store.pending_moves().unwrap().is_empty());
+    }
+
+    #[test]
+    fn confirming_a_pending_undo_marks_the_decision_it_undoes() {
+        let (_dir, store) = open();
+        let original = store
+            .record_decision(&decision("<a>", "bayes", 10))
+            .unwrap();
+        let undo = store
+            .record_pending_move(
+                &decision("<a>", "undo", 20),
+                "INBOX",
+                PendingMarks {
+                    set: &["$TamisTrained"],
+                    clear: &["$TamisFiled"],
+                    undoes: Some(original),
+                },
+            )
+            .unwrap();
+
+        let pending = store.pending_moves().unwrap();
+        assert_eq!(pending[0].keywords, ["$TamisTrained"]);
+        assert_eq!(pending[0].restore, ["$TamisFiled"]);
+        assert!(!store.decision(original).unwrap().undone);
+
+        store.confirm_move(undo).unwrap();
+
+        assert!(store.decision(original).unwrap().undone);
     }
 
     #[test]

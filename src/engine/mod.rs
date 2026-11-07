@@ -11,6 +11,7 @@ mod junk;
 mod keywords;
 mod learn;
 mod pending;
+use pending::GuardedMove;
 mod rescue;
 mod train;
 mod undo;
@@ -361,15 +362,16 @@ impl<M: Mailbox> Engine<M> {
                     return self.record(folder, message, verdict, &Action::Move(junk), false);
                 }
 
-                self.move_guarded(
-                    folder,
-                    message,
-                    verdict,
-                    &junk,
-                    &[keyword::FILED],
-                    "file spam",
-                )
-                .await
+                let step = GuardedMove {
+                    source: folder,
+                    uids: &uids,
+                    dest: &junk,
+                    set: &[keyword::FILED],
+                    clear: &[],
+                    undoes: None,
+                    what: "file spam",
+                };
+                self.move_guarded(message, verdict, &step).await
             }
             Verdict::Uncertain => {
                 let action = Action::Keyword(keyword::UNCERTAIN.to_owned());

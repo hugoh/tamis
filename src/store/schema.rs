@@ -66,4 +66,6 @@ CREATE TABLE enrollments (
 	message_id  TEXT NOT NULL,
 	keyword     TEXT NOT NULL
 );",
+    "ALTER TABLE pending_moves ADD COLUMN restore TEXT NOT NULL DEFAULT '';
+ALTER TABLE pending_moves ADD COLUMN undoes INTEGER NOT NULL DEFAULT 0;",
 ];

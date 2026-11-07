@@ -4,6 +4,7 @@ use crate::config::Mode;
 use crate::mail::{Mailbox, Message};
 
 use super::domain::{Action, Judgement, Reason, Summary, Verdict, keyword};
+use super::pending::GuardedMove;
 use super::{Context, Engine, Result};
 
 impl<M: Mailbox> Engine<M> {
@@ -77,14 +78,15 @@ impl<M: Mailbox> Engine<M> {
             .ensure(dest)
             .await
             .context(format!("create {dest}"))?;
-        self.move_guarded(
-            &junk,
-            message,
-            verdict,
+        let step = GuardedMove {
+            source: &junk,
+            uids: &[message.uid],
             dest,
-            &[keyword::RESCUED],
-            &format!("move to {dest}"),
-        )
-        .await
+            set: &[keyword::RESCUED],
+            clear: &[],
+            undoes: None,
+            what: &format!("move to {dest}"),
+        };
+        self.move_guarded(message, verdict, &step).await
     }
 }

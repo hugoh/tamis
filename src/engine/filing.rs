@@ -3,6 +3,7 @@ use crate::mail::{Mailbox, Message};
 use crate::rules;
 
 use super::domain::{Action, Judgement, Reason, Verdict, keyword};
+use super::pending::GuardedMove;
 use super::{Context, Engine, Result};
 
 /// What the rules decided for a message.
@@ -94,7 +95,7 @@ impl<M: Mailbox> Engine<M> {
         let Some(target) = &plan.target else {
             let action = Action::Keyword(plan.flags.join(" "));
             if live {
-                self.add_marks(folder, &[message.uid], &flags)
+                self.change_marks(folder, &[message.uid], &flags, &[])
                     .await
                     .context("flag by rule")?;
             }
@@ -108,8 +109,16 @@ impl<M: Mailbox> Engine<M> {
 
         self.mail.ensure(target).await.context("file by rule")?;
         let marks: Vec<&str> = std::iter::once(keyword::SORTED).chain(flags).collect();
-        self.move_guarded(folder, message, &verdict, target, &marks, "file by rule")
-            .await
+        let step = GuardedMove {
+            source: folder,
+            uids: &[message.uid],
+            dest: target,
+            set: &marks,
+            clear: &[],
+            undoes: None,
+            what: "file by rule",
+        };
+        self.move_guarded(message, &verdict, &step).await
     }
 
     /// Logs each folder the rules file into that the mailbox lacks, so a typo

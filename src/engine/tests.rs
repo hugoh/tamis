@@ -1541,6 +1541,25 @@ async fn undoing_an_uncertain_flag_clears_it() {
 }
 
 #[tokio::test]
+async fn a_refused_move_to_junk_keeps_the_uncertain_flag_for_a_retry() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &unknown("u1"), &[]);
+    env.engine.run_once().await.unwrap();
+    let id = decision_where(&env, |d| d.action == "keyword:$TamisUncertain");
+    env.mail().fail("move", MailError::Server("nope".into()));
+
+    assert!(env.engine.learn(id, Some(Label::Spam)).await.is_err());
+
+    assert_eq!(
+        env.mail().flags("INBOX", 1),
+        Some(vec!["$tamisuncertain".to_owned()])
+    );
+    env.engine.learn(id, Some(Label::Spam)).await.unwrap();
+    assert_eq!(env.mail().uids("Junk").len(), 1);
+}
+
+#[tokio::test]
 async fn learning_an_uncertain_flag_as_spam_clears_it_and_moves_to_junk() {
     let mut env = Env::trained();
     env.start().await;
@@ -1613,9 +1632,62 @@ async fn an_undo_that_cannot_finish_can_be_retried() {
     env.mail().fail("move", MailError::Server("nope".into()));
     assert!(env.engine.undo(id).await.is_err());
     assert!(!env.store().decision(id).unwrap().undone);
+    assert_eq!(
+        env.mail().flags("Junk", 1),
+        Some(vec!["$tamisfiled".to_owned()]),
+        "the keyword it cleared is put back"
+    );
+    assert!(env.store().pending_moves().unwrap().is_empty());
 
     env.engine.undo(id).await.unwrap();
     assert!(env.store().decision(id).unwrap().undone);
+}
+
+#[tokio::test]
+async fn an_undo_whose_reply_was_lost_is_settled_next_pass() {
+    let (mut env, id) = filed_spam().await;
+    env.mail()
+        .fail_after("move", MailError::Connection("gone".into()));
+
+    assert!(env.engine.undo(id).await.unwrap_err().is_connection());
+    assert!(!env.store().decision(id).unwrap().undone);
+    assert_eq!(env.mail().uids("INBOX"), [2], "the server did move it");
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.store().decision(id).unwrap().undone);
+    assert!(env.store().pending_moves().unwrap().is_empty());
+    let undo = decision_where(&env, |d| d.reason == "undo");
+    assert!(env.store().decision(undo).unwrap().applied);
+}
+
+#[tokio::test]
+async fn an_undo_that_never_happened_puts_its_marks_back_next_pass() {
+    let (mut env, id) = filed_spam().await;
+    env.mail()
+        .fail("move", MailError::Connection("gone".into()));
+
+    assert!(env.engine.undo(id).await.unwrap_err().is_connection());
+    assert_eq!(env.store().pending_moves().unwrap().len(), 1);
+    // The connection was gone for the rollback too.
+    env.mail()
+        .remove_keyword("Junk", &[1], "$TamisTrained")
+        .await
+        .unwrap();
+    env.mail()
+        .remove_keyword("Junk", &[1], "$TamisFiled")
+        .await
+        .unwrap();
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.store().pending_moves().unwrap().is_empty());
+    assert!(!env.store().decision(id).unwrap().undone);
+    assert_eq!(
+        env.mail().flags("Junk", 1),
+        Some(vec!["$tamisfiled".to_owned()])
+    );
+    assert_eq!(env.decisions().len(), 1, "no row left for the attempt");
 }
 
 #[tokio::test]

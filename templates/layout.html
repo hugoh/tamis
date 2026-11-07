@@ -24,7 +24,7 @@
 <main class="mx-auto max-w-screen-2xl p-4">
 {% block content %}{% endblock %}
 </main>
-{% if !version.is_empty() %}<footer class="p-4 text-center text-xs opacity-60"><a class="link link-hover" href="https://tamis.larve.net/" rel="noreferrer">tamis</a> {{ version }}</footer>{% endif %}
+{% if !version.is_empty() %}<footer class="p-4 text-center text-xs opacity-60"><a class="link link-hover" href="https://tamis.larve.net/">tamis</a> {{ version }}</footer>{% endif %}
 <div id="toasts" class="toast toast-end" role="status" aria-live="polite"></div>
 <script src="/static/vendor/htmx.min.js?v={{ version }}"></script>
 <script src="/static/feedback.js?v={{ version }}"></script>

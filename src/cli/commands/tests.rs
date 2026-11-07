@@ -522,7 +522,18 @@ async fn rules_extensions_lists_what_tamis_supports() {
     assert!(!out.lines().any(|l| l == "vacation"), "{out}");
 
     let (_, out, _) = run(&["rules", "extensions", "--markdown"]).await;
-    assert!(out.lines().any(|l| l == "- `fileinto`"), "{out}");
+    assert!(
+        out.lines()
+            .any(|l| l == "- [`fileinto`](https://www.rfc-editor.org/rfc/rfc5228)"),
+        "{out}"
+    );
+    for name in crate::rules::supported_extensions() {
+        assert!(
+            out.lines()
+                .any(|l| l.starts_with(&format!("- [`{name}`](https://"))),
+            "{name} has no link: {out}"
+        );
+    }
 }
 
 #[tokio::test]

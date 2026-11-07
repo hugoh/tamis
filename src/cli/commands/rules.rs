@@ -65,7 +65,10 @@ pub(in super::super) async fn check(
 pub(in super::super) fn extensions(app: &mut App, markdown: bool) -> Result<()> {
     for name in rules::supported_extensions() {
         if markdown {
-            writeln!(app.env.stdout, "- `{name}`")?;
+            match rules::extension_reference(&name) {
+                Some(url) => writeln!(app.env.stdout, "- [`{name}`]({url})")?,
+                None => writeln!(app.env.stdout, "- `{name}`")?,
+            }
         } else {
             writeln!(app.env.stdout, "{name}")?;
         }

@@ -41,6 +41,40 @@ pub fn supported_extensions() -> Vec<String> {
     names
 }
 
+/// Where each extension is specified: an RFC, or the draft for `regex`.
+#[must_use]
+pub fn extension_reference(name: &str) -> Option<String> {
+    let rfc = match name {
+        "body" => 5173,
+        "copy" => 3894,
+        "date" | "index" => 5260,
+        "comparator-i;ascii-casemap"
+        | "comparator-i;ascii-numeric"
+        | "comparator-i;octet"
+        | "encoded-character"
+        | "envelope"
+        | "fileinto" => 5228,
+        "envelope-deliverby" | "envelope-dsn" => 6009,
+        "environment" => 5183,
+        "extracttext" | "foreverypart" | "mime" => 5703,
+        "ihave" => 5463,
+        "imap4flags" => 5232,
+        "mailbox" => 5490,
+        "mailboxid" => 9042,
+        "regex" => {
+            return Some(
+                "https://datatracker.ietf.org/doc/draft-murchison-sieve-regex/".to_string(),
+            );
+        }
+        "relational" => 5231,
+        "special-use" => 8579,
+        "subaddress" => 5233,
+        "variables" => 5229,
+        _ => return None,
+    };
+    Some(format!("https://www.rfc-editor.org/rfc/rfc{rfc}"))
+}
+
 /// What a script decides for one message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Decision {

@@ -29,6 +29,7 @@ title: Supported Sieve extensions
 ---
 
 The extensions a rules script may `require`, as listed by `tamis rules extensions`.
+Each links to its specification.
 
 MD
   cargo run --quiet -- rules extensions --markdown

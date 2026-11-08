@@ -1,4 +1,4 @@
-<form id="add" class="join"{% if body.reset_form %} hx-swap-oob="true"{% endif %} hx-post="/whitelist" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar">
+<form id="add" class="join"{% if body.reset_form %} hx-swap-oob="true"{% endif %} hx-post="/whitelist" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar" hx-disabled-elt="find button">
 <input class="input input-sm join-item w-72" name="address" placeholder="someone@example.org" required aria-label="Address to whitelist">
 <button class="btn btn-sm btn-primary join-item">Add</button>
 </form>

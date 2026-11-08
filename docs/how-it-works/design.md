@@ -188,6 +188,59 @@ daemon stops or the filter's quality drops; see [monitoring.md](../../user-guide
 A revoked app-specific password shows up there too, through a channel other
 than the mailbox.
 
+## Web interface security
+
+The interface shows untrusted data (senders, subjects, reasons taken from
+mail) to a signed-in user who can undo decisions, edit the whitelist and turn
+on debug logging. The design assumes an escaping mistake will happen one day
+and limits what it can do. Every response carries:
+
+```text
+Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'
+```
+
+- **`default-src 'self'`** covers scripts, styles, images, fonts and
+  connections, so the page loads only from its own origin. There is no
+  `'unsafe-inline'` and no `'unsafe-eval'`: injected markup cannot run a
+  script, and it cannot restyle the page or send data to another site.
+- **`frame-ancestors 'none'`** stops any site framing the interface
+  (clickjacking).
+- **`form-action 'self'`** stops an injected form from posting elsewhere.
+- **`base-uri 'none'`** stops an injected `<base>` from redirecting relative
+  URLs.
+
+The rest of the design follows from that policy:
+
+- **No inline code.** Templates carry no `<script>`, `style=` or `on*=`
+  attributes; behaviour lives in files under `web/static` (for example
+  `whitelist.js`, `rules.js`).
+- **htmx runs without eval or inline styles.** It is configured in
+  `layout.html` with `allowEval: false`, `allowScriptTags: false` and
+  `includeIndicatorStyles: false`. The last one stops htmx injecting its
+  indicator `<style>` block, which this policy would block. So
+  `.htmx-indicator` does nothing here, and loading feedback is either
+  `hx-disabled-elt` (it sets the `disabled` attribute, which needs no CSS) or
+  a rule on the `htmx-request` class in the vendored stylesheet.
+- **Nothing from another site.** htmx and the stylesheet are served from
+  `web/static/vendor` (see [contributing.md](../../contributing/)), with no CDN.
+
+Loosening the policy is not the way to get a feature. `'unsafe-inline'` in
+`script-src` turns any escaping bug into code running in an authenticated
+session, which the `Origin` check cannot stop because the request comes from
+the interface's own origin.
+
+The other defences:
+
+- State-changing requests (anything but `GET` and `HEAD`) whose `Origin` is not
+  the interface's own get `403`.
+- `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
+- `Strict-Transport-Security` when the interface is served over HTTPS.
+- `Cache-Control: no-store` on everything except `/static/`.
+- Passkey sign-in, with sessions that expire after 12 hours.
+
+The header and the check are in `src/web/mod.rs`, and a test asserts the
+header.
+
 ## Onboarding
 
 [Bootstrap](../../how-it-works/engine/#bootstrap) does the seeding: the whitelist from Sent

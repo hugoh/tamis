@@ -51,6 +51,16 @@ mise use -g github:hugoh/tamis
 
 See [INSTALL.md](../install/) for installation instructions.
 
+## Cargo
+
+```sh
+cargo install tamis
+```
+
+This builds from source, so it needs a Rust toolchain and a C compiler (SQLite
+is bundled). The crate ships the web interface's files, so no `mise` step is
+needed. It also works on macOS, which the release binaries don't cover yet.
+
 ## From source
 
 The web interface's files are built, not committed, so use the `mise` tasks:
@@ -62,6 +72,7 @@ mise install
 mise run build
 ```
 
-A plain `cargo build --release` also works, but run `mise run vendor-web` first:
+A plain `cargo build --release` of a checkout also works, but run
+`mise run vendor-web` first:
 without the files it embeds, the web interface refuses to start; see
 [Development](../contributing/).

@@ -1330,7 +1330,15 @@ async fn provider_junk_teaches_the_model_unless_tamis_is_already_sure() {
         env.store().has_address("zed@nowhere.example").unwrap(),
         "the whitelist is left alone"
     );
-    assert_eq!(env.decisions()[0].reason, "provider junk");
+    let decisions = env.decisions();
+    assert_eq!(decisions.len(), 2, "p3 is the user's, not logged");
+    assert!(decisions.iter().all(|d| d.reason == "provider junk"));
+    let sure = decisions.iter().find(|d| d.message_id == "<p2@x>").unwrap();
+    assert_eq!(sure.action, "none");
+    assert!(sure.score >= 0.9);
+
+    env.engine.run_once().await.unwrap();
+    assert_eq!(env.decisions().len(), 2, "logged once");
 }
 
 #[tokio::test]

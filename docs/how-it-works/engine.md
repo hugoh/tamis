@@ -322,13 +322,14 @@ flowchart TD
     mine -- no --> rescued{Rescued?}
     rescued -- yes --> done([Not trained])
     rescued -- no --> score{Score}
-    score -- "≥ spam_threshold" --> sure([Skip: already sure])
+    score -- "≥ spam_threshold" --> sure[Journal: spam, none<br/>not trained]
     score -- below --> learn[Train as spam<br/>reason: provider junk]
     learn --> journal[(Journal: spam, train:spam)]
 ```
 
 - **Only what it doesn't already know.** Mail scoring at or above
-  `spam_threshold` would only reinforce the model; the mistakes and doubts are
+  `spam_threshold` would only reinforce the model, so it is journaled (reason
+  `provider junk`, action `none`) but not trained; the mistakes and doubts are
   what it learns from.
 - **Tokens only.** The sender stays on the whitelist if they are on it: a
   forged message from a contact lands in Junk too, and learning it must not

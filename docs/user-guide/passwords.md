@@ -26,7 +26,8 @@ instead:
 systemd-ask-password -n | sudo systemd-creds encrypt --name=password - /etc/credstore.encrypted/tamis
 ```
 
-and add this line to the unit's `[Service]` section:
+and add this line to the unit's `[Service]` section (with the package's unit,
+through `systemctl edit tamis`):
 
 ```ini
 LoadCredentialEncrypted=password:/etc/credstore.encrypted/tamis

@@ -25,8 +25,8 @@ const NO_HOME: &str = "no home directory: set XDG_CONFIG_HOME and XDG_STATE_HOME
 pub enum Error {
     #[error("invalid config: {0}")]
     Invalid(String),
-    #[error("read config: {0}")]
-    Read(#[from] std::io::Error),
+    #[error("read config {path}: {message}")]
+    Read { path: String, message: String },
     #[error("parse {path}: {message}")]
     Parse { path: String, message: String },
     #[error("{NO_HOME}")]
@@ -371,6 +371,13 @@ fn expand_home(path: &str, getenv: Getenv<'_>) -> Result<String, Error> {
     Ok(home.join(rest).to_string_lossy().into_owned())
 }
 
+fn read_error(path: &Path, err: &std::io::Error) -> Error {
+    Error::Read {
+        path: path.display().to_string(),
+        message: err.to_string(),
+    }
+}
+
 impl Config {
     /// Reads and validates the file at `path`, filling unset fields with
     /// defaults. Unknown keys are errors, so typos don't pass silently.
@@ -384,7 +391,7 @@ impl Config {
         }
 
         check_not_writable_by_others(path)?;
-        let text = fs::read_to_string(path)?;
+        let text = fs::read_to_string(path).map_err(|err| read_error(path, &err))?;
 
         let mut cfg = decode(path, &text)?;
         cfg.path = path.to_path_buf();
@@ -463,7 +470,10 @@ fn parse_error(path: &Path, err: &dyn std::fmt::Display) -> Error {
 fn check_not_writable_by_others(path: &Path) -> Result<(), Error> {
     use std::os::unix::fs::PermissionsExt;
 
-    let mode = fs::metadata(path)?.permissions().mode();
+    let mode = fs::metadata(path)
+        .map_err(|err| read_error(path, &err))?
+        .permissions()
+        .mode();
     if mode & 0o022 != 0 {
         let name = path.display();
         return Err(Error::Invalid(format!(
@@ -559,7 +569,10 @@ mod tests {
     #[test]
     fn a_missing_file_is_a_read_error() {
         let err = Config::load(&no_env, Path::new("/nonexistent/tamis.toml")).unwrap_err();
-        assert!(err.to_string().starts_with("read config:"), "{err}");
+        assert_eq!(
+            err.to_string(),
+            "read config /nonexistent/tamis.toml: No such file or directory (os error 2)"
+        );
     }
 
     #[cfg(unix)]

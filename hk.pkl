@@ -23,8 +23,12 @@ local linters = new Mapping<String, Step> {
   ["duplication"] {
     check = "jscpd"
   }
+  ["systemd"] {
+    glob = List("packaging/*.service", "packaging/*.sysusers", "docs/user-guide/running-as-a-service.md")
+    check = "mise run lint:systemd"
+  }
   ["anodizer"] {
-    check = "mise run lint-release"
+    check = "mise run lint:release"
   }
 }
 

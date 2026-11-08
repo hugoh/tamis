@@ -17,7 +17,7 @@ small. The tool versions are pinned in `.config/mise/conf.d/web.toml`, where
 Renovate updates them, so an update is just a change to that file.
 
 `mise run vendor-web` produces the files, and the `prebuild` task from the
-template runs it before every `mise run build`, `test`, `lint-rust` and so on, so
+template runs it before every `mise run build`, `test`, `lint:rust` and so on, so
 `mise run ci` needs nothing extra. A test fails if a template uses a class the
 stylesheet lacks.
 

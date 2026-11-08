@@ -144,7 +144,7 @@ jobs:
       - name: Validate release
         id: validate
         run: |
-          mise run lint-release
+          mise run lint:release
           TAG=$(git tag --points-at HEAD | head -1)
           if [ -z "$TAG" ]; then
             echo "No tag at HEAD — skipping release"

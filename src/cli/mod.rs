@@ -449,10 +449,9 @@ mod tests {
             .await;
 
         assert_eq!(code, 1);
-        assert!(
-            err.text().starts_with("tamis: read config:"),
-            "{}",
-            err.text()
+        assert_eq!(
+            err.text(),
+            "tamis: read config /no/such/config.toml: No such file or directory (os error 2)\n"
         );
     }
 

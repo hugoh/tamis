@@ -45,6 +45,7 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
     env:
       MISE_ENV: ci
@@ -70,8 +71,25 @@ jobs:
           done
           docker logs dovecot
           exit 1
+      - name: Fetch CRAP baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$id" ] || ! gh run download "$id" --name crap-baseline; then
+            echo "::warning::No CRAP baseline found; regression gate skipped"
+          fi
       - name: Tests and coverage
         run: mise run ci:core
+      - name: Record CRAP baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: cargo crap --lcov lcov.info --format json --sort file --output crap-baseline.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: crap-baseline
+          path: crap-baseline.json
+          if-no-files-found: error
 
   tag:
     needs: [hk, test]

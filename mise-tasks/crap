@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Fail if any function's CRAP score regresses against crap-baseline.json (report only when absent)"
+#MISE depends=["coverage"]
+set -euo pipefail
+if [ ! -f crap-baseline.json ]; then
+  cargo crap --lcov "$COVEROUT" --top 20
+  exit 0
+fi
+cargo crap --lcov "$COVEROUT" --baseline crap-baseline.json --format markdown >>"${GITHUB_STEP_SUMMARY:-/dev/null}"
+cargo crap --lcov "$COVEROUT" --baseline crap-baseline.json --fail-regression

@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 #MISE description="Run core CI checks (test, coverage, browser script tests)"
-#MISE depends=["coverage", "test:js"]
+#MISE depends=["coverage", "crap", "test:js"]
 true

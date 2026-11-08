@@ -29,3 +29,4 @@ eval-data/
 /site-docs/dist/
 /site-docs/.astro/
 docs/reference/sieve-extensions.md
+crap-baseline.json

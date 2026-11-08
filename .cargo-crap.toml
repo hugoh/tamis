@@ -1,0 +1,2 @@
+missing = "skip"
+exclude = ["src/**/tests.rs", "src/**/tests/**", "src/bin/**"]

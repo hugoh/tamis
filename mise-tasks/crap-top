@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Show the 20 functions with the highest CRAP scores"
+#MISE depends=["coverage"]
+cargo crap --lcov "$COVEROUT" --top 20

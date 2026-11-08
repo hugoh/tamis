@@ -17,11 +17,11 @@ pub enum Waiting {
     Running,
 }
 
-/// How the status file writes "never": the zero time.
-const NEVER: &str = "0001-01-01T00:00:00Z";
+/// The timestamp a file written before `null` meant "never" used for it.
+const OLD_NEVER_PREFIX: &str = "0001-01-01";
 
 mod time_or_never {
-    use super::{Deserialize, Deserializer, NEVER, Serializer, Timestamp};
+    use super::{Deserialize, Deserializer, OLD_NEVER_PREFIX, Serializer, Timestamp};
 
     #[allow(clippy::ref_option, reason = "the signature serde's `with` needs")]
     pub fn serialize<S: Serializer>(
@@ -30,15 +30,19 @@ mod time_or_never {
     ) -> Result<S::Ok, S::Error> {
         match value {
             Some(at) => serializer.serialize_str(&at.to_string()),
-            None => serializer.serialize_str(NEVER),
+            None => serializer.serialize_none(),
         }
     }
 
+    /// Reads `null` or an absent field as never. An empty string or the zero
+    /// time, which earlier files wrote for never, still reads as never.
     pub fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<Timestamp>, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        if text.is_empty() || text.starts_with("0001-01-01") {
+        let Some(text) = Option::<String>::deserialize(deserializer)? else {
+            return Ok(None);
+        };
+        if text.is_empty() || text.starts_with(OLD_NEVER_PREFIX) {
             return Ok(None);
         }
         text.parse().map(Some).map_err(serde::de::Error::custom)
@@ -333,15 +337,13 @@ mod tests {
 
         assert_eq!(Snapshot::decode(&snapshot.encode()).unwrap(), snapshot);
         assert!(
-            snapshot
-                .encode()
-                .contains("\"lastPass\":\"0001-01-01T00:00:00Z\""),
-            "never is written as the zero time"
+            snapshot.encode().contains("\"lastPass\":null"),
+            "never is written as null"
         );
     }
 
     #[test]
-    fn a_saved_status_can_be_read() {
+    fn a_status_saved_with_zero_times_can_still_be_read() {
         let saved = r#"{"started":"2026-11-02T13:01:07.123456789+01:00","passes":785,"lastPass":"2026-11-03T13:02:00Z",
             "lastSummary":"scanned 0","lastError":"","lastErrorAt":"0001-01-01T00:00:00Z","failures":0,
             "failingSince":"0001-01-01T00:00:00Z","retryAt":"0001-01-01T00:00:00Z","rejected":false,
@@ -357,6 +359,11 @@ mod tests {
         assert_eq!(
             snapshot.recovered_at,
             Some("2026-11-03T10:16:56Z".parse().unwrap())
+        );
+        let nulls = Snapshot::decode(r#"{"passes":3,"lastPass":null,"retryAt":null}"#).unwrap();
+        assert_eq!(
+            (nulls.passes, nulls.last_pass, nulls.retry_at),
+            (3, None, None)
         );
         assert!(Snapshot::decode("not json").is_err());
         assert_eq!(Snapshot::decode("{}").unwrap(), Snapshot::default());

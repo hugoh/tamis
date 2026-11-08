@@ -38,6 +38,12 @@ struct Folder {
 }
 
 /// An in-memory [`Mailbox`].
+#[derive(Debug)]
+struct Stall {
+    skip: usize,
+    applied: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct Fake {
     folders: BTreeMap<String, Folder>,
@@ -46,6 +52,7 @@ pub struct Fake {
     faults: HashMap<&'static str, VecDeque<Error>>,
     lost_replies: HashMap<&'static str, VecDeque<Error>>,
     cancels: HashMap<&'static str, CancellationToken>,
+    stalls: HashMap<&'static str, Stall>,
     /// Every operation performed, as "operation folder", oldest first.
     pub log: Vec<String>,
 }
@@ -98,6 +105,28 @@ impl Fake {
     /// arriving mid-pass.
     pub fn cancel_on(&mut self, operation: &'static str, token: CancellationToken) {
         self.cancels.insert(operation, token);
+    }
+
+    /// Makes `operation` hang forever on its next call after `skip` others,
+    /// so a test can drop the pass there. With `applied` the hang comes after
+    /// the server has acted, as when the reply is lost.
+    pub fn stall(&mut self, operation: &'static str, skip: usize, applied: bool) {
+        self.stalls.insert(operation, Stall { skip, applied });
+    }
+
+    async fn stall_point(&mut self, operation: &'static str, applied: bool) {
+        let Some(stall) = self.stalls.get_mut(operation) else {
+            return;
+        };
+        if stall.applied != applied {
+            return;
+        }
+        if stall.skip > 0 {
+            stall.skip -= 1;
+            return;
+        }
+        self.stalls.remove(operation);
+        std::future::pending::<()>().await;
     }
 
     fn reply(&mut self, operation: &'static str) -> Result<()> {
@@ -413,6 +442,7 @@ impl Mailbox for Fake {
 
     async fn move_messages(&mut self, mailbox: &str, uids: &[u32], dest: &str) -> Result<()> {
         self.check("move", mailbox)?;
+        self.stall_point("move", false).await;
         self.folder(dest)?;
         let source = self.folder_mut(mailbox)?;
 
@@ -431,17 +461,24 @@ impl Mailbox for Fake {
             message.mod_seq = dest.mod_seq;
             dest.messages.push(message);
         }
+        self.stall_point("move", true).await;
         self.reply("move")
     }
 
     async fn add_keyword(&mut self, mailbox: &str, uids: &[u32], keyword: &str) -> Result<()> {
         self.check("add_keyword", mailbox)?;
-        self.set_flag(mailbox, uids, keyword, true)
+        self.stall_point("add_keyword", false).await;
+        let done = self.set_flag(mailbox, uids, keyword, true);
+        self.stall_point("add_keyword", true).await;
+        done
     }
 
     async fn remove_keyword(&mut self, mailbox: &str, uids: &[u32], keyword: &str) -> Result<()> {
         self.check("remove_keyword", mailbox)?;
-        self.set_flag(mailbox, uids, keyword, false)
+        self.stall_point("remove_keyword", false).await;
+        let done = self.set_flag(mailbox, uids, keyword, false);
+        self.stall_point("remove_keyword", true).await;
+        done
     }
 
     async fn ensure(&mut self, mailbox: &str) -> Result<()> {

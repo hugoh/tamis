@@ -223,3 +223,30 @@ async fn missing_rule_folders_are_reported_without_failing() {
         "nothing to check when folders are created"
     );
 }
+
+#[tokio::test]
+async fn a_pass_dropped_between_marks_files_the_message_next_pass() {
+    let mut env = env_with_flag_rules(Mode::Live);
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &listed(), &[]);
+    env.mail().stall("add_keyword", 1, true);
+
+    tokio::select! {
+        biased;
+        done = env.engine.run_once() => panic!("the pass finished: {done:?}"),
+        () = std::future::ready(()) => {}
+    }
+
+    assert_eq!(env.mail().uids("INBOX"), [uid], "not moved yet");
+    assert!(env.store().pending_moves().unwrap().is_empty());
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.mail().uids("INBOX").is_empty());
+    let mut flags = env.mail().flags("Lists", 1).unwrap();
+    flags.sort();
+    assert_eq!(flags, ["$tamissorted", "\\seen", "golang"]);
+    let decisions = env.decisions();
+    assert_eq!(decisions.len(), 1);
+    assert!(decisions[0].applied);
+}

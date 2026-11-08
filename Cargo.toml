@@ -5,6 +5,7 @@ edition = "2024"
 description = "A spam filter and Sieve mail sorter for remote mailboxes"
 repository = "https://github.com/hugoh/tamis"
 license = "AGPL-3.0-only"
+publish = false
 default-run = "tamis"
 
 [package.metadata.cargo-machete]

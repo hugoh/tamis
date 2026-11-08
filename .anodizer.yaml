@@ -42,9 +42,6 @@ crates:
         owner: hugoh
         name: tamis
     publish:
-      cargo:
-        auth: auto
-        allow_dirty: true
       homebrew:
         repository:
           owner: hugoh

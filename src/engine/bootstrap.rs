@@ -140,7 +140,7 @@ impl<M: Mailbox> Engine<M> {
         tracing::info!(folder = %sent, messages = uids.len(), "whitelisting recipients");
 
         let recipients = self.mail.recipients(&sent, uids).await.context(&context)?;
-        self.whitelist_recipients(&recipients)
+        Ok(self.whitelist_recipients(&recipients)?.len())
     }
 
     async fn train_corpus(

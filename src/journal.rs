@@ -68,10 +68,13 @@ pub enum Reason {
     TrainFolder,
     ProviderJunk,
     Undo,
+    /// A message you sent: its recipients were whitelisted. Not a judgement of
+    /// the message, so it can't be undone or learnt from.
+    Sent,
 }
 
 impl Reason {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Bayes,
         Self::Whitelisted,
         Self::Correction,
@@ -79,6 +82,7 @@ impl Reason {
         Self::TrainFolder,
         Self::ProviderJunk,
         Self::Undo,
+        Self::Sent,
     ];
 
     #[must_use]
@@ -91,6 +95,7 @@ impl Reason {
             Self::TrainFolder => "train folder",
             Self::ProviderJunk => "provider junk",
             Self::Undo => "undo",
+            Self::Sent => "sent",
         }
     }
 

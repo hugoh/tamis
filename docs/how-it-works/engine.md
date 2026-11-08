@@ -72,6 +72,9 @@ skips it instead of judging it again.
 
 Sent has a cursor like a watched folder, but its messages are not judged:
 every To and Cc address of a new one is whitelisted, minus your own address.
+Each message that adds addresses is journalled as `good` with reason `sent` and
+action `none`; the log's From column lists the recipients. It can't be undone
+or learnt from, and doesn't count towards `tamis doctor`'s rates.
 If a new message replies (`In-Reply-To`) to one tamis judged spam or uncertain,
 that message is learnt as good and its sender whitelisted, like a Not Junk
 mark: answering it says it isn't spam. The original is looked for where it was
@@ -205,7 +208,7 @@ recipient tokens; the model picks them up from new mail, or from
 | good, and a rule files it | add `$TamisSorted`, move to the rule's folder | nothing | `move:<folder>` |
 
 Every decision is journalled with its verdict, reason (`bayes`,
-`whitelisted`, `rule`, `correction`, `train folder`, `provider junk`), score, planned action and
+`whitelisted`, `rule`, `correction`, `train folder`, `provider junk`, `undo`, `sent`), score, planned action and
 whether that action was applied. In shadow mode, the journal shows what live
 mode would have done; `tamis log` prints it.
 

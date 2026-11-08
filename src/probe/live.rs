@@ -1,5 +1,5 @@
 //! The checks that talk to a server. Dovecot exercises them under
-//! `mise run test-imap`.
+//! `mise run test:imap`.
 
 use std::time::{Duration, Instant};
 

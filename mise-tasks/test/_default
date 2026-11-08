@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 #MISE description="Run tests"
-#MISE depends=["prebuild"]
+#MISE depends=["prebuild", "test:js"]
 cargo nextest run --all-features

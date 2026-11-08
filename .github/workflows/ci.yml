@@ -55,7 +55,7 @@ jobs:
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Tests and coverage
-        run: mise run ci-core
+        run: mise run ci:core
 
   tag:
     needs: [hk, test]

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+#MISE description="Run the browser script tests"
+node --test web/test/

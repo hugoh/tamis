@@ -3,4 +3,4 @@
 set -e
 mise run format
 mise run fix
-mise run ci-core
+mise run ci:core

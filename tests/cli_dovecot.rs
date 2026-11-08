@@ -1,5 +1,5 @@
 //! The command line against Dovecot, through the same entry point the binary
-//! uses. Needs `TAMIS_TEST_IMAP=host:port`; `mise run test-imap` sets it.
+//! uses. Needs `TAMIS_TEST_IMAP=host:port`; `mise run test:imap` sets it.
 
 #![allow(clippy::unwrap_used, reason = "a failing call should fail the test")]
 

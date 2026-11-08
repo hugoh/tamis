@@ -5,6 +5,8 @@
 mod ping;
 mod quality;
 mod settings;
+#[cfg(test)]
+pub(crate) mod test_server;
 
 pub use ping::{Error, Pinger};
 pub use quality::take_quality_slot;

@@ -12,6 +12,7 @@ use tower::ServiceExt;
 
 use super::{App, Job, Options, RunJobs, SESSION_COOKIE, build, hash_token};
 use crate::config::Config;
+use crate::live::{Status, Waiting};
 use crate::store::{Decision, Store};
 
 const ORIGIN: &str = "http://localhost:8484";
@@ -1016,4 +1017,105 @@ async fn the_whitelist_pages_on_after_the_last_address_shown() {
         "{second}"
     );
     assert!(!second.contains("after="), "{second}");
+}
+
+fn at(seconds: i64) -> Timestamp {
+    Timestamp::from_second(seconds).unwrap()
+}
+
+async fn health_with(status: Status) -> String {
+    let site = site_with(Options {
+        status: Some(Arc::new(status)),
+        ..Options::default()
+    });
+    text(site.get("/health").await).await
+}
+
+#[tokio::test]
+async fn health_shows_no_daemon_section_without_a_daemon() {
+    let health = text(site().get("/health").await).await;
+
+    assert!(!health.contains("Last pass"), "{health}");
+}
+
+#[tokio::test]
+async fn health_shows_a_daemon_that_has_not_passed_yet() {
+    let health = health_with(Status::new(at(1_000_000))).await;
+
+    assert!(health.contains("nothing yet"), "{health}");
+    assert!(health.contains("no pass yet"), "{health}");
+    assert!(!health.contains("Last error"), "{health}");
+}
+
+#[tokio::test]
+async fn health_shows_what_the_daemon_is_doing_and_its_last_pass() {
+    for (waiting, label) in [
+        (Waiting::Idle, "idle"),
+        (Waiting::Polling, "polling"),
+        (Waiting::Running, "running"),
+    ] {
+        let status = Status::new(at(1_000_000));
+        status.pass_done(at(1_000_100), "moved 3 messages");
+        status.wait(waiting);
+
+        let health = health_with(status).await;
+
+        assert!(health.contains(&format!(">{label}<")), "{label}: {health}");
+        assert!(health.contains("moved 3 messages"), "{label}: {health}");
+        assert!(!health.contains("no pass yet"), "{label}: {health}");
+    }
+}
+
+#[tokio::test]
+async fn health_shows_a_failing_daemon_with_its_streak_and_next_try() {
+    let status = Status::new(at(1_000_000));
+    status.failed(at(1_000_100), "connection refused");
+    status.failed(at(1_000_160), "connection refused");
+    status.retry_at(at(1_000_400));
+
+    let health = health_with(status).await;
+
+    assert!(health.contains("connection refused"), "{health}");
+    assert!(health.contains("failed 2 in a row since"), "{health}");
+    assert!(health.contains("next try"), "{health}");
+    assert!(health.contains("alert-error"), "{health}");
+    assert!(!health.contains("recovered"), "{health}");
+}
+
+#[tokio::test]
+async fn health_shows_a_failure_without_a_retry_time_as_the_bare_error() {
+    let status = Status::new(at(1_000_000));
+    status.failed(at(1_000_100), "connection refused");
+
+    let health = health_with(status).await;
+
+    assert!(health.contains("connection refused"), "{health}");
+    assert!(!health.contains("in a row"), "{health}");
+    assert!(health.contains("alert-error"), "{health}");
+}
+
+#[tokio::test]
+async fn health_shows_a_recovered_daemon_as_a_success() {
+    let status = Status::new(at(1_000_000));
+    status.failed(at(1_000_100), "connection refused");
+    status.retry_at(at(1_000_400));
+    status.pass_done(at(1_000_500), "all quiet");
+
+    let health = health_with(status).await;
+
+    assert!(health.contains("connection refused"), "{health}");
+    assert!(health.contains("(recovered "), "{health}");
+    assert!(health.contains("alert-success"), "{health}");
+    assert!(!health.contains("in a row"), "{health}");
+}
+
+#[tokio::test]
+async fn health_does_not_call_a_pass_without_an_error_a_recovery() {
+    let status = Status::new(at(1_000_000));
+    status.pass_done(at(1_000_100), "all quiet");
+
+    let health = health_with(status).await;
+
+    assert!(!health.contains("recovered"), "{health}");
+    assert!(!health.contains("Last error"), "{health}");
 }

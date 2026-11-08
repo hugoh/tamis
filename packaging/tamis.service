@@ -1,0 +1,24 @@
+[Unit]
+Description=tamis (second-opinion spam filter for remote mailboxes)
+Documentation=https://tamis.larve.net/
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/tamis/config.toml
+
+[Service]
+User=tamis
+Environment=HOME=/var/lib/tamis
+EnvironmentFile=-/etc/default/tamis
+StateDirectory=tamis
+StateDirectoryMode=0700
+ExecStart=/usr/bin/tamis run --config /etc/tamis/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+TimeoutStopSec=60
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

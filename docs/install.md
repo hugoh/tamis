@@ -43,6 +43,24 @@ sudo apt install ./tamis_*.deb
 sudo dnf install ./tamis_*.rpm
 ```
 
+### What the packages install
+
+The deb and the rpm hold the same files:
+
+| Path | What |
+|---|---|
+| `/usr/bin/tamis` | the program |
+| `/usr/lib/systemd/system/tamis.service` | the systemd unit, installed disabled |
+| `/usr/lib/sysusers.d/tamis.conf` | creates the `tamis` user (home `/var/lib/tamis`) |
+| `/usr/share/doc/tamis/README.systemd.md` | the setup steps |
+
+Installing writes no configuration and no password, and starts nothing. To
+finish, follow
+[Running as a service](../user-guide/running-as-a-service/#from-the-deb-or-rpm-package).
+Upgrading restarts the service if it is running, and removing the package stops
+it; your configuration under `/etc/tamis` and the state under `/var/lib/tamis`
+are left alone.
+
 ## mise
 
 ```sh

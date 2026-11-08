@@ -35,6 +35,16 @@ crates:
         license: "AGPL-3.0-only"
         formats: [deb, rpm]
         bindir: /usr/bin
+        contents:
+          - src: packaging/tamis.service
+            dst: /usr/lib/systemd/system/tamis.service
+          - src: packaging/tamis.sysusers
+            dst: /usr/lib/sysusers.d/tamis.conf
+          - src: packaging/README.systemd.md
+            dst: /usr/share/doc/tamis/README.systemd.md
+        scripts:
+          postinstall: packaging/postinstall.sh
+          preremove: packaging/preremove.sh
     release:
       preflight:
         fail_on_error: false

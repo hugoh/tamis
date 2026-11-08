@@ -6,39 +6,126 @@ title: Running as a service
 
 ## The unit
 
+The deb and rpm packages install this unit
+([source](https://github.com/hugoh/tamis/blob/main/packaging/tamis.service)),
+disabled:
+
 ```ini
-# /etc/systemd/system/tamis.service
+# /usr/lib/systemd/system/tamis.service
 [Unit]
-Description=tamis spam filter
+Description=tamis (second-opinion spam filter for remote mailboxes)
+Documentation=https://tamis.larve.net/
 After=network-online.target
 Wants=network-online.target
+ConditionPathExists=/etc/tamis/config.toml
 
 [Service]
-ExecStart=/usr/local/bin/tamis run --config /etc/tamis/config.toml
+User=tamis
+Environment=HOME=/var/lib/tamis
+EnvironmentFile=-/etc/default/tamis
+StateDirectory=tamis
+StateDirectoryMode=0700
+ExecStart=/usr/bin/tamis run --config /etc/tamis/config.toml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 TimeoutStopSec=60
-LoadCredentialEncrypted=password:/etc/credstore.encrypted/tamis
-DynamicUser=yes
-StateDirectory=tamis
-StateDirectoryMode=0700
-Environment=XDG_STATE_HOME=/var/lib
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-`LoadCredentialEncrypted=` hands tamis its password; see
-[Passwords](../passwords/) for creating the credential, or drop the line and
-use another source. `StateDirectory=` and `XDG_STATE_HOME` put the state
-database in `/var/lib/tamis` (see
-[Where tamis keeps things](../../reference/where-tamis-keeps-things/)).
+It runs as the `tamis` user, whose home and state directory is
+`/var/lib/tamis`. `ConditionPathExists=` means the unit is skipped, not failed,
+until `/etc/tamis/config.toml` exists, so installing the package before
+configuring it is harmless. It carries no password: you add that in a drop-in
+(see below).
 
-Then:
+## From the deb or rpm package
 
-```sh
-sudo systemctl enable --now tamis
+The same steps are in `/usr/share/doc/tamis/README.systemd.md`; see
+[Install](../../install/#what-the-packages-install) for what the package puts
+where.
+
+1. Write the configuration as root, then let the `tamis` user read it and
+   nobody else:
+
+   ```sh
+   sudo tamis init --host imap.example.org --user me@example.org --config /etc/tamis/config.toml
+   sudo chown root:tamis /etc/tamis /etc/tamis/config.toml
+   sudo chmod 750 /etc/tamis
+   sudo chmod 640 /etc/tamis/config.toml
+   ```
+
+   tamis starts in shadow mode: it records what it would do and moves nothing
+   until `policy.mode = "live"`. Its closing hint about `tamis login` is for
+   desktops; use the next step on a server.
+
+2. Give the service the mailbox password with a drop-in
+   (`sudo systemctl edit tamis`):
+
+   ```ini
+   [Service]
+   LoadCredential=password:/etc/tamis/password
+   ```
+
+   `/etc/tamis/password` is a file only root can read (mode 0400); systemd hands its
+   contents to tamis through `$CREDENTIALS_DIRECTORY`. For an encrypted
+   credential, create it as described in [Passwords](../passwords/) and use
+   `LoadCredentialEncrypted=password:/etc/credstore.encrypted/tamis` instead.
+   `account.password_command` in the configuration, or `TAMIS_PASSWORD` in
+   `/etc/default/tamis`, work too. With no password at all the service stays up,
+   logs "no password" and retries with a growing delay.
+
+3. Start it:
+
+   ```sh
+   sudo systemctl enable --now tamis
+   ```
+
+### Example: Ansible and SOPS
+
+To keep the password in a repository without exposing it, store it encrypted
+with [SOPS](https://getsops.io) and let Ansible write the root-only file and the
+drop-in:
+
+```yaml
+- name: Decrypt the tamis password
+  ansible.builtin.copy:
+    content: "{{ lookup('community.sops.sops', playbook_dir + '/tamis/password.sops', input_type='binary', output_type='binary') }}"
+    dest: /etc/tamis/password
+    mode: "0400"
+    owner: root
+    group: root
+  no_log: true
+  notify: Restart tamis
+
+- name: Hand the password to the service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/tamis.service.d/credentials.conf
+    content: |
+      [Service]
+      LoadCredential=password:/etc/tamis/password
+  notify: Restart tamis
 ```
+
+Next to them go the configuration (`/etc/tamis/config.toml`, `root:tamis`,
+0640) and the rules (`/etc/tamis/rules.sieve`), deployed with a template and a
+copy; a handler that runs `systemctl restart tamis` for the configuration and
+`systemctl reload tamis` for the rules completes it. `no_log: true` keeps the
+password out of Ansible's output.
+
+## Without the package
+
+Create a `tamis` user with home `/var/lib/tamis`, install the binary, and save
+the unit above as `/etc/systemd/system/tamis.service` with `ExecStart=` pointing
+at your copy of the binary (for example `/usr/local/bin/tamis`). Then follow
+the same steps. `DynamicUser=yes` in place of the user also works if you set
+`Environment=XDG_STATE_HOME=/var/lib`, but `tamis web enroll` then has no stable
+account to run as.
 
 ## Stopping
 

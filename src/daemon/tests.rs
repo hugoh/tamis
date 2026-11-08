@@ -557,3 +557,20 @@ mod quality {
         assert!(server.requests().is_empty(), "{:?}", server.requests());
     }
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_stop_does_not_wait_forever_for_a_stuck_pass() {
+    let mut env = Env::new(|| Ok(config()));
+    let mail = Arc::clone(&env.mail);
+    let stuck = mail.lock().await;
+    let handle = env.spawn();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    env.shutdown.cancel();
+
+    tokio::time::timeout(STOP_GRACE + Duration::from_secs(1), handle)
+        .await
+        .expect("the daemon waited on a stuck pass")
+        .unwrap();
+    drop(stuck);
+}

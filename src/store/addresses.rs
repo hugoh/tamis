@@ -52,7 +52,9 @@ pub struct AddressQuery {
     pub sort: AddressSort,
     /// Sorts downwards.
     pub desc: bool,
-    pub offset: i64,
+    /// Starts the page after this address in the current order; empty starts
+    /// at the top.
+    pub after: String,
     /// The page size; it defaults to 100.
     pub limit: i64,
 }
@@ -238,13 +240,26 @@ impl Store {
             |row| row.get(0),
         )?;
 
-        push_page(&mut args, query.limit, query.offset);
+        let (column, direction) = (query.sort.column(), if query.desc { "DESC" } else { "ASC" });
+        let mut where_clause = where_clause;
+        if !query.after.is_empty() {
+            let ahead = if query.desc { "<" } else { ">" };
+            let anchor = format!("(SELECT {column} FROM addresses WHERE address = ?)");
+            let after =
+                format!("({column} {ahead} {anchor} OR ({column} = {anchor} AND address > ?))");
+            where_clause.push_str(if where_clause.is_empty() {
+                " WHERE "
+            } else {
+                " AND "
+            });
+            where_clause.push_str(&after);
+            args.extend(std::iter::repeat_n(Value::Text(query.after.clone()), 3));
+        }
+        push_page(&mut args, query.limit);
 
-        let direction = if query.desc { "DESC" } else { "ASC" };
         let entries = self.read_addresses(
             &format!(
-                "SELECT address, source, added_at FROM addresses{where_clause} ORDER BY {} {direction}, address ASC LIMIT ? OFFSET ?",
-                query.sort.column()
+                "SELECT address, source, added_at FROM addresses{where_clause} ORDER BY {column} {direction}, address ASC LIMIT ?"
             ),
             &args,
         )?;

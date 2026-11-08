@@ -268,7 +268,7 @@ pub(super) async fn decisions(
         search: state.search.clone(),
         sort: DecisionSort::from_name(state.sort),
         asc: state.asc,
-        after: state.after,
+        after: state.after.parse().unwrap_or(0),
         limit: PAGE_SIZE + 1,
     }) {
         Ok(found) => found,
@@ -305,7 +305,7 @@ pub(super) async fn decisions(
             !verdict.is_empty() || !reason.is_empty() || !state.search.is_empty() || only_id > 0,
         ),
         generated: local_clock(Timestamp::now()),
-        more_href: state.more_after_href(found.last().map_or(0, |d| d.id), more),
+        more_href: state.more_href(&found.last().map_or(0, |d| d.id).to_string(), more),
         columns: state.columns(&DECISION_SORTS),
         rows,
         verdict,
@@ -323,10 +323,10 @@ pub(super) async fn decisions(
             body,
         });
     }
-    if state.after > 0 {
-        render(&DecisionsRows { body })
-    } else {
+    if state.after.is_empty() {
         render(&DecisionsResults { body })
+    } else {
+        render(&DecisionsRows { body })
     }
 }
 

@@ -115,22 +115,25 @@ fn build(app: &App, state: &TableState, edit: Edit) -> Result<Body, store::Error
         search: state.search.clone(),
         sort: AddressSort::from_name(state.sort),
         desc: !state.asc,
-        offset: state.offset,
-        limit: PAGE_SIZE,
+        after: state.after.clone(),
+        limit: PAGE_SIZE + 1,
     })?;
+    let page_size = usize::try_from(PAGE_SIZE).unwrap_or(usize::MAX);
+    let more = found.len() > page_size;
+    let found = &found[..found.len().min(page_size)];
     Ok(Body {
         sort: state.sort,
         dir: state.dir(),
         search: state.search.clone(),
         count: count_label(total, "address", "addresses", !state.search.is_empty()),
         columns: state.columns(&SORTS),
-        more_href: state.more_href(found.len(), total),
+        more_href: state.more_href(found.last().map_or("", |a| a.address.as_str()), more),
         remove_all: remove_all_label(total, &state.search),
         rows: found
-            .into_iter()
+            .iter()
             .map(|a| AddressRow {
-                address: a.address,
-                source: a.source,
+                address: a.address.clone(),
+                source: a.source.clone(),
                 added: local_time(a.added_at),
             })
             .collect(),
@@ -159,10 +162,10 @@ pub(super) async fn page(
             body,
         });
     }
-    if state.offset > 0 {
-        render(&Rows { body })
-    } else {
+    if state.after.is_empty() {
         render(&Results { body })
+    } else {
+        render(&Rows { body })
     }
 }
 
@@ -180,7 +183,7 @@ fn field<'a>(form: &'a [(String, String)], name: &str) -> &'a str {
 fn results(app: &App, form: &[(String, String)], edit: Edit) -> Response {
     let values: BTreeMap<String, String> = form.iter().cloned().collect();
     let mut state = TableState::parse("/whitelist", &values, &SORTS);
-    state.offset = 0;
+    state.after.clear();
     match build(app, &state, edit) {
         Ok(body) => render(&Results { body }),
         Err(err) => fail("list whitelist", &err),

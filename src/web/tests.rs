@@ -988,3 +988,32 @@ async fn the_decisions_list_pages_on_after_the_last_row_shown() {
     );
     assert!(!second.contains("after="), "{second}");
 }
+
+#[tokio::test]
+async fn the_whitelist_pages_on_after_the_last_address_shown() {
+    let site = site();
+    for n in 0..=100 {
+        site.db
+            .add_address(&format!("a{n:03}@example.org"), "manual")
+            .unwrap();
+    }
+
+    let first = text(site.get_htmx("/whitelist").await).await;
+    let more = first
+        .split("hx-get=\"")
+        .filter_map(|rest| rest.split('"').next())
+        .find(|link| link.contains("after="))
+        .unwrap()
+        .replace("&#38;", "&");
+    let second = text(site.get_htmx(&more).await).await;
+
+    assert!(
+        first.contains("a099@example.org") && !first.contains("a100@example.org"),
+        "{first}"
+    );
+    assert!(
+        second.contains("a100@example.org") && !second.contains("a099@example.org"),
+        "{second}"
+    );
+    assert!(!second.contains("after="), "{second}");
+}

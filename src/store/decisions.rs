@@ -473,11 +473,11 @@ impl Store {
         )?;
 
         let (where_clause, mut args) = query.where_clause(true);
-        push_page(&mut args, query.limit, 0);
+        push_page(&mut args, query.limit);
 
         let decisions = self.read_decisions(
             &format!(
-                "{DECISION_COLUMNS} FROM decisions{where_clause}{} LIMIT ? OFFSET ?",
+                "{DECISION_COLUMNS} FROM decisions{where_clause}{} LIMIT ?",
                 query.order_by()
             ),
             &args,

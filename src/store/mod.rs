@@ -8,7 +8,7 @@ mod model;
 mod schema;
 mod web;
 
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -53,6 +53,12 @@ pub enum Error {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error("another tamis is already running on {0}")]
+    AlreadyRunning(PathBuf),
+    #[error(
+        "database is from a newer tamis (schema {found}, this build knows {known}): upgrade tamis"
+    )]
+    NewerSchema { found: usize, known: usize },
     #[error("database: {0}")]
     Sql(#[from] rusqlite::Error),
     #[error("encode tokens: {0}")]
@@ -70,16 +76,15 @@ impl Error {
     }
 }
 
-/// Appends the `LIMIT` and `OFFSET` arguments of a paged query; a limit that
-/// isn't positive means the default.
-fn push_page(args: &mut Vec<Value>, limit: i64, offset: i64) {
+/// Appends the `LIMIT` argument of a paged query; a limit that isn't positive
+/// means the default.
+fn push_page(args: &mut Vec<Value>, limit: i64) {
     let limit = if limit <= 0 {
         DEFAULT_QUERY_LIMIT
     } else {
         limit
     };
     args.push(Value::Integer(limit));
-    args.push(Value::Integer(offset.max(0)));
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -149,7 +154,13 @@ impl Store {
             let version: i64 = tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
             let version = usize::try_from(version).unwrap_or_default();
             let steps = schema::MIGRATIONS;
-            if version >= steps.len() {
+            if version > steps.len() {
+                return Err(Error::NewerSchema {
+                    found: version,
+                    known: steps.len(),
+                });
+            }
+            if version == steps.len() {
                 return Ok(());
             }
             for step in &steps[version..] {
@@ -165,6 +176,34 @@ impl Store {
 /// mod-sequences never reach the sign bit.
 fn count(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
     Ok(u64::try_from(row.get::<_, i64>(index)?).unwrap_or_default())
+}
+
+/// Takes the lock that keeps a second `tamis run` off the database at `path`:
+/// two daemons would judge and move the same mail. It lasts until the file is
+/// dropped or the process ends.
+///
+/// # Errors
+/// [`Error::AlreadyRunning`] when another process holds it.
+pub fn lock_instance(path: &Path) -> Result<File> {
+    let mut lock_path = path.as_os_str().to_owned();
+    lock_path.push(".lock");
+    let lock_path = PathBuf::from(lock_path);
+    let io = |source| Error::Io {
+        path: lock_path.clone(),
+        source,
+    };
+
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(io)?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(TryLockError::WouldBlock) => Err(Error::AlreadyRunning(path.to_path_buf())),
+        Err(TryLockError::Error(source)) => Err(io(source)),
+    }
 }
 
 /// Makes sure the database file exists and only its owner can read it: it
@@ -333,6 +372,37 @@ mod tests {
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
         );
+    }
+
+    #[test]
+    fn a_database_from_a_newer_build_is_refused() {
+        let (dir, store) = open();
+        drop(store);
+        let path = dir.path().join("state.db");
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .pragma_update(None, "user_version", 999)
+            .unwrap();
+
+        let err = Store::open(&path).unwrap_err();
+
+        assert!(
+            matches!(err, Error::NewerSchema { found: 999, .. }),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn only_one_process_may_run_on_a_database() {
+        let (dir, _store) = open();
+        let path = dir.path().join("state.db");
+
+        let first = lock_instance(&path).unwrap();
+        let second = lock_instance(&path).unwrap_err();
+        drop(first);
+
+        assert!(matches!(second, Error::AlreadyRunning(_)), "{second}");
+        assert!(lock_instance(&path).is_ok());
     }
 
     #[test]
@@ -519,6 +589,55 @@ mod tests {
                     want,
                     "{sort:?} asc={asc}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn address_pages_join_up_in_every_sort_order() {
+        let (_dir, store) = open();
+        for (address, source) in [
+            ("d@x.org", "Sent"),
+            ("a@x.org", "sent"),
+            ("c@x.org", "train"),
+            ("b@x.org", "SENT"),
+            ("e@x.org", "train"),
+        ] {
+            store.add_address(address, source).unwrap();
+        }
+
+        for sort in [
+            AddressSort::Address,
+            AddressSort::Source,
+            AddressSort::Added,
+        ] {
+            for desc in [false, true] {
+                let query = |after: String, limit| AddressQuery {
+                    sort,
+                    desc,
+                    after,
+                    limit,
+                    ..AddressQuery::default()
+                };
+                let want: Vec<String> = store
+                    .query_addresses(&query(String::new(), 100))
+                    .unwrap()
+                    .0
+                    .into_iter()
+                    .map(|a| a.address)
+                    .collect();
+
+                let mut got: Vec<String> = Vec::new();
+                loop {
+                    let after = got.last().cloned().unwrap_or_default();
+                    let (page, _) = store.query_addresses(&query(after, 2)).unwrap();
+                    if page.is_empty() {
+                        break;
+                    }
+                    got.extend(page.into_iter().map(|a| a.address));
+                }
+
+                assert_eq!(got, want, "{sort:?} desc={desc}");
             }
         }
     }

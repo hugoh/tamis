@@ -11,7 +11,7 @@ container run -d --name "$name" --user 0:0 \
   -v "$dir/dovecot.conf:/etc/dovecot/dovecot.conf:ro" \
   -v "$dir/passwd:/etc/passwd:ro" \
   -v "$dir/group:/etc/group:ro" \
-  docker.io/dovecot/dovecot:latest >/dev/null
+  docker.io/dovecot/dovecot@sha256:43c14def08a57f25107593cbcf64a0a6fbae84a7b9de7aa038513c9b21e91914 >/dev/null
 trap 'container rm -f "$name" >/dev/null 2>&1 || true' EXIT
 
 ip=$(container inspect "$name" | jq -r '.. | objects | select(has("ipv4Address")) | .ipv4Address' | head -1 | cut -d/ -f1)

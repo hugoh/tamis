@@ -2,15 +2,6 @@
 name: cross
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - Cargo.toml
-      - Cargo.lock
-      - rust-toolchain.toml
-      - mise.toml
-      - .anodizer.yaml
-      - .github/workflows/cross.yml
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -27,7 +18,7 @@ jobs:
   # skips the anodizer legs and `cross-gate` passes trivially. Platform-specific
   # code that compiles on the `test` job's runner but not on a release target
   # (or macOS) is therefore not caught until a build-relevant change or the
-  # release itself. Add `src/**` here, and to the `push` paths above, to build
+  # release itself. Add `src/**` to the filter below to build
   # every release target on every code change, at the cost of the 30-minute,
   # two-OS matrix on each one.
   changes:
@@ -67,11 +58,11 @@ jobs:
       MISE_ENV: release,package
     steps:
       - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
-      - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          fetch-depth: "1"
+      - uses: ./.github/actions/rust-setup
         with:
           shared-key: anodizer-${{ matrix.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: anodizer check config
       - name: Build this runner's targets natively
         run: anodizer release --split --snapshot --clean

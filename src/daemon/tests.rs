@@ -469,3 +469,91 @@ async fn a_rejected_login_is_marked_in_the_status() {
     assert!(env.status.snapshot().rejected);
     env.stop(handle).await;
 }
+
+mod quality {
+    use super::*;
+    use crate::classify::Label;
+    use crate::monitor::test_server::Server;
+
+    const SETTLE: Duration = Duration::from_millis(300);
+
+    fn daemon_pinging(env: &mut Env, server: &Server) -> Daemon<TestConnector> {
+        let pinger = Pinger::new(&server.url).unwrap();
+        env.daemon.take().unwrap().with_quality(pinger)
+    }
+
+    fn train_both_classes(store: &Store) {
+        let tokens = vec!["word".to_owned()];
+        store.train("spam", &tokens, Label::Spam).unwrap();
+        store.train("good", &tokens, Label::Good).unwrap();
+    }
+
+    #[tokio::test]
+    async fn without_monitoring_the_check_leaves_its_schedule_alone() {
+        let env = Env::new(|| Ok(config()));
+
+        env.daemon.as_ref().unwrap().check_quality();
+
+        assert!(
+            monitor::take_quality_slot(&env.store, Timestamp::now()).unwrap(),
+            "the slot was not taken"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_training_set_missing_a_class_pings_the_failure() {
+        let mut env = Env::new(|| Ok(config()));
+        let server = Server::start(&[]).await;
+
+        daemon_pinging(&mut env, &server).check_quality();
+        server.wait_for(1).await;
+
+        let sent = server.requests();
+        assert_eq!(sent[0].path, "/fail");
+        assert_eq!(
+            sent[0].body,
+            "FAIL class balance: 0 spam, 0 good: it needs examples of both\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_healthy_filter_pings_success() {
+        let mut env = Env::new(|| Ok(config()));
+        train_both_classes(&env.store);
+        let server = Server::start(&[]).await;
+
+        daemon_pinging(&mut env, &server).check_quality();
+        server.wait_for(1).await;
+
+        let sent = server.requests();
+        assert_eq!(sent[0].path, "/");
+        assert_eq!(sent[0].body, "the training and the decisions look healthy");
+    }
+
+    #[tokio::test]
+    async fn the_check_pings_once_a_day() {
+        let mut env = Env::new(|| Ok(config()));
+        let server = Server::start(&[]).await;
+        let daemon = daemon_pinging(&mut env, &server);
+
+        daemon.check_quality();
+        server.wait_for(1).await;
+        daemon.check_quality();
+        tokio::time::sleep(SETTLE).await;
+
+        assert_eq!(server.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_check_waits_for_a_slot_someone_else_took() {
+        let mut env = Env::new(|| Ok(config()));
+        let server = Server::start(&[]).await;
+        let daemon = daemon_pinging(&mut env, &server);
+        monitor::take_quality_slot(&env.store, Timestamp::now()).unwrap();
+
+        daemon.check_quality();
+        tokio::time::sleep(SETTLE).await;
+
+        assert!(server.requests().is_empty(), "{:?}", server.requests());
+    }
+}

@@ -24,7 +24,7 @@ const MAX_PASSKEY_NAME: usize = 64;
 const DEFAULT_NAME: &str = "passkey";
 
 /// The one user passkeys belong to, as the authenticator knows them.
-fn owner_id() -> Uuid {
+pub(super) fn owner_id() -> Uuid {
     Uuid::from_u128(u128::from_be_bytes(*b"tamis-owner-v1\0\0"))
 }
 

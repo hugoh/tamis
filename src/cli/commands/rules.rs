@@ -8,7 +8,7 @@ use super::super::App;
 use super::common::connect;
 use crate::config::Config;
 use crate::mail::Mailbox;
-use crate::rules::{self, Rules};
+use crate::rules::{self, Decision, Rules};
 
 const FOLDER_CHECK_TIMEOUT: Duration = Duration::from_mins(1);
 
@@ -121,6 +121,86 @@ pub(in super::super) struct RulesTest<'a> {
     pub json: bool,
 }
 
+type Verdict = Result<(), String>;
+
+/// The header's expected folder and whether the decision met what was asked.
+/// `None` means nothing was asked.
+fn judge(
+    options: &RulesTest<'_>,
+    raw: &[u8],
+    got: &str,
+    decision: &Decision,
+) -> (Option<String>, Option<Verdict>) {
+    let mut verdict: Option<Verdict> = None;
+    let mut expected = None;
+    if let Some(header) = options.expect_header {
+        expected = rules::header_value(raw, header);
+        verdict = Some(match &expected {
+            Some(want) if want == got => Ok(()),
+            Some(want) => Err(format!("want {want:?}, got {got:?}")),
+            None => Err(format!("no {header} header")),
+        });
+    }
+    if options.strict && !decision.ignored.is_empty() && !matches!(verdict, Some(Err(_))) {
+        verdict = Some(Err(format!("ignored: {}", decision.ignored.join("; "))));
+    } else if options.strict && verdict.is_none() {
+        verdict = Some(Ok(()));
+    }
+    (expected, verdict)
+}
+
+fn json_line(
+    message: &Path,
+    decision: &Decision,
+    expected: Option<&str>,
+    verdict: Option<&Verdict>,
+) -> serde_json::Value {
+    let mut object = serde_json::json!({
+        "message": message.display().to_string(),
+        "folder": decision.folder,
+        "ignored": decision.ignored,
+    });
+    if let Some(want) = expected {
+        object["expected"] = serde_json::json!(want);
+    }
+    if let Some(verdict) = verdict {
+        object["ok"] = serde_json::json!(verdict.is_ok());
+    }
+    object
+}
+
+fn write_human(
+    out: &mut dyn Write,
+    message: &Path,
+    alone: bool,
+    decision: &Decision,
+    verdict: Option<&Verdict>,
+) -> Result<()> {
+    let name = message.display();
+    match verdict {
+        Some(Ok(())) => writeln!(out, "ok {name}")?,
+        Some(Err(why)) => writeln!(out, "FAIL {name}: {why}")?,
+        None => {
+            let result = match &decision.folder {
+                None => "stays in the inbox".to_owned(),
+                Some(folder) => format!("filed into {folder}"),
+            };
+            if alone {
+                writeln!(out, "{result}")?;
+            } else {
+                writeln!(out, "{name}: {result}")?;
+            }
+        }
+    }
+    let already_said = matches!(verdict, Some(Err(why)) if why.starts_with("ignored:"));
+    if !already_said {
+        for ignored in &decision.ignored {
+            writeln!(out, "  ignored: {ignored}")?;
+        }
+    }
+    Ok(())
+}
+
 pub(in super::super) fn test(
     app: &mut App,
     messages: &[PathBuf],
@@ -138,63 +218,23 @@ pub(in super::super) fn test(
             .with_context(|| format!("run rules on {}", message.display()))?;
         let got = decision.folder.as_deref().unwrap_or(STAY);
 
-        // None = no expectation; Some(Ok) = met; Some(Err) = why not.
-        let mut verdict: Option<Result<(), String>> = None;
-        let mut expected = None;
-        if let Some(header) = options.expect_header {
-            expected = rules::header_value(&raw, header);
-            verdict = Some(match &expected {
-                Some(want) if want == got => Ok(()),
-                Some(want) => Err(format!("want {want:?}, got {got:?}")),
-                None => Err(format!("no {header} header")),
-            });
-        }
-        if options.strict && !decision.ignored.is_empty() && !matches!(verdict, Some(Err(_))) {
-            verdict = Some(Err(format!("ignored: {}", decision.ignored.join("; "))));
-        } else if options.strict && verdict.is_none() {
-            verdict = Some(Ok(()));
-        }
+        let (expected, verdict) = judge(options, &raw, got, &decision);
         if matches!(verdict, Some(Err(_))) {
             failed += 1;
         }
 
         if options.json {
-            let mut object = serde_json::json!({
-                "message": message.display().to_string(),
-                "folder": decision.folder,
-                "ignored": decision.ignored,
-            });
-            if let Some(want) = &expected {
-                object["expected"] = serde_json::json!(want);
-            }
-            if let Some(verdict) = &verdict {
-                object["ok"] = serde_json::json!(verdict.is_ok());
-            }
-            writeln!(app.env.stdout, "{object}")?;
-            continue;
-        }
-
-        let name = message.display();
-        match &verdict {
-            Some(Ok(())) => writeln!(app.env.stdout, "ok {name}")?,
-            Some(Err(why)) => writeln!(app.env.stdout, "FAIL {name}: {why}")?,
-            None => {
-                let result = match &decision.folder {
-                    None => "stays in the inbox".to_owned(),
-                    Some(folder) => format!("filed into {folder}"),
-                };
-                if messages.len() == 1 {
-                    writeln!(app.env.stdout, "{result}")?;
-                } else {
-                    writeln!(app.env.stdout, "{name}: {result}")?;
-                }
-            }
-        }
-        let already_said = matches!(&verdict, Some(Err(why)) if why.starts_with("ignored:"));
-        if !already_said {
-            for ignored in &decision.ignored {
-                writeln!(app.env.stdout, "  ignored: {ignored}")?;
-            }
+            let line = json_line(message, &decision, expected.as_deref(), verdict.as_ref());
+            writeln!(app.env.stdout, "{line}")?;
+        } else {
+            let alone = messages.len() == 1;
+            write_human(
+                &mut app.env.stdout,
+                message,
+                alone,
+                &decision,
+                verdict.as_ref(),
+            )?;
         }
     }
     if checking {

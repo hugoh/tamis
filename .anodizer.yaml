@@ -42,6 +42,8 @@ crates:
         owner: hugoh
         name: tamis
     publish:
+      cargo:
+        auth: auto
       homebrew:
         repository:
           owner: hugoh
@@ -73,6 +75,10 @@ verify_release:
 
 git:
   tag_sort: smartsemver
+
+tag:
+  tag_prefix: v
+  bump_minor_pre_major: true
 
 changelog:
   sort: asc

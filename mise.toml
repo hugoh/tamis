@@ -5,7 +5,6 @@
 "github:bnjbvr/cargo-machete" = "0.9.2"
 jq = "1.8.2"
 "github:tj-smith47/anodizer" = "0.30.0"
-cocogitto = "7.0.0"
 hk = "2.11.1"
 rumdl = "0.3.2"
 biome = "2.6.4"

@@ -199,16 +199,9 @@ jobs:
       # Artifact transfer drops the execute bit, and the merge runs the binary.
       - name: Restore execute bit
         run: find dist -type f -name tamis -exec chmod +x {} +
-      # Releases only tag; Cargo.toml stays at 0.0.0, but cargo publish uploads its version.
-      - name: Set the crate version from the tag
-        env:
-          TAG: ${{ needs.tag.outputs.tag }}
-        run: sed -i "0,/^version = .*/s//version = \"${TAG#v}\"/" Cargo.toml
-      - run: rustup toolchain install
       - name: Publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         # The preflight's GitHub push probe reads permissions.push from

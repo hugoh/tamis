@@ -150,12 +150,17 @@ impl<C: Connector> Daemon<C> {
         self
     }
 
-    /// Makes a single pass and returns what it did.
+    /// Makes a single pass and returns what it did. A pass cut short by a
+    /// requested shutdown is not a failure: it returns an empty summary and
+    /// the unhandled mail waits for the next pass.
     ///
     /// # Errors
     /// Whatever stopped the pass.
     pub async fn once(&mut self) -> engine::Result<engine::Summary> {
-        self.pass().await
+        match self.pass().await {
+            Err(err) if err.is_stopped() => Ok(engine::Summary::default()),
+            other => other,
+        }
     }
 
     /// Runs passes until shut down.

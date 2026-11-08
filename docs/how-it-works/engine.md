@@ -460,9 +460,15 @@ mail could be spam that slipped through and that nobody has looked at yet.
 - **Reused Message-IDs don't skip the filter.** Mail tamis already trained and
   moved on carries `$TamisTrained`, which senders can't set. A message with a
   trained Message-ID but no such keyword is judged like any other.
-- **No hung passes.** A pass lasts at most 10 minutes, and when it ends (or on
-  SIGTERM) the connection is dropped, so a server that stops answering can't
-  stall the loop. Progress is saved per message and resumes next pass.
+- **No hung passes.** A pass lasts at most 10 minutes, and when it ends the
+  connection is dropped, so a server that stops answering can't stall the
+  loop. Progress is saved per message and resumes next pass.
+- **Clean shutdown.** On SIGTERM or SIGINT a pass stops between messages (and
+  between training batches), never inside one; the mail it didn't reach waits
+  for the next pass. A pass stuck on a hung command is dropped 30 seconds
+  after the signal. A move cut off that way is journalled, so the next pass
+  settles it: applied if the message arrived, redone if not. The database's
+  write-ahead log is folded into the main file on exit.
 - **Peek only.** Fetches use `BODY.PEEK`, capped at 256 KiB per message.
 - **Train once per message.** Training is keyed by Message-ID (or a content
   hash when there is none). Training a message again with the other label

@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use jiff::Timestamp;
 use mail_parser::{AddressList, MessageParser};
+use tokio_util::sync::CancellationToken;
 
 use super::{Error, Mailbox, Message, ModState, Result, State};
 
@@ -37,6 +38,12 @@ struct Folder {
 }
 
 /// An in-memory [`Mailbox`].
+#[derive(Debug)]
+struct Stall {
+    skip: usize,
+    applied: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct Fake {
     folders: BTreeMap<String, Folder>,
@@ -44,6 +51,8 @@ pub struct Fake {
     pub condstore: bool,
     faults: HashMap<&'static str, VecDeque<Error>>,
     lost_replies: HashMap<&'static str, VecDeque<Error>>,
+    cancels: HashMap<&'static str, CancellationToken>,
+    stalls: HashMap<&'static str, Stall>,
     /// Every operation performed, as "operation folder", oldest first.
     pub log: Vec<String>,
 }
@@ -90,6 +99,34 @@ impl Fake {
             .entry(operation)
             .or_default()
             .push_back(error);
+    }
+
+    /// Cancels `token` when `operation` is next called, as a shutdown
+    /// arriving mid-pass.
+    pub fn cancel_on(&mut self, operation: &'static str, token: CancellationToken) {
+        self.cancels.insert(operation, token);
+    }
+
+    /// Makes `operation` hang forever on its next call after `skip` others,
+    /// so a test can drop the pass there. With `applied` the hang comes after
+    /// the server has acted, as when the reply is lost.
+    pub fn stall(&mut self, operation: &'static str, skip: usize, applied: bool) {
+        self.stalls.insert(operation, Stall { skip, applied });
+    }
+
+    async fn stall_point(&mut self, operation: &'static str, applied: bool) {
+        let Some(stall) = self.stalls.get_mut(operation) else {
+            return;
+        };
+        if stall.applied != applied {
+            return;
+        }
+        if stall.skip > 0 {
+            stall.skip -= 1;
+            return;
+        }
+        self.stalls.remove(operation);
+        std::future::pending::<()>().await;
     }
 
     fn reply(&mut self, operation: &'static str) -> Result<()> {
@@ -182,6 +219,9 @@ impl Fake {
 
     fn check(&mut self, operation: &'static str, folder: &str) -> Result<()> {
         self.log.push(format!("{operation} {folder}"));
+        if let Some(token) = self.cancels.remove(operation) {
+            token.cancel();
+        }
         match self.faults.get_mut(operation).and_then(VecDeque::pop_front) {
             Some(error) => Err(error),
             None => Ok(()),
@@ -402,6 +442,7 @@ impl Mailbox for Fake {
 
     async fn move_messages(&mut self, mailbox: &str, uids: &[u32], dest: &str) -> Result<()> {
         self.check("move", mailbox)?;
+        self.stall_point("move", false).await;
         self.folder(dest)?;
         let source = self.folder_mut(mailbox)?;
 
@@ -420,17 +461,24 @@ impl Mailbox for Fake {
             message.mod_seq = dest.mod_seq;
             dest.messages.push(message);
         }
+        self.stall_point("move", true).await;
         self.reply("move")
     }
 
     async fn add_keyword(&mut self, mailbox: &str, uids: &[u32], keyword: &str) -> Result<()> {
         self.check("add_keyword", mailbox)?;
-        self.set_flag(mailbox, uids, keyword, true)
+        self.stall_point("add_keyword", false).await;
+        let done = self.set_flag(mailbox, uids, keyword, true);
+        self.stall_point("add_keyword", true).await;
+        done
     }
 
     async fn remove_keyword(&mut self, mailbox: &str, uids: &[u32], keyword: &str) -> Result<()> {
         self.check("remove_keyword", mailbox)?;
-        self.set_flag(mailbox, uids, keyword, false)
+        self.stall_point("remove_keyword", false).await;
+        let done = self.set_flag(mailbox, uids, keyword, false);
+        self.stall_point("remove_keyword", true).await;
+        done
     }
 
     async fn ensure(&mut self, mailbox: &str) -> Result<()> {

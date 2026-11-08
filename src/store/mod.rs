@@ -116,6 +116,17 @@ impl Store {
         Ok(store)
     }
 
+    /// Folds the write-ahead log into the database file and empties it, as a
+    /// clean shutdown should.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn checkpoint(&self) -> Result<()> {
+        self.conn()
+            .pragma_update_and_check(None, "wal_checkpoint", "TRUNCATE", |_| Ok(()))?;
+        Ok(())
+    }
+
     fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -265,6 +276,18 @@ mod tests {
             verdict: crate::journal::Verdict::Good,
             ..Decision::default()
         }
+    }
+
+    #[test]
+    fn a_checkpoint_empties_the_wal() {
+        let (dir, store) = open();
+        store.set_setting("k", "v").unwrap();
+        let wal = dir.path().join("state.db-wal");
+        assert!(fs::metadata(&wal).unwrap().len() > 0);
+
+        store.checkpoint().unwrap();
+
+        assert_eq!(fs::metadata(&wal).unwrap().len(), 0);
     }
 
     #[test]

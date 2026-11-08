@@ -400,3 +400,102 @@ fn the_authserv_id_comes_from_config_then_from_what_was_learnt() {
         assert_eq!((pin.id.as_str(), pin.source), (id, source), "{name}");
     }
 }
+
+#[tokio::test]
+async fn a_stopped_pass_leaves_unhandled_mail_for_the_next_one() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail().deliver("INBOX", &spam("s2"), &[]);
+    let stop = CancellationToken::new();
+    env.engine.set_shutdown(stop.clone());
+    stop.cancel();
+
+    let err = env.engine.run_once().await.unwrap_err();
+
+    assert!(err.is_stopped(), "{err}");
+    assert!(env.decisions().is_empty());
+    assert_eq!(env.store().cursor("INBOX").unwrap().unwrap().last_uid, 0);
+    assert_eq!(env.mail().uids("INBOX").len(), 2, "nothing moved");
+
+    env.engine.set_shutdown(CancellationToken::new());
+    assert_eq!(env.engine.run_once().await.unwrap().spam, 2);
+}
+
+#[tokio::test]
+async fn a_stop_mid_batch_keeps_the_cursor_after_the_last_handled_message() {
+    let mut env = Env::trained();
+    env.start().await;
+    let first = env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail().deliver("INBOX", &spam("s2"), &[]);
+    env.mail().deliver("INBOX", &spam("s3"), &[]);
+    let stop = CancellationToken::new();
+    env.engine.set_shutdown(stop.clone());
+    env.mail().cancel_on("move", stop);
+
+    let err = env.engine.run_once().await.unwrap_err();
+
+    assert!(err.is_stopped(), "{err}");
+    assert_eq!(env.decisions().len(), 1);
+    assert_eq!(
+        env.store().cursor("INBOX").unwrap().unwrap().last_uid,
+        first
+    );
+
+    env.engine.set_shutdown(CancellationToken::new());
+    assert_eq!(env.engine.run_once().await.unwrap().spam, 2);
+}
+
+/// Runs one pass and drops it at the first point it waits, as a shutdown
+/// deadline does.
+async fn run_until_dropped(env: &mut Env) {
+    tokio::select! {
+        biased;
+        done = env.engine.run_once() => panic!("the pass finished: {done:?}"),
+        () = std::future::ready(()) => {}
+    }
+}
+
+#[tokio::test]
+async fn a_pass_dropped_after_a_move_is_settled_by_the_next() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail().stall("move", 0, true);
+
+    run_until_dropped(&mut env).await;
+
+    assert_eq!(env.store().pending_moves().unwrap().len(), 1);
+    assert_eq!(env.mail().uids("Junk").len(), 1, "the move happened");
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.store().pending_moves().unwrap().is_empty());
+    assert_eq!(env.mail().uids("Junk").len(), 1);
+    assert!(env.mail().uids("INBOX").is_empty());
+    let decisions = env.decisions();
+    assert_eq!(decisions.len(), 1);
+    assert!(decisions[0].applied);
+}
+
+#[tokio::test]
+async fn a_pass_dropped_before_a_move_is_redone_by_the_next() {
+    let mut env = Env::trained();
+    env.start().await;
+    let uid = env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail().stall("move", 0, false);
+
+    run_until_dropped(&mut env).await;
+
+    assert_eq!(env.store().pending_moves().unwrap().len(), 1);
+    assert_eq!(env.mail().uids("INBOX"), [uid], "the move did not happen");
+
+    env.engine.run_once().await.unwrap();
+
+    assert!(env.store().pending_moves().unwrap().is_empty());
+    assert_eq!(env.mail().uids("Junk").len(), 1);
+    assert!(env.mail().uids("INBOX").is_empty());
+    let decisions = env.decisions();
+    assert_eq!(decisions.len(), 1);
+    assert!(decisions[0].applied);
+}

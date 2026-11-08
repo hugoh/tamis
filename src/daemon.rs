@@ -23,6 +23,9 @@ use crate::store::Store;
 /// A pass lasts at most this long, and when it ends the connection is
 /// dropped, so a server that stops answering can't stall the loop.
 pub const PASS_TIMEOUT: Duration = Duration::from_mins(10);
+/// How long a pass in progress gets to finish once shutdown is asked for,
+/// before it is dropped. Keep systemd's `TimeoutStopSec` above this.
+const STOP_GRACE: Duration = Duration::from_secs(30);
 /// How long to wait after the watcher hears of news, so a burst of mail is
 /// handled by one pass.
 const NEW_MAIL_SETTLE: Duration = Duration::from_secs(1);
@@ -211,6 +214,7 @@ impl<C: Connector> Daemon<C> {
             })?;
 
         let mut engine = Engine::new(mailbox, Arc::clone(&self.store), Arc::clone(&cfg));
+        engine.set_shutdown(self.shutdown.clone());
         if !cfg.rules.script.is_empty() {
             engine.set_rules(Rules::load(std::path::Path::new(&cfg.rules.script))?);
         }
@@ -223,11 +227,19 @@ impl<C: Connector> Daemon<C> {
             engine.run_once().await
         };
 
-        let summary = match tokio::time::timeout(PASS_TIMEOUT, work).await {
-            Ok(result) => result?,
-            Err(_) => {
-                return Err(mail::Error::Connection("the pass took too long".to_owned()).into());
-            }
+        let stop = self.shutdown.clone();
+        let grace = async {
+            stop.cancelled().await;
+            tokio::time::sleep(STOP_GRACE).await;
+        };
+        let summary = tokio::select! {
+            outcome = tokio::time::timeout(PASS_TIMEOUT, work) => match outcome {
+                Ok(result) => result?,
+                Err(_) => {
+                    return Err(mail::Error::Connection("the pass took too long".to_owned()).into());
+                }
+            },
+            () = grace => return Err(engine::Error::Stopped),
         };
 
         self.status

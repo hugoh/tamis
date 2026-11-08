@@ -61,24 +61,31 @@ impl<M: Mailbox> Engine<M> {
             .context(&context)?;
 
         for batch in uids.chunks(FETCH_BATCH) {
-            for message in self
-                .mail
-                .fetch(&folder.name, batch)
-                .await
-                .context(&context)?
-            {
-                self.train_one(folder, &message)?;
-                summary.trained += 1;
-            }
-            self.mail
-                .add_keyword(&folder.name, batch, keyword::TRAINED)
-                .await
-                .context(&context)?;
-            self.mail
-                .move_messages(&folder.name, batch, &folder.dest)
+            self.check_stop()?;
+            self.train_batch(folder, batch, summary)
                 .await
                 .context(&context)?;
         }
+        Ok(())
+    }
+
+    /// Learns one batch, then moves it on.
+    async fn train_batch(
+        &mut self,
+        folder: &TrainFolder,
+        batch: &[u32],
+        summary: &mut Summary,
+    ) -> Result<()> {
+        for message in self.mail.fetch(&folder.name, batch).await? {
+            self.train_one(folder, &message)?;
+            summary.trained += 1;
+        }
+        self.mail
+            .add_keyword(&folder.name, batch, keyword::TRAINED)
+            .await?;
+        self.mail
+            .move_messages(&folder.name, batch, &folder.dest)
+            .await?;
         Ok(())
     }
 

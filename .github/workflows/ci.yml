@@ -77,7 +77,7 @@ jobs:
         run: |
           id=$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           if [ -z "$id" ] || ! gh run download "$id" --name crap-baseline; then
-            echo "::warning::No CRAP baseline found; regression gate skipped"
+            echo "::warning::No CRAP baseline found; regression check skipped"
           fi
       - name: Tests and coverage
         run: mise run ci:core

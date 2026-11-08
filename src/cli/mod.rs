@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use tokio_util::sync::CancellationToken;
 
 use crate::classify::Label;
@@ -161,7 +161,8 @@ async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {
         return commands::version(app);
     }
     let Some(command) = cli.command else {
-        let _ = Cli::parse_from(["tamis", "--help"]);
+        let help = Cli::command().render_help();
+        let _ = write!(app.env.stdout, "{help}");
         return Ok(());
     };
     match command {
@@ -276,8 +277,9 @@ mod tests {
             assert!(out.text().is_empty() && !err.text().is_empty(), "{args:?}");
         }
 
-        let (code, ..) = Harness::new(&[], "").run(NO_ARGS).await;
+        let (code, out, _) = Harness::new(&[], "").run(NO_ARGS).await;
         assert_eq!(code, 0, "no command shows the help");
+        assert!(out.text().contains("A spam filter and Sieve mail sorter"));
     }
 
     #[tokio::test]

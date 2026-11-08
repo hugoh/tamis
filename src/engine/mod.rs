@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use jiff::Timestamp;
 use sha2::{Digest, Sha256};
+use tokio_util::sync::CancellationToken;
 
 pub use bootstrap::{BootstrapOptions, BootstrapSummary, Source};
 pub use domain::{Action, Judgement, Reason, Summary, Verdict, keyword};
@@ -52,6 +53,8 @@ pub struct Engine<M: Mailbox> {
     rules: Option<Rules>,
     /// The authserv-id to pin to, once resolved.
     auth_id: Option<String>,
+    /// Checked between messages: a stop waits for the current one to finish.
+    stop: CancellationToken,
 }
 
 impl<M: Mailbox> Engine<M> {
@@ -63,7 +66,21 @@ impl<M: Mailbox> Engine<M> {
             cfg,
             rules: None,
             auth_id: None,
+            stop: CancellationToken::new(),
         }
+    }
+
+    /// Fails with `Error::Stopped` once shutdown has been asked for.
+    fn check_stop(&self) -> Result<()> {
+        if self.stop.is_cancelled() {
+            return Err(Error::Stopped);
+        }
+        Ok(())
+    }
+
+    /// Makes passes end between messages once `stop` is cancelled.
+    pub fn set_shutdown(&mut self, stop: CancellationToken) {
+        self.stop = stop;
     }
 
     /// Gives the connection back, to close it politely.
@@ -182,23 +199,37 @@ impl<M: Mailbox> Engine<M> {
         let messages = self.mail.fetch(folder, batch).await.context(&context)?;
 
         for message in &messages {
-            let handled = match kind {
-                Kind::Watched => self.handle(folder, message, summary).await,
-                Kind::Sent => self.handle_sent(folder, message).await,
-                Kind::Junk => self.handle_junk(message, summary).await,
-            }
-            .context(format!("{folder} UID {}", message.uid));
-            match handled {
-                Err(err) if err.is_server_refusal() => {
-                    tracing::warn!(%err, "skipping a message the server refused to act on");
-                }
-                other => other?,
-            }
+            self.check_stop()?;
+            self.handle_scanned(folder, message, kind, summary).await?;
 
             cursor.last_uid = cursor.last_uid.max(message.uid);
             self.store.set_cursor(folder, *cursor).context(&context)?;
         }
         Ok(())
+    }
+
+    /// Hands one scanned message to its folder's handler. A message the server
+    /// refuses to act on is skipped.
+    async fn handle_scanned(
+        &mut self,
+        folder: &str,
+        message: &Message,
+        kind: Kind,
+        summary: &mut Summary,
+    ) -> Result<()> {
+        let handled = match kind {
+            Kind::Watched => self.handle(folder, message, summary).await,
+            Kind::Sent => self.handle_sent(folder, message).await,
+            Kind::Junk => self.handle_junk(message, summary).await,
+        }
+        .context(format!("{folder} UID {}", message.uid));
+        match handled {
+            Err(err) if err.is_server_refusal() => {
+                tracing::warn!(%err, "skipping a message the server refused to act on");
+                Ok(())
+            }
+            other => other,
+        }
     }
 
     fn start_at_current(&self, folder: &str, state: State) -> Result<()> {

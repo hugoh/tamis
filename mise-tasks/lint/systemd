@@ -8,12 +8,12 @@ page=docs/user-guide/running-as-a-service.md
 
 shown=$(awk '/^# \/usr\/lib\/systemd\/system\/tamis.service$/ {in_unit=1; next} in_unit && /^```$/ {exit} in_unit' "$page")
 if [ "$shown" != "$(cat "$unit")" ]; then
-  echo "lint-systemd: $page does not show $unit as packaged; copy it in" >&2
+  echo "lint:systemd: $page does not show $unit as packaged; copy it in" >&2
   exit 1
 fi
 
 if [ "$(uname -s)" != Linux ]; then
-  echo "lint-systemd: systemd checks skipped, not Linux"
+  echo "lint:systemd: systemd checks skipped, not Linux"
   exit 0
 fi
 

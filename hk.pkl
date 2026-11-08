@@ -25,10 +25,10 @@ local linters = new Mapping<String, Step> {
   }
   ["systemd"] {
     glob = List("packaging/*.service", "packaging/*.sysusers", "docs/user-guide/running-as-a-service.md")
-    check = "mise run lint-systemd"
+    check = "mise run lint:systemd"
   }
   ["anodizer"] {
-    check = "mise run lint-release"
+    check = "mise run lint:release"
   }
 }
 

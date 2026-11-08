@@ -8,7 +8,7 @@ mod password;
 mod testing;
 
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -133,7 +133,7 @@ pub async fn run(args: &[String], mut env: Env, shutdown: CancellationToken) -> 
     let config_path = cli
         .config
         .clone()
-        .or_else(|| config::default_path(&*env.getenv))
+        .or_else(|| default_config_path(&cli, &*env.getenv))
         .unwrap_or_default();
     let mut app = App {
         env,
@@ -154,6 +154,15 @@ pub async fn run(args: &[String], mut env: Env, shutdown: CancellationToken) -> 
             EXIT_FAIL
         }
     }
+}
+
+/// Where to look for the configuration without `--config`. `init` writes the
+/// per-user file, so it never lands on the system one.
+fn default_config_path(cli: &Cli, getenv: config::Getenv<'_>) -> Option<PathBuf> {
+    if matches!(cli.command, Some(Command::Init { .. })) {
+        return config::default_path(getenv);
+    }
+    config::resolve_default_path(getenv, Path::new(config::SYSTEM_PATH))
 }
 
 async fn dispatch(app: &mut App, cli: Cli) -> Result<()> {

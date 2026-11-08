@@ -342,6 +342,21 @@ pub fn default_path(getenv: Getenv<'_>) -> Option<PathBuf> {
     Some(base.join("tamis").join("config.toml"))
 }
 
+/// Where the packaged service keeps its configuration.
+pub const SYSTEM_PATH: &str = "/etc/tamis/config.toml";
+
+/// The per-user configuration if it exists, else `system` if that does, else
+/// the per-user path again, so a missing file is reported by the name a user
+/// would create.
+#[must_use]
+pub fn resolve_default_path(getenv: Getenv<'_>, system: &Path) -> Option<PathBuf> {
+    let user = default_path(getenv);
+    if user.as_deref().is_some_and(Path::exists) || !system.exists() {
+        return user;
+    }
+    Some(system.to_path_buf())
+}
+
 /// `$XDG_STATE_HOME/tamis/tamis.db`, falling back to `~/.local/state`. `None`
 /// when there is no home directory either.
 #[must_use]
@@ -520,6 +535,35 @@ mod tests {
             "HOME" => Some("/home/me".to_owned()),
             _ => None,
         }
+    }
+
+    #[test]
+    fn the_system_config_stands_in_when_there_is_no_user_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let system = dir.path().join("system.toml");
+        let user_dir = dir.path().join("user/tamis");
+        let user = user_dir.join("config.toml");
+        let user_env = |key: &str| {
+            (key == "XDG_CONFIG_HOME")
+                .then(|| dir.path().join("user").to_string_lossy().into_owned())
+        };
+
+        assert_eq!(
+            resolve_default_path(&user_env, &system),
+            Some(user.clone()),
+            "neither exists: name the user one"
+        );
+
+        fs::write(&system, "").unwrap();
+        assert_eq!(
+            resolve_default_path(&user_env, &system),
+            Some(system.clone())
+        );
+        assert_eq!(resolve_default_path(&no_env, &system), Some(system.clone()));
+
+        fs::create_dir_all(&user_dir).unwrap();
+        fs::write(&user, "").unwrap();
+        assert_eq!(resolve_default_path(&user_env, &system), Some(user));
     }
 
     #[test]

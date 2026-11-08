@@ -64,6 +64,10 @@ where.
    until `policy.mode = "live"`. Its closing hint about `tamis login` is for
    desktops; use the next step on a server.
 
+   Afterwards `sudo -u tamis tamis log`, `doctor` and the other commands find
+   `/etc/tamis/config.toml` on their own, as long as the user has no
+   `~/.config/tamis/config.toml` of their own.
+
 2. Give the service the mailbox password with a drop-in
    (`sudo systemctl edit tamis`):
 

@@ -33,8 +33,8 @@ it keeps the last error, marked as recovered.
 The daemon saves that state in the state database (the `daemon_status` setting)
 after every pass, failure and retry time, so the commands that run in another
 process show it too. `tamis doctor` and the web Health page have a
-Daemon section: ok while passes succeed (with the last pass and any recent
-recovery), WARN while they fail or when nothing has been heard for longer than
+Daemon section: ok while passes succeed (with how long the daemon has been up,
+the last pass and any recent recovery), WARN while they fail or when nothing has been heard for longer than
 the daemon is due to report (a back-off wait counts as due), and FAIL, so
 `doctor` exits 1, while the login is rejected. Between
 a watcher's attempts the poll every `policy.poll_interval` covers the gap. A server that limits concurrent sessions may refuse the watchers; the

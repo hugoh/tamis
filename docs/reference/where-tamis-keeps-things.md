@@ -4,7 +4,7 @@ title: Where tamis keeps things
 
 | What | Where |
 |---|---|
-| Configuration | `$XDG_CONFIG_HOME/tamis/config.toml`, by default `~/.config/tamis/config.toml`; or `--config` |
+| Configuration | `$XDG_CONFIG_HOME/tamis/config.toml`, by default `~/.config/tamis/config.toml`; or `--config`. When that file does not exist, `/etc/tamis/config.toml` is used if it does (`tamis init` still writes the per-user one) |
 | State: what it learnt, folder positions, the decision journal, web passkeys | `$XDG_STATE_HOME/tamis/tamis.db`, by default `~/.local/state/tamis/tamis.db`; or `state` in the config |
 | Password | The system keychain, never in the configuration or state (see Passwords) |
 
@@ -13,7 +13,7 @@ instead:
 
 | What | Where |
 |---|---|
-| Configuration and rules | `/etc/tamis/config.toml`, `/etc/tamis/rules.sieve` (`root:tamis`, mode 0640) |
+| Configuration and rules | `/etc/tamis/config.toml`, `/etc/tamis/rules.sieve` (`root:tamis`, mode 0640); `tamis` commands find the configuration there without `--config` |
 | State | `/var/lib/tamis/.local/state/tamis/tamis.db` |
 | Password | a systemd credential, e.g. `/etc/tamis/password` (root only), loaded with `LoadCredential=` |
 | The unit and its README | `/usr/lib/systemd/system/tamis.service`, `/usr/share/doc/tamis/README.systemd.md` |

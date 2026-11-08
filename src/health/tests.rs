@@ -333,7 +333,7 @@ fn the_daemon_is_judged_from_what_it_saved() {
     let healthy = daemon_check(Some(snapshot()));
     assert_eq!(
         (healthy.status, healthy.detail.as_str()),
-        (Status::Ok, "last pass 47s ago: scanned 0, spam 0")
+        (Status::Ok, "up 1d 0h; last pass 47s ago: scanned 0, spam 0")
     );
 
     let recovered = daemon_check(Some(Snapshot {
@@ -343,7 +343,7 @@ fn the_daemon_is_judged_from_what_it_saved() {
     }));
     assert_eq!(
         recovered.detail,
-        "last pass 47s ago: scanned 0, spam 0; recovered 2h46m0s ago from a failure at 10:15:09"
+        "up 1d 0h; last pass 47s ago: scanned 0, spam 0; recovered 2h46m0s ago from a failure at 10:15:09"
     );
 
     let fresh = daemon_check(Some(Snapshot {
@@ -353,10 +353,37 @@ fn the_daemon_is_judged_from_what_it_saved() {
     assert!(
         fresh
             .detail
-            .starts_with("running since 13:02:00, no pass yet"),
+            .starts_with("up 1d 0h (since 13:02:00), no pass yet"),
         "{}",
         fresh.detail
     );
+}
+
+#[test]
+fn uptime_is_written_in_its_two_largest_units() {
+    let cases = [
+        (0, "0s"),
+        (59, "59s"),
+        (60, "1m"),
+        (3_599, "59m"),
+        (3_600, "1h 0m"),
+        (2 * 3_600 + 5 * 60 + 59, "2h 5m"),
+        (86_399, "23h 59m"),
+        (86_400, "1d 0h"),
+        (3 * 86_400 + 4 * 3_600 + 1_800, "3d 4h"),
+    ];
+    for (secs, text) in cases {
+        assert_eq!(uptime_text(Duration::from_secs(secs)), text, "{secs}s");
+    }
+}
+
+#[test]
+fn a_daemon_without_a_start_time_shows_no_uptime() {
+    let check = daemon_check(Some(Snapshot {
+        started: None,
+        ..snapshot()
+    }));
+    assert_eq!(check.detail, "last pass 47s ago: scanned 0, spam 0");
 }
 
 #[test]

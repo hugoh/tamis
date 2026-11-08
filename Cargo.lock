@@ -3928,7 +3928,7 @@ dependencies = [
 
 [[package]]
 name = "tamis"
-version = "0.0.0"
+version = "0.19.0"
 dependencies = [
  "anstyle",
  "anyhow",

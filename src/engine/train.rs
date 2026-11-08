@@ -61,6 +61,7 @@ impl<M: Mailbox> Engine<M> {
             .context(&context)?;
 
         for batch in uids.chunks(FETCH_BATCH) {
+            self.check_stop()?;
             for message in self
                 .mail
                 .fetch(&folder.name, batch)

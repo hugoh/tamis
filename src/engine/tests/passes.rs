@@ -421,3 +421,27 @@ async fn a_stopped_pass_leaves_unhandled_mail_for_the_next_one() {
     env.engine.set_shutdown(CancellationToken::new());
     assert_eq!(env.engine.run_once().await.unwrap().spam, 2);
 }
+
+#[tokio::test]
+async fn a_stop_mid_batch_keeps_the_cursor_after_the_last_handled_message() {
+    let mut env = Env::trained();
+    env.start().await;
+    let first = env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail().deliver("INBOX", &spam("s2"), &[]);
+    env.mail().deliver("INBOX", &spam("s3"), &[]);
+    let stop = CancellationToken::new();
+    env.engine.set_shutdown(stop.clone());
+    env.mail().cancel_on("move", stop);
+
+    let err = env.engine.run_once().await.unwrap_err();
+
+    assert!(err.is_stopped(), "{err}");
+    assert_eq!(env.decisions().len(), 1);
+    assert_eq!(
+        env.store().cursor("INBOX").unwrap().unwrap().last_uid,
+        first
+    );
+
+    env.engine.set_shutdown(CancellationToken::new());
+    assert_eq!(env.engine.run_once().await.unwrap().spam, 2);
+}

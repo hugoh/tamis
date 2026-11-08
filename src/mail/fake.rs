@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use jiff::Timestamp;
 use mail_parser::{AddressList, MessageParser};
+use tokio_util::sync::CancellationToken;
 
 use super::{Error, Mailbox, Message, ModState, Result, State};
 
@@ -44,6 +45,7 @@ pub struct Fake {
     pub condstore: bool,
     faults: HashMap<&'static str, VecDeque<Error>>,
     lost_replies: HashMap<&'static str, VecDeque<Error>>,
+    cancels: HashMap<&'static str, CancellationToken>,
     /// Every operation performed, as "operation folder", oldest first.
     pub log: Vec<String>,
 }
@@ -90,6 +92,12 @@ impl Fake {
             .entry(operation)
             .or_default()
             .push_back(error);
+    }
+
+    /// Cancels `token` when `operation` is next called, as a shutdown
+    /// arriving mid-pass.
+    pub fn cancel_on(&mut self, operation: &'static str, token: CancellationToken) {
+        self.cancels.insert(operation, token);
     }
 
     fn reply(&mut self, operation: &'static str) -> Result<()> {
@@ -182,6 +190,9 @@ impl Fake {
 
     fn check(&mut self, operation: &'static str, folder: &str) -> Result<()> {
         self.log.push(format!("{operation} {folder}"));
+        if let Some(token) = self.cancels.remove(operation) {
+            token.cancel();
+        }
         match self.faults.get_mut(operation).and_then(VecDeque::pop_front) {
             Some(error) => Err(error),
             None => Ok(()),

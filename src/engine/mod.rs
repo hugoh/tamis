@@ -70,6 +70,14 @@ impl<M: Mailbox> Engine<M> {
         }
     }
 
+    /// Fails with `Error::Stopped` once shutdown has been asked for.
+    fn check_stop(&self) -> Result<()> {
+        if self.stop.is_cancelled() {
+            return Err(Error::Stopped);
+        }
+        Ok(())
+    }
+
     /// Makes passes end between messages once `stop` is cancelled.
     pub fn set_shutdown(&mut self, stop: CancellationToken) {
         self.stop = stop;
@@ -191,9 +199,7 @@ impl<M: Mailbox> Engine<M> {
         let messages = self.mail.fetch(folder, batch).await.context(&context)?;
 
         for message in &messages {
-            if self.stop.is_cancelled() {
-                return Err(Error::Stopped);
-            }
+            self.check_stop()?;
             let handled = match kind {
                 Kind::Watched => self.handle(folder, message, summary).await,
                 Kind::Sent => self.handle_sent(folder, message).await,

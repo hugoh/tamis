@@ -58,6 +58,7 @@ impl<M: Mailbox> Engine<M> {
         folders.push(self.cfg.folders.junk.clone());
 
         for folder in folders {
+            self.check_stop()?;
             self.learn_folder_keywords(&folder, since, summary).await?;
         }
         Ok(())

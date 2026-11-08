@@ -127,3 +127,16 @@ async fn learning_looks_in_junk_when_the_message_was_moved_there() {
     let err = env.engine.learn(id, Some(Label::Good)).await.unwrap_err();
     assert!(err.is_message_gone(), "{err}");
 }
+
+#[tokio::test]
+async fn a_stop_ends_the_keyword_search_before_the_next_folder() {
+    let mut env = Env::trained_with(Mode::Live, |cfg| cfg.policy.learn_from_keywords = true);
+    env.start().await;
+    let stop = CancellationToken::new();
+    env.engine.set_shutdown(stop.clone());
+    stop.cancel();
+
+    let err = env.engine.run_once().await.unwrap_err();
+
+    assert!(err.is_stopped(), "{err}");
+}

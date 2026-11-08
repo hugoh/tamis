@@ -228,3 +228,23 @@ async fn a_sent_folder_that_cannot_be_scanned_does_not_fail_the_pass() {
         "{err}"
     );
 }
+
+#[tokio::test]
+async fn a_stop_during_training_waits_for_the_batch_then_resumes() {
+    let mut env = Env::with(Mode::Live, |_| {});
+    for n in 0..=FETCH_BATCH {
+        env.mail()
+            .deliver("TrainSpam", &spam(&format!("t{n}")), &[]);
+    }
+    let stop = CancellationToken::new();
+    env.engine.set_shutdown(stop.clone());
+    env.mail().cancel_on("move", stop);
+
+    let err = env.engine.run_once().await.unwrap_err();
+
+    assert!(err.is_stopped(), "{err}");
+    assert_eq!(env.mail().uids("TrainSpam").len(), 1, "one batch was moved");
+
+    env.engine.set_shutdown(CancellationToken::new());
+    assert_eq!(env.engine.run_once().await.unwrap().trained, 1);
+}

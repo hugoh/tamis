@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Upgrade dependencies within their semver ranges; extra arguments go to cargo upgrade"
+#MISE description="Upgrade dependencies, including incompatible (major) bumps; extra arguments go to cargo upgrade"
 #MISE tools={"cargo:cargo-edit"="latest"}
 set -e
-cargo upgrade "$@"
+cargo upgrade --incompatible "$@"
 cargo update

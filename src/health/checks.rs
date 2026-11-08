@@ -222,13 +222,16 @@ pub(super) fn last_decision(recent: &[Decision], now: Timestamp) -> Check {
         Check::new(
             name::LAST,
             Status::Warn,
-            format!("{} ago; is 'tamis run' running?", super::go_duration(shown)),
+            format!(
+                "{} ago; is 'tamis run' running?",
+                super::duration_text(shown)
+            ),
         )
     } else {
         Check::new(
             name::LAST,
             Status::Ok,
-            format!("{} ago", super::go_duration(shown)),
+            format!("{} ago", super::duration_text(shown)),
         )
     }
 }

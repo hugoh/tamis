@@ -117,7 +117,7 @@ fn golden() -> Golden {
 }
 
 /// A copy, so the fixture itself is never opened for writing.
-fn open_go_database() -> (tempfile::TempDir, Store) {
+fn open_fixture_database() -> (tempfile::TempDir, Store) {
     let dir = tempfile::tempdir().unwrap();
     let copy = dir.path().join("state.db");
     fs::copy(
@@ -134,8 +134,8 @@ fn ts(seconds: i64) -> Timestamp {
 }
 
 #[test]
-fn reads_a_database_the_go_version_wrote() {
-    let (_dir, store) = open_go_database();
+fn reads_a_recorded_database() {
+    let (_dir, store) = open_fixture_database();
     let want = golden();
 
     let decisions = store.decisions(1000).unwrap();
@@ -210,7 +210,7 @@ fn reads_a_database_the_go_version_wrote() {
 
 #[test]
 fn reads_the_model_and_bookkeeping() {
-    let (_dir, store) = open_go_database();
+    let (_dir, store) = open_fixture_database();
     let want = golden();
 
     let model = store.model(&want.tokens).unwrap();
@@ -281,8 +281,8 @@ fn reads_the_model_and_bookkeeping() {
 }
 
 #[test]
-fn queries_match_the_go_store() {
-    let (_dir, store) = open_go_database();
+fn queries_match_the_recorded_results() {
+    let (_dir, store) = open_fixture_database();
 
     for case in golden().queries {
         let want: Vec<Value> = case.want.clone().unwrap_or_default();

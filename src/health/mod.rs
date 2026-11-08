@@ -250,8 +250,8 @@ pub fn config_failed(error: &str, in_rules: bool) -> Report {
     }
 }
 
-/// A duration the way Go writes them: "47s", "17m0s", "2h46m0s".
-pub(crate) fn go_duration(span: Duration) -> String {
+/// A duration as "47s", "17m0s" or "2h46m0s".
+pub(crate) fn duration_text(span: Duration) -> String {
     let total = span.as_secs();
     let (hours, minutes, seconds) = (total / 3600, total % 3600 / 60, total % 60);
     if hours > 0 {
@@ -270,7 +270,7 @@ pub(crate) fn elapsed(span: Duration) -> String {
     } else {
         Duration::from_mins((span.as_secs() + 30) / 60)
     };
-    go_duration(rounded)
+    duration_text(rounded)
 }
 
 #[cfg(test)]

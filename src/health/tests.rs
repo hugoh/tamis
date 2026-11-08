@@ -496,7 +496,7 @@ fn a_configuration_that_does_not_load_has_its_own_report() {
 }
 
 #[test]
-fn the_report_serializes_as_the_go_one_did() {
+fn the_report_serializes_to_its_json_form() {
     let report = Report {
         checks: vec![
             Check::new(name::JOURNAL, Status::Skip, ""),

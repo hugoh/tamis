@@ -48,7 +48,7 @@ fn golden() -> Golden {
 }
 
 #[test]
-fn verified_matches_the_go_package() {
+fn verified_matches_the_recorded_results() {
     for case in golden().auth {
         let got = auth::verified(&mail(&case.file), &case.server_id);
         assert_eq!(
@@ -60,7 +60,7 @@ fn verified_matches_the_go_package() {
 }
 
 #[test]
-fn tally_matches_the_go_package() {
+fn tally_matches_the_recorded_results() {
     for case in golden().tallies {
         let mut tally = Tally::default();
         for (file, count) in &case.parts {

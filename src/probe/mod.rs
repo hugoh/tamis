@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn the_report_serializes_as_the_go_one_did() {
+    fn the_report_serializes_to_its_json_form() {
         let json = serde_json::to_string(&report(&[("IDLE", Status::Skip, "")])).unwrap();
 
         assert_eq!(

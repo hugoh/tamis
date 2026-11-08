@@ -17,11 +17,11 @@ pub enum Waiting {
     Running,
 }
 
-/// The zero value of Go's `time.Time`, which the Go daemon writes for "never".
-const GO_ZERO: &str = "0001-01-01T00:00:00Z";
+/// How the status file writes "never": the zero time.
+const NEVER: &str = "0001-01-01T00:00:00Z";
 
 mod time_or_never {
-    use super::{Deserialize, Deserializer, GO_ZERO, Serializer, Timestamp};
+    use super::{Deserialize, Deserializer, NEVER, Serializer, Timestamp};
 
     #[allow(clippy::ref_option, reason = "the signature serde's `with` needs")]
     pub fn serialize<S: Serializer>(
@@ -30,7 +30,7 @@ mod time_or_never {
     ) -> Result<S::Ok, S::Error> {
         match value {
             Some(at) => serializer.serialize_str(&at.to_string()),
-            None => serializer.serialize_str(GO_ZERO),
+            None => serializer.serialize_str(NEVER),
         }
     }
 
@@ -45,8 +45,8 @@ mod time_or_never {
     }
 }
 
-/// A copy of the status at one moment. The JSON is the one the Go daemon
-/// writes, so either can read the other's.
+/// A copy of the status at one moment, as the daemon saves it for the CLI and
+/// web interface to read.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Snapshot {
@@ -336,18 +336,18 @@ mod tests {
             snapshot
                 .encode()
                 .contains("\"lastPass\":\"0001-01-01T00:00:00Z\""),
-            "never is written as Go does"
+            "never is written as the zero time"
         );
     }
 
     #[test]
-    fn what_the_go_daemon_saved_can_be_read() {
-        let go = r#"{"started":"2026-11-02T13:01:07.123456789+01:00","passes":785,"lastPass":"2026-11-03T13:02:00Z",
+    fn a_saved_status_can_be_read() {
+        let saved = r#"{"started":"2026-11-02T13:01:07.123456789+01:00","passes":785,"lastPass":"2026-11-03T13:02:00Z",
             "lastSummary":"scanned 0","lastError":"","lastErrorAt":"0001-01-01T00:00:00Z","failures":0,
             "failingSince":"0001-01-01T00:00:00Z","retryAt":"0001-01-01T00:00:00Z","rejected":false,
             "recoveredAt":"2026-11-03T10:16:56Z","updated":"2026-11-03T13:02:00Z","waiting":"idle"}"#;
 
-        let snapshot = Snapshot::decode(go).unwrap();
+        let snapshot = Snapshot::decode(saved).unwrap();
 
         assert_eq!(
             (snapshot.passes, snapshot.waiting, snapshot.failures),

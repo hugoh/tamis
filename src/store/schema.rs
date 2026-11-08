@@ -1,6 +1,5 @@
 /// `MIGRATIONS[i]` upgrades the schema from version `i` to `i + 1`. Released
-/// steps never change; new ones are appended. They match the Go version's, so
-/// its databases open unchanged.
+/// steps never change; new ones are appended.
 pub(super) const MIGRATIONS: &[&str] = &[
     "
 CREATE TABLE tokens (

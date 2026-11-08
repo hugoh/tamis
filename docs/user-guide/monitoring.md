@@ -104,4 +104,5 @@ whether the service took it, so a mistyped URL is found before it matters.
 
 The monitoring settings, like the web interface's, are read when `tamis run`
 starts: restart it after editing them. A SIGHUP reloads `poll_interval` and the
-rest of the policy, but not `[monitor]`.
+rest of the policy, but not `[monitor]` (see
+[Running as a service](../running-as-a-service/)).

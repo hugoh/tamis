@@ -19,35 +19,18 @@ tamis looks for the password in this order:
    answer in memory.
 
 On a headless Linux server there is usually no keychain. Run tamis as a
-systemd service with an encrypted credential instead:
+[systemd service](../running-as-a-service/) with an encrypted credential
+instead:
 
 ```sh
 systemd-ask-password -n | sudo systemd-creds encrypt --name=password - /etc/credstore.encrypted/tamis
 ```
 
+and add this line to the unit's `[Service]` section:
+
 ```ini
-# /etc/systemd/system/tamis.service
-[Service]
-ExecStart=/usr/local/bin/tamis run --config /etc/tamis/config.toml
 LoadCredentialEncrypted=password:/etc/credstore.encrypted/tamis
-DynamicUser=yes
-StateDirectory=tamis
-StateDirectoryMode=0700
-Environment=XDG_STATE_HOME=/var/lib
 ```
 
 systemd decrypts it into a private, in-memory directory only the service can
 read, and passes its location in `$CREDENTIALS_DIRECTORY`.
-
-`systemctl stop` sends SIGTERM. tamis finishes the message it is on and exits,
-and drops a pass that is stuck on the server after 30 seconds, so systemd's
-default `TimeoutStopSec` of 90 seconds is enough. If you lower it, keep it
-above 30 seconds, or systemd will kill tamis mid-command (the next start
-recovers, but the shutdown is no longer clean). Interrupting `tamis run --once`
-with Ctrl-C ends the pass the same way and exits normally.
-
-Under systemd, tamis logs to stderr and the journal keeps it:
-`journalctl -u tamis`. When systemd says its output goes to the journal
-(`$JOURNAL_STREAM`), each line carries its priority and no timestamp of its
-own, so `journalctl -u tamis -p warning` shows just the warnings and errors,
-such as a rule naming a folder that doesn't exist.

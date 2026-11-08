@@ -32,6 +32,7 @@ export default defineConfig({
             "user-guide/filing-rules",
             "user-guide/web-interface",
             "user-guide/passwords",
+            "user-guide/running-as-a-service",
             "user-guide/monitoring",
             "user-guide/probe",
           ],

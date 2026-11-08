@@ -48,7 +48,8 @@ impl<M: Mailbox> Engine<M> {
     }
 
     /// Trains mail the provider filed to Junk as spam when tamis isn't
-    /// already sure it is: only those teach the model something. It trains the
+    /// already sure it is: only those teach the model something. The rest is
+    /// journaled without training. It trains the
     /// tokens and leaves the whitelist alone, since a forged message from a
     /// contact lands here too.
     fn learn_provider_junk(&self, message: &Message, summary: &mut Summary) -> Result<()> {
@@ -58,8 +59,14 @@ impl<M: Mailbox> Engine<M> {
 
         let (tokens, model) = self.features(&message.raw).context("learn provider junk")?;
         let score = classify::score(&model, &tokens).score;
+        let junk = self.cfg.folders.junk.clone();
+        let judgement = Judgement {
+            verdict: Verdict::Spam,
+            reason: Reason::ProviderJunk,
+            score,
+        };
         if score >= self.cfg.policy.spam_threshold {
-            return Ok(());
+            return self.record(&junk, message, &judgement, &Action::None, false);
         }
 
         self.store
@@ -67,12 +74,6 @@ impl<M: Mailbox> Engine<M> {
             .context("learn provider junk")?;
         summary.trained += 1;
 
-        let junk = self.cfg.folders.junk.clone();
-        let judgement = Judgement {
-            verdict: Verdict::Spam,
-            reason: Reason::ProviderJunk,
-            score,
-        };
         self.record(&junk, message, &judgement, &Action::TrainSpam, true)
     }
 

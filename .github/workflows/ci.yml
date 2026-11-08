@@ -220,7 +220,7 @@ jobs:
       - name: Generate the embedded web assets
         run: |
           mise run prebuild
-          cargo package --list | grep -qx web/static/vendor/theme.css
+          cargo package --list --allow-dirty | grep -qx web/static/vendor/theme.css
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist/
@@ -238,7 +238,7 @@ jobs:
         # The preflight's GitHub push probe reads permissions.push from
         # GET /repos/{owner}/{repo}, which reports false for GITHUB_TOKEN even
         # with contents: write, so it blocks a release the token can create.
-        run: anodizer release --merge
+        run: anodizer release --merge --skip=preflight
       - name: Merge Homebrew tap PR
         env:
           GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

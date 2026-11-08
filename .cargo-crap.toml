@@ -10,3 +10,4 @@ exclude = [
   "src/probe/live.rs",
   "src/cli/commands/probe.rs",
 ]
+allow = ["dispatch"]

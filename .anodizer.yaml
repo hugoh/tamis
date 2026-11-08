@@ -43,7 +43,7 @@ crates:
         name: tamis
     publish:
       cargo:
-        auth: auto
+        auth: oidc
         # The prebuilt web assets are gitignored but shipped through Cargo.toml's include list.
         allow_dirty: true
       homebrew:

@@ -235,10 +235,14 @@ pub(in super::super) async fn run(app: &mut App, once: bool) -> Result<()> {
     if let Some(web) = web {
         let _ = web.await;
     }
+    checkpoint(&store);
+    Ok(())
+}
+
+fn checkpoint(store: &Store) {
     if let Err(err) = store.checkpoint() {
         tracing::warn!(%err, "could not checkpoint the database");
     }
-    Ok(())
 }
 
 fn save_status(store: &Store, snapshot: &crate::live::Snapshot) {

@@ -244,6 +244,21 @@ async fn the_decisions_page_lists_filters_and_escapes() {
 }
 
 #[tokio::test]
+async fn the_decisions_list_says_when_it_was_generated() {
+    let site = site();
+    record(&site, "lunch", "bayes", true);
+
+    let page = text(site.get("/").await).await;
+    let refreshed = text(site.get_htmx("/").await).await;
+
+    assert!(page.contains("Updated "), "{page}");
+    assert!(
+        refreshed.starts_with("<div id=\"results\">") && refreshed.contains("Updated "),
+        "{refreshed}"
+    );
+}
+
+#[tokio::test]
 async fn a_rule_decision_gets_a_second_pill_and_a_move_shows_its_destination() {
     let site = site();
     record(&site, "filed", "rule", true);

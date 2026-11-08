@@ -590,7 +590,7 @@ async fn enroll_prints_a_link_that_works_once() {
     assert_eq!(code, 0, "{out}");
     let link = out.lines().last().unwrap();
     let token = link
-        .strip_prefix("https://tamis.example.org/auth/enroll?token=")
+        .strip_prefix("https://tamis.example.org/auth/enroll#token=")
         .unwrap();
     assert!(out.contains("within 15 minutes"), "{out}");
     assert!(

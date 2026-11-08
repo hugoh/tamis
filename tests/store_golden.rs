@@ -81,6 +81,8 @@ struct GoldenQuery {
     asc: bool,
     desc: bool,
     offset: i64,
+    #[serde(default)]
+    after: i64,
     limit: i64,
     addresses: bool,
     want: Option<Vec<Value>>,
@@ -308,7 +310,7 @@ fn queries_match_the_recorded_results() {
                 search: case.search.clone(),
                 sort: DecisionSort::from_name(&case.sort),
                 asc: case.asc,
-                offset: case.offset,
+                after: case.after,
                 limit: case.limit,
             };
             let (found, total) = store.query_decisions(&query).unwrap();

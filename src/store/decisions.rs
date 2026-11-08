@@ -179,13 +179,15 @@ pub struct DecisionQuery {
     pub sort: DecisionSort,
     /// Sorts upwards; the default is downwards, newest or highest first.
     pub asc: bool,
-    pub offset: i64,
+    /// Starts the page after the decision with this ID in the current order;
+    /// zero starts at the top.
+    pub after: i64,
     /// The page size; it defaults to 100.
     pub limit: i64,
 }
 
 impl DecisionQuery {
-    fn where_clause(&self) -> (String, Vec<Value>) {
+    fn where_clause(&self, paged: bool) -> (String, Vec<Value>) {
         let mut conditions = Vec::new();
         let mut args = Vec::new();
 
@@ -210,6 +212,15 @@ impl DecisionQuery {
                     .to_owned(),
             );
             args.extend(std::iter::repeat_n(Value::Text(pattern), 5));
+        }
+        if paged && self.after > 0 {
+            let (column, ahead) = (self.sort.column(), if self.asc { ">" } else { "<" });
+            let tied = if column == "at" { ahead } else { "<" };
+            let anchor = format!("(SELECT {column} FROM decisions WHERE id = ?)");
+            conditions.push(format!(
+                "({column} {ahead} {anchor} OR ({column} = {anchor} AND id {tied} ?))"
+            ));
+            args.extend(std::iter::repeat_n(Value::Integer(self.after), 3));
         }
 
         if conditions.is_empty() {
@@ -449,22 +460,20 @@ impl Store {
     }
 
     /// One page of the journal and how many decisions match in all.
-    ///
-    /// shortcut: pages are cut by offset, so a decision recorded while someone
-    /// is paging can repeat or skip a row; switch to keyset paging if that
-    /// matters.
+    /// The total ignores `after`.
     ///
     /// # Errors
     /// Fails on a database error.
     pub fn query_decisions(&self, query: &DecisionQuery) -> Result<(Vec<Decision>, i64)> {
-        let (where_clause, mut args) = query.where_clause();
+        let (where_clause, args) = query.where_clause(false);
         let total = self.conn().query_row(
             &format!("SELECT COUNT(*) FROM decisions{where_clause}"),
             params_from_iter(args.iter()),
             |row| row.get(0),
         )?;
 
-        push_page(&mut args, query.limit, query.offset);
+        let (where_clause, mut args) = query.where_clause(true);
+        push_page(&mut args, query.limit, 0);
 
         let decisions = self.read_decisions(
             &format!(

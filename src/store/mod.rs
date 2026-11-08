@@ -468,6 +468,85 @@ mod tests {
         assert!(store.stats().unwrap().bytes >= on_disk("") + on_disk("-wal"));
     }
 
+    fn page_through(store: &Store, sort: DecisionSort, asc: bool, limit: i64) -> Vec<i64> {
+        let mut ids = Vec::new();
+        let mut after = 0;
+        loop {
+            let (page, _) = store
+                .query_decisions(&DecisionQuery {
+                    sort,
+                    asc,
+                    after,
+                    limit,
+                    ..DecisionQuery::default()
+                })
+                .unwrap();
+            let Some(last) = page.last() else {
+                return ids;
+            };
+            after = last.id;
+            ids.extend(page.iter().map(|d| d.id));
+        }
+    }
+
+    #[test]
+    fn keyset_pages_join_up_in_every_sort_order() {
+        let (_dir, store) = open();
+        for (subject, seconds) in [("b", 10), ("A", 10), ("c", 20), ("a", 10), ("B", 30)] {
+            let mut entry = decision("<x>", "bayes", seconds);
+            entry.subject = subject.to_owned();
+            store.record_decision(&entry).unwrap();
+        }
+
+        for sort in [
+            DecisionSort::Time,
+            DecisionSort::Subject,
+            DecisionSort::Verdict,
+        ] {
+            for asc in [false, true] {
+                let (all, _) = store
+                    .query_decisions(&DecisionQuery {
+                        sort,
+                        asc,
+                        limit: 100,
+                        ..DecisionQuery::default()
+                    })
+                    .unwrap();
+                let want: Vec<i64> = all.iter().map(|d| d.id).collect();
+
+                assert_eq!(
+                    page_through(&store, sort, asc, 2),
+                    want,
+                    "{sort:?} asc={asc}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_decision_recorded_between_pages_repeats_and_skips_nothing() {
+        let (_dir, store) = open();
+        for seconds in [10, 20, 30, 40] {
+            store
+                .record_decision(&decision("<a>", "bayes", seconds))
+                .unwrap();
+        }
+        let query = |after| DecisionQuery {
+            after,
+            limit: 2,
+            ..DecisionQuery::default()
+        };
+        let (first, _) = store.query_decisions(&query(0)).unwrap();
+
+        store
+            .record_decision(&decision("<a>", "bayes", 50))
+            .unwrap();
+        let (second, _) = store.query_decisions(&query(first[1].id)).unwrap();
+
+        let ids = |page: &[Decision]| page.iter().map(|d| d.id).collect::<Vec<_>>();
+        assert_eq!((ids(&first), ids(&second)), (vec![4, 3], vec![2, 1]));
+    }
+
     #[test]
     fn pruning_drops_only_older_decisions() {
         let (_dir, store) = open();

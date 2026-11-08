@@ -29,7 +29,7 @@ pub(in super::super) fn enroll(app: &mut App) -> Result<()> {
     store.add_enrollment(&hash_token(&token), Timestamp::now() + ENROLL_TTL)?;
     writeln!(
         app.env.stdout,
-        "Open this link within {} minutes to enroll a passkey; it works once:\n{}/auth/enroll?token={token}",
+        "Open this link within {} minutes to enroll a passkey; it works once:\n{}/auth/enroll#token={token}",
         ENROLL_TTL.as_secs() / 60,
         cfg.web.origin.trim_end_matches('/'),
     )?;

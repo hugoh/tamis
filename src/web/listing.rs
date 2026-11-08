@@ -31,6 +31,7 @@ pub struct TableState {
     pub sort: &'static str,
     pub asc: bool,
     pub offset: i64,
+    pub after: i64,
 }
 
 impl TableState {
@@ -53,6 +54,7 @@ impl TableState {
             sort: first.key,
             asc: first.asc_first,
             offset: 0,
+            after: 0,
         };
         if let Some(choice) = choices
             .iter()
@@ -73,6 +75,13 @@ impl TableState {
         {
             state.offset = offset.min(MAX_OFFSET);
         }
+        if let Some(after) = params
+            .get("after")
+            .and_then(|a| a.parse::<i64>().ok())
+            .filter(|a| *a > 0)
+        {
+            state.after = after;
+        }
         state
     }
 
@@ -81,7 +90,7 @@ impl TableState {
         if self.asc { "asc" } else { "desc" }
     }
 
-    fn href(&self, sort: &str, asc: bool, offset: i64) -> String {
+    fn href(&self, sort: &str, asc: bool, (offset, after): (i64, i64)) -> String {
         let mut query = form_urlencoded::Serializer::new(String::new());
         for (name, value) in self.filters.iter().filter(|(_, v)| !v.is_empty()) {
             query.append_pair(name, value);
@@ -93,6 +102,9 @@ impl TableState {
         query.append_pair("dir", if asc { "asc" } else { "desc" });
         if offset > 0 {
             query.append_pair("offset", &offset.to_string());
+        }
+        if after > 0 {
+            query.append_pair("after", &after.to_string());
         }
         format!("{}?{}", self.path, query.finish())
     }
@@ -107,14 +119,14 @@ impl TableState {
                 if choice.key == self.sort {
                     Column {
                         label: choice.label,
-                        href: self.href(choice.key, !self.asc, 0),
+                        href: self.href(choice.key, !self.asc, (0, 0)),
                         aria_sort: if self.asc { "ascending" } else { "descending" },
                         arrow: if self.asc { "▲" } else { "▼" },
                     }
                 } else {
                     Column {
                         label: choice.label,
-                        href: self.href(choice.key, choice.asc_first, 0),
+                        href: self.href(choice.key, choice.asc_first, (0, 0)),
                         aria_sort: "none",
                         arrow: "",
                     }
@@ -130,7 +142,18 @@ impl TableState {
         if next >= total {
             String::new()
         } else {
-            self.href(self.sort, self.asc, next)
+            self.href(self.sort, self.asc, (next, 0))
+        }
+    }
+
+    /// The link that loads the page after the row with ID `last`, or empty
+    /// when there is none.
+    #[must_use]
+    pub fn more_after_href(&self, last: i64, more: bool) -> String {
+        if more {
+            self.href(self.sort, self.asc, (0, last))
+        } else {
+            String::new()
         }
     }
 }
@@ -221,6 +244,18 @@ mod tests {
 
         assert_eq!(state.more_href(100, 100), "");
         assert_eq!(state.more_href(100, 250), "/?sort=time&dir=desc&offset=100");
+    }
+
+    #[test]
+    fn the_keyset_link_names_the_last_row_shown() {
+        let state = TableState::parse("/", &params(&[("after", "7")]), &CHOICES);
+
+        assert_eq!(state.after, 7);
+        assert_eq!(state.more_after_href(42, false), "");
+        assert_eq!(
+            state.more_after_href(42, true),
+            "/?sort=time&dir=desc&after=42"
+        );
     }
 
     #[test]

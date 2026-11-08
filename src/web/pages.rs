@@ -268,13 +268,16 @@ pub(super) async fn decisions(
         search: state.search.clone(),
         sort: DecisionSort::from_name(state.sort),
         asc: state.asc,
-        offset: state.offset,
-        limit: PAGE_SIZE,
+        after: state.after,
+        limit: PAGE_SIZE + 1,
     }) {
         Ok(found) => found,
         Err(err) => return fail("list decisions", &err),
     };
 
+    let page_size = usize::try_from(PAGE_SIZE).unwrap_or(usize::MAX);
+    let more = found.len() > page_size;
+    let found = &found[..found.len().min(page_size)];
     let rows: Vec<DecisionRow> = found.iter().map(decision_row).collect();
     let verdicts = std::iter::once(("", "All"))
         .chain(Verdict::ALL.map(|v| (v.as_str(), v.as_str())))
@@ -302,7 +305,7 @@ pub(super) async fn decisions(
             !verdict.is_empty() || !reason.is_empty() || !state.search.is_empty() || only_id > 0,
         ),
         generated: local_clock(Timestamp::now()),
-        more_href: state.more_href(rows.len(), total),
+        more_href: state.more_after_href(found.last().map_or(0, |d| d.id), more),
         columns: state.columns(&DECISION_SORTS),
         rows,
         verdict,
@@ -320,7 +323,7 @@ pub(super) async fn decisions(
             body,
         });
     }
-    if state.offset > 0 {
+    if state.after > 0 {
         render(&DecisionsRows { body })
     } else {
         render(&DecisionsResults { body })

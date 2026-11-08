@@ -9,7 +9,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest, Sha256};
 
 const TOKEN_BYTES: usize = 32;
-const MAX_ITEMS: usize = 1000;
+pub(super) const MAX_ITEMS: usize = 32;
 
 /// 256 random bits as unpadded base64url.
 ///

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Check the docs show the packaged unit, and (on Linux) that systemd accepts it"
+#MISE sources=["packaging/*.service", "packaging/*.sysusers", "docs/user-guide/running-as-a-service.md"]
+set -euo pipefail
+
+unit=packaging/tamis.service
+page=docs/user-guide/running-as-a-service.md
+
+shown=$(awk '/^# \/usr\/lib\/systemd\/system\/tamis.service$/ {in_unit=1; next} in_unit && /^```$/ {exit} in_unit' "$page")
+if [ "$shown" != "$(cat "$unit")" ]; then
+  echo "lint-systemd: $page does not show $unit as packaged; copy it in" >&2
+  exit 1
+fi
+
+if [ "$(uname -s)" != Linux ]; then
+  echo "lint-systemd: systemd checks skipped, not Linux"
+  exit 0
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+# verify needs ExecStart to exist; the check is of the unit's directives, not the binary
+sed 's#^ExecStart=/usr/bin/tamis#ExecStart=/bin/true#' "$unit" >"$work/tamis.service"
+systemd-analyze verify "$work/tamis.service"
+systemd-sysusers --dry-run packaging/tamis.sysusers

@@ -21,6 +21,7 @@ Full documentation is at <https://tamis.larve.net/docs/>: [install](https://tami
 
 ```sh
 brew install hugoh/tap/tamis      # Linux; see the docs for apt, dnf and mise
+cargo install tamis               # any platform with a Rust toolchain
 ```
 
 ## License

@@ -8,8 +8,8 @@
 <div class="flex flex-wrap items-center gap-3 my-2">
 <p class="text-sm opacity-70">{{ body.count }}</p>
 <form id="bulk" class="flex flex-wrap items-center gap-2">
-<button type="button" class="btn btn-sm btn-outline btn-error" hx-post="/whitelist/remove/confirm" hx-include="#bulk, #toolbar" hx-target="#confirm" hx-swap="outerHTML">Remove selected…</button>
-{% if !body.remove_all.is_empty() %}<button type="button" class="btn btn-sm btn-outline" hx-post="/whitelist/remove/confirm?scope=all" hx-include="#toolbar" hx-target="#confirm" hx-swap="outerHTML">{{ body.remove_all }}</button>{% endif %}
+<button type="button" class="btn btn-sm btn-outline btn-error" hx-post="/whitelist/remove/confirm" hx-disabled-elt="this" hx-include="#bulk, #toolbar" hx-target="#confirm" hx-swap="outerHTML">Remove selected…</button>
+{% if !body.remove_all.is_empty() %}<button type="button" class="btn btn-sm btn-outline" hx-post="/whitelist/remove/confirm?scope=all" hx-disabled-elt="this" hx-include="#toolbar" hx-target="#confirm" hx-swap="outerHTML">{{ body.remove_all }}</button>{% endif %}
 </form>
 </div>
 {% if !body.rows.is_empty() %}<div class="overflow-x-auto">

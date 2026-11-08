@@ -6,8 +6,8 @@
 {% endfor %}</ul>
 {% if confirm.more > 0 %}<p class="text-sm opacity-70">…and {{ confirm.more }} more</p>{% endif %}
 <div class="modal-action">
-<button type="button" class="btn" hx-get="/whitelist/remove/cancel" hx-target="#confirm" hx-swap="outerHTML">Cancel</button>
-<form hx-post="/whitelist/remove" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar">
+<button type="button" class="btn" hx-get="/whitelist/remove/cancel" hx-disabled-elt="this" hx-target="#confirm" hx-swap="outerHTML">Cancel</button>
+<form hx-post="/whitelist/remove" hx-disabled-elt="find button" hx-target="#results" hx-swap="outerHTML" hx-include="#toolbar">
 {% for address in confirm.selected %}<input type="hidden" name="address" value="{{ address }}">
 {% endfor %}{% if confirm.all %}<input type="hidden" name="scope" value="all"><input type="hidden" name="q" value="{{ confirm.search }}"><input type="hidden" name="count" value="{{ confirm.count }}">{% endif %}
 <button class="btn btn-error">Remove {{ confirm.count }}</button>

@@ -4,7 +4,7 @@ use std::time::Duration;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use super::{Check, Status, elapsed, name};
+use super::{Check, Status, elapsed, name, uptime_text};
 use crate::live::{SETTING_KEY, Snapshot};
 use crate::store::{self, Store};
 
@@ -101,18 +101,26 @@ pub(super) fn check(info: &DaemonInfo, now: Timestamp, zone: &TimeZone) -> Check
             ),
         );
     }
+    let up = snap.started.map(|at| {
+        uptime_text(Duration::from_secs(
+            now.duration_since(at).as_secs().unsigned_abs(),
+        ))
+    });
     if snap.passes == 0 {
-        return Check::new(
-            name::DAEMON,
-            Status::Ok,
-            format!("running since {}, no pass yet", clock(snap.started)),
-        );
+        let since = clock(snap.started);
+        let detail = match up {
+            Some(up) => format!("up {up} (since {since}), no pass yet"),
+            None => format!("running since {since}, no pass yet"),
+        };
+        return Check::new(name::DAEMON, Status::Ok, detail);
     }
 
     let since_pass = snap.last_pass.map_or(since_updated, |at| {
         Duration::from_secs(now.duration_since(at).as_secs().unsigned_abs())
     });
-    let mut detail = format!(
+    let mut detail = up.map_or_else(String::new, |up| format!("up {up}; "));
+    let _ = write!(
+        detail,
         "last pass {} ago: {}",
         elapsed(since_pass),
         snap.last_summary

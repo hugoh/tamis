@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, reason = "a failing call should fail the test")]
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::Body;
@@ -1064,6 +1065,18 @@ async fn health_shows_what_the_daemon_is_doing_and_its_last_pass() {
         assert!(health.contains("moved 3 messages"), "{label}: {health}");
         assert!(!health.contains("no pass yet"), "{label}: {health}");
     }
+}
+
+#[tokio::test]
+async fn health_shows_how_long_the_daemon_has_been_up() {
+    let started = Timestamp::now()
+        .checked_sub(Duration::from_secs(2 * 3600 + 5 * 60 + 30))
+        .unwrap();
+
+    let health = health_with(Status::new(started)).await;
+
+    assert!(health.contains("Uptime"), "{health}");
+    assert!(health.contains(">2h 5m<"), "{health}");
 }
 
 #[tokio::test]

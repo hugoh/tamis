@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::time::Duration;
 
 use askama::Template;
 use axum::Form;
@@ -392,6 +393,7 @@ struct CheckRow {
 
 struct DaemonView {
     started: String,
+    uptime: String,
     last_pass: String,
     summary: String,
     doing: String,
@@ -447,6 +449,11 @@ fn daemon_view(app: &App) -> Option<DaemonView> {
     }
     Some(DaemonView {
         started: snap.started.map_or_else(String::new, local_time),
+        uptime: snap.started.map_or_else(String::new, |at| {
+            health::uptime_text(Duration::from_secs(
+                Timestamp::now().duration_since(at).as_secs().unsigned_abs(),
+            ))
+        }),
         last_pass: snap
             .last_pass
             .map_or_else(|| "no pass yet".to_owned(), local_time),

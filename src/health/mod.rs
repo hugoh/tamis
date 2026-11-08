@@ -273,5 +273,18 @@ pub(crate) fn elapsed(span: Duration) -> String {
     duration_text(rounded)
 }
 
+/// How long something has been up, in its two largest units: `45s`, `12m`,
+/// `3h 20m`, `4d 7h`.
+#[must_use]
+pub fn uptime_text(span: Duration) -> String {
+    let minutes = span.as_secs() / 60;
+    match minutes {
+        0 => format!("{}s", span.as_secs()),
+        1..=59 => format!("{minutes}m"),
+        60..=1439 => format!("{}h {}m", minutes / 60, minutes % 60),
+        _ => format!("{}d {}h", minutes / 1440, minutes % 1440 / 60),
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -44,6 +44,8 @@ crates:
     publish:
       cargo:
         auth: auto
+        # The prebuilt web assets are gitignored but shipped through Cargo.toml's include list.
+        allow_dirty: true
       homebrew:
         repository:
           owner: hugoh

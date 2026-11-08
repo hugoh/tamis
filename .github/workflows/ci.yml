@@ -238,7 +238,7 @@ jobs:
         # The preflight's GitHub push probe reads permissions.push from
         # GET /repos/{owner}/{repo}, which reports false for GITHUB_TOKEN even
         # with contents: write, so it blocks a release the token can create.
-        run: anodizer release --merge --skip=preflight
+        run: anodizer release --merge --skip=preflight --resume-release
       - name: Merge Homebrew tap PR
         env:
           GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

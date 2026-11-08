@@ -1,5 +1,5 @@
 //! The real IMAP client against Dovecot. Needs `TAMIS_TEST_IMAP=host:port`;
-//! `mise run test-imap` starts the container and sets it. Without it every
+//! `mise run test:imap` starts the container and sets it. Without it every
 //! test returns at once.
 
 #![allow(clippy::unwrap_used, reason = "a failing call should fail the test")]

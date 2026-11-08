@@ -1,5 +1,5 @@
 //! The command line against Dovecot, through the same entry point the binary
-//! uses. Needs `TAMIS_TEST_IMAP=host:port`; `mise run test-imap` sets it.
+//! uses. Needs `TAMIS_TEST_IMAP=host:port`; `mise run test:imap` sets it.
 
 #![allow(clippy::unwrap_used, reason = "a failing call should fail the test")]
 
@@ -430,6 +430,7 @@ async fn run_serves_the_web_interface_and_stops_it_on_shutdown() {
         async move { cli::run(&argv, env, shutdown).await }
     });
 
+    tamis::tls::init();
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -501,6 +502,7 @@ async fn run_serves_https_with_a_self_signed_certificate() {
         async move { cli::run(&argv, env, shutdown).await }
     });
 
+    tamis::tls::init();
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()

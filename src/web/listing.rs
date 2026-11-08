@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use url::form_urlencoded;
 
 pub const PAGE_SIZE: i64 = 100;
-const MAX_OFFSET: i64 = 10_000_000;
 
 /// A column a table can be sorted by.
 #[derive(Clone, Copy)]
@@ -30,11 +29,12 @@ pub struct TableState {
     pub search: String,
     pub sort: &'static str,
     pub asc: bool,
-    pub offset: i64,
+    /// The key of the last row shown; the page starts after it.
+    pub after: String,
 }
 
 impl TableState {
-    /// Reads `q`, `sort`, `dir` and `offset`; anything unrecognised falls back
+    /// Reads `q`, `sort`, `dir` and `after`; anything unrecognised falls back
     /// to the first sort choice.
     #[must_use]
     pub fn parse(
@@ -52,7 +52,7 @@ impl TableState {
                 .unwrap_or_default(),
             sort: first.key,
             asc: first.asc_first,
-            offset: 0,
+            after: String::new(),
         };
         if let Some(choice) = choices
             .iter()
@@ -66,12 +66,8 @@ impl TableState {
             Some("desc") => state.asc = false,
             _ => {}
         }
-        if let Some(offset) = params
-            .get("offset")
-            .and_then(|o| o.parse::<i64>().ok())
-            .filter(|o| *o > 0)
-        {
-            state.offset = offset.min(MAX_OFFSET);
+        if let Some(after) = params.get("after") {
+            state.after.clone_from(after);
         }
         state
     }
@@ -81,7 +77,7 @@ impl TableState {
         if self.asc { "asc" } else { "desc" }
     }
 
-    fn href(&self, sort: &str, asc: bool, offset: i64) -> String {
+    fn href(&self, sort: &str, asc: bool, after: &str) -> String {
         let mut query = form_urlencoded::Serializer::new(String::new());
         for (name, value) in self.filters.iter().filter(|(_, v)| !v.is_empty()) {
             query.append_pair(name, value);
@@ -91,8 +87,8 @@ impl TableState {
         }
         query.append_pair("sort", sort);
         query.append_pair("dir", if asc { "asc" } else { "desc" });
-        if offset > 0 {
-            query.append_pair("offset", &offset.to_string());
+        if !after.is_empty() {
+            query.append_pair("after", after);
         }
         format!("{}?{}", self.path, query.finish())
     }
@@ -107,14 +103,14 @@ impl TableState {
                 if choice.key == self.sort {
                     Column {
                         label: choice.label,
-                        href: self.href(choice.key, !self.asc, 0),
+                        href: self.href(choice.key, !self.asc, ""),
                         aria_sort: if self.asc { "ascending" } else { "descending" },
                         arrow: if self.asc { "▲" } else { "▼" },
                     }
                 } else {
                     Column {
                         label: choice.label,
-                        href: self.href(choice.key, choice.asc_first, 0),
+                        href: self.href(choice.key, choice.asc_first, ""),
                         aria_sort: "none",
                         arrow: "",
                     }
@@ -123,14 +119,14 @@ impl TableState {
             .collect()
     }
 
-    /// The link that loads the next page, or empty when everything is shown.
+    /// The link that loads the page after the row keyed `last`, or empty when
+    /// there is none.
     #[must_use]
-    pub fn more_href(&self, shown: usize, total: i64) -> String {
-        let next = self.offset + i64::try_from(shown).unwrap_or(i64::MAX);
-        if next >= total {
-            String::new()
+    pub fn more_href(&self, last: &str, more: bool) -> String {
+        if more {
+            self.href(self.sort, self.asc, last)
         } else {
-            self.href(self.sort, self.asc, next)
+            String::new()
         }
     }
 }
@@ -173,7 +169,10 @@ mod tests {
     fn defaults_to_the_first_choice() {
         let state = TableState::parse("/", &params(&[]), &CHOICES);
 
-        assert_eq!((state.sort, state.asc, state.offset), ("time", false, 0));
+        assert_eq!(
+            (state.sort, state.asc, state.after.as_str()),
+            ("time", false, "")
+        );
     }
 
     #[test]
@@ -185,21 +184,6 @@ mod tests {
         assert_eq!((natural.sort, natural.asc), ("from", true));
         assert_eq!((told.sort, told.asc), ("from", false));
         assert_eq!(unknown.sort, "time");
-    }
-
-    #[test]
-    fn offsets_are_positive_and_capped() {
-        let offset = |value| TableState::parse("/", &params(&[("offset", value)]), &CHOICES).offset;
-
-        assert_eq!(
-            (
-                offset("-5"),
-                offset("abc"),
-                offset("200"),
-                offset("99999999999")
-            ),
-            (0, 0, 200, MAX_OFFSET)
-        );
     }
 
     #[test]
@@ -216,11 +200,15 @@ mod tests {
     }
 
     #[test]
-    fn the_next_page_link_stops_at_the_end() {
-        let state = TableState::parse("/", &params(&[]), &CHOICES);
+    fn the_next_page_link_names_the_last_row_shown() {
+        let state = TableState::parse("/", &params(&[("after", "a+b@x.org")]), &CHOICES);
 
-        assert_eq!(state.more_href(100, 100), "");
-        assert_eq!(state.more_href(100, 250), "/?sort=time&dir=desc&offset=100");
+        assert_eq!(state.after, "a+b@x.org");
+        assert_eq!(state.more_href("a+b@x.org", false), "");
+        assert_eq!(
+            state.more_href("a+b@x.org", true),
+            "/?sort=time&dir=desc&after=a%2Bb%40x.org"
+        );
     }
 
     #[test]

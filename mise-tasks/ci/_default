@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 #MISE description="Run full CI pipeline (lint, tests, coverage, build)"
-#MISE depends=["lint", "ci-core", "build"]
+#MISE depends=["lint", "ci:core", "build"]
 true

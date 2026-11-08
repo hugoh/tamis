@@ -4,6 +4,7 @@
 "aqua:EmbarkStudios/cargo-deny" = "0.20.2"
 "github:bnjbvr/cargo-machete" = "0.9.2"
 jq = "1.8.2"
+node = "26"
 "github:tj-smith47/anodizer" = "0.30.0"
 hk = "2.11.1"
 rumdl = "0.3.2"

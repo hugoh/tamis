@@ -26,7 +26,7 @@ use rust_embed::RustEmbed;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tower_http::compression::CompressionLayer;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 use url::Url;
 use webauthn_rs::prelude::{
     DiscoverableAuthentication, PasskeyRegistration, Webauthn, WebauthnBuilder,
@@ -272,6 +272,12 @@ async fn guard(State(app): State<App>, request: Request, next: Next) -> Response
     ] {
         headers.insert(name, header_value(value));
     }
+    if app.secure {
+        headers.insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            header_value("max-age=31536000"),
+        );
+    }
     if !path.starts_with("/static/") {
         headers.insert(header::CACHE_CONTROL, header_value("no-store"));
     }
@@ -317,7 +323,13 @@ fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
 fn signed_in(app: &Shared, headers: &HeaderMap) -> bool {
     cookie(headers, SESSION_COOKIE)
         .and_then(|id| app.sessions.get(&id))
-        .is_some_and(|credential_id| app.db.has_passkey(&credential_id).unwrap_or(false))
+        .is_some_and(|credential_id| match app.db.has_passkey(&credential_id) {
+            Ok(found) => found,
+            Err(err) => {
+                warn!(%err, "check the session's passkey: treating the request as signed out");
+                false
+            }
+        })
 }
 
 /// A `Set-Cookie` value. `Secure` follows the configured origin: plain HTTP is
@@ -334,7 +346,10 @@ fn set_cookie(
     HeaderValue::from_str(&format!(
         "{name}={value}; Path={path}; Max-Age={max_age}; HttpOnly; SameSite=Strict{secure}"
     ))
-    .unwrap_or_else(|_| HeaderValue::from_static(""))
+    .unwrap_or_else(|err| {
+        warn!(%err, cookie = name, "cookie value is not a valid header: sending none");
+        HeaderValue::from_static("")
+    })
 }
 
 fn content_type(path: &str) -> &'static str {

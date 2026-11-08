@@ -54,8 +54,24 @@ jobs:
         with:
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Start Dovecot
+        run: |
+          docker run -d --name dovecot --user 0:0 -p 143:143 \
+            -v "$PWD/tests/dovecot/dovecot.conf:/etc/dovecot/dovecot.conf:ro" \
+            -v "$PWD/tests/dovecot/passwd:/etc/passwd:ro" \
+            -v "$PWD/tests/dovecot/group:/etc/group:ro" \
+            docker.io/dovecot/dovecot@sha256:43c14def08a57f25107593cbcf64a0a6fbae84a7b9de7aa038513c9b21e91914
+          for _ in $(seq 60); do
+            if (exec 3<>/dev/tcp/127.0.0.1/143) 2>/dev/null; then
+              echo "TAMIS_TEST_IMAP=127.0.0.1:143" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 0.5
+          done
+          docker logs dovecot
+          exit 1
       - name: Tests and coverage
-        run: mise run ci-core
+        run: mise run ci:core
 
   tag:
     needs: [hk, test]

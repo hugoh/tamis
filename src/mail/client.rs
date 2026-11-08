@@ -149,12 +149,7 @@ impl Client {
                     "credentials".to_owned(),
                 ))));
             };
-            tracing::debug!(
-                user = %config.username,
-                password_chars = config.password.chars().count(),
-                password_has_whitespace = config.password.chars().any(char::is_whitespace),
-                "logging in"
-            );
+            tracing::debug!(user = %config.username, "logging in");
             // The task rather than `login()`, which would send bare atoms.
             let login = imap
                 .resolve(LoginTask::new(user, Secret::new(password)))

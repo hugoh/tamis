@@ -21,7 +21,7 @@ use crate::mail::client::{Client, DialConfig};
 use crate::mail::watch::Watcher;
 use crate::monitor::Pinger;
 use crate::rules::Rules;
-use crate::store::Store;
+use crate::store::{Store, lock_instance};
 use crate::web::{Job, Options, RunJobs, Server, cert};
 
 /// Reaches the real mailbox, finding the password afresh where it is kept.
@@ -171,6 +171,7 @@ async fn start_web(
 
 pub(in super::super) async fn run(app: &mut App, once: bool) -> Result<()> {
     let (cfg, store) = open(app)?;
+    let _instance = lock_instance(&cfg.state)?;
     let (cfg, store) = (Arc::new(cfg), Arc::new(store));
     tracing::info!(version = %app.env.version, "tamis starting");
 

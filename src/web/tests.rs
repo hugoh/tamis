@@ -21,7 +21,7 @@ struct Site {
     app: App,
     db: Arc<Store>,
     session: String,
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
 }
 
 fn site_with(options: Options) -> Site {
@@ -29,6 +29,10 @@ fn site_with(options: Options) -> Site {
 }
 
 fn site_with_rules(options: Options, rules: &str) -> Site {
+    site_at(ORIGIN, options, rules)
+}
+
+fn site_at(origin: &str, options: Options, rules: &str) -> Site {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("config.toml");
     let script = dir.path().join("rules.sieve");
@@ -41,7 +45,7 @@ fn site_with_rules(options: Options, rules: &str) -> Site {
     std::fs::write(
         &config,
         format!(
-            "state = \"{}\"\n[account]\nhost = \"imap.example.org\"\nuser = \"me@example.org\"\n[web]\nenabled = true\norigin = \"{ORIGIN}\"\n{rules_section}",
+            "state = \"{}\"\n[account]\nhost = \"imap.example.org\"\nuser = \"me@example.org\"\n[web]\nenabled = true\norigin = \"{origin}\"\n{rules_section}",
             dir.path().join("state.db").display()
         ),
     )
@@ -59,7 +63,7 @@ fn site_with_rules(options: Options, rules: &str) -> Site {
         app,
         db,
         session,
-        _dir: dir,
+        dir,
     }
 }
 
@@ -583,9 +587,12 @@ async fn enrolling_needs_a_link_that_works_once() {
         )
         .unwrap();
     let begin = |token: &str| {
-        let request = Request::post(format!("/auth/register/begin?token={token}"))
+        let request = Request::post("/auth/register/begin")
             .header(header::ORIGIN, ORIGIN)
-            .body(Body::empty())
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::json!({ "token": token }).to_string(),
+            ))
             .unwrap();
         site.send(request, false)
     };
@@ -873,4 +880,140 @@ async fn decisions_and_health_offer_a_refresh_that_does_not_reload_the_page() {
         health.contains("hx-get=\"/health\" hx-select=\"main\" hx-target=\"main\""),
         "{health}"
     );
+}
+
+#[tokio::test]
+async fn an_enrolment_token_in_the_query_string_is_not_accepted() {
+    let site = site();
+    site.db
+        .add_enrollment(
+            &hash_token("secret-link"),
+            Timestamp::now() + std::time::Duration::from_secs(300),
+        )
+        .unwrap();
+    let request = Request::post("/auth/register/begin?token=secret-link")
+        .header(header::ORIGIN, ORIGIN)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from("{}"))
+        .unwrap();
+
+    let response = site.send(request, false).await;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn https_sites_ask_browsers_to_stay_on_https() {
+    let secure = site_at("https://tamis.example.org", Options::default(), "");
+    let plain = site();
+
+    let over_https = secure.get("/").await;
+    let over_http = plain.get("/").await;
+
+    assert!(
+        over_https.headers()[header::STRICT_TRANSPORT_SECURITY]
+            .to_str()
+            .unwrap()
+            .starts_with("max-age=")
+    );
+    assert!(
+        !over_http
+            .headers()
+            .contains_key(header::STRICT_TRANSPORT_SECURITY)
+    );
+}
+
+#[tokio::test]
+async fn a_database_error_while_checking_the_session_signs_nobody_in() {
+    let site = site();
+    assert_eq!(site.get("/").await.status(), StatusCode::OK);
+    rusqlite::Connection::open(site.dir.path().join("state.db"))
+        .unwrap()
+        .execute_batch("DROP TABLE passkeys")
+        .unwrap();
+
+    let response = site.get("/").await;
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+}
+
+fn ceremony_id(response: &Response) -> String {
+    let cookie = response.headers()[header::SET_COOKIE].to_str().unwrap();
+    let (_, rest) = cookie.split_once('=').unwrap();
+    rest.split(';').next().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn flooding_login_begin_evicts_a_ceremony_in_flight() {
+    let site = site();
+    let begin = || {
+        let request = Request::post("/auth/login/begin")
+            .header(header::ORIGIN, ORIGIN)
+            .body(Body::empty())
+            .unwrap();
+        site.send(request, false)
+    };
+    let victim = ceremony_id(&begin().await);
+    for _ in 0..super::token::MAX_ITEMS {
+        assert_eq!(begin().await.status(), StatusCode::OK);
+    }
+
+    assert!(site.app.ceremonies.take(&victim).is_none());
+}
+
+#[tokio::test]
+async fn the_decisions_list_pages_on_after_the_last_row_shown() {
+    let site = site();
+    for n in 0..=100 {
+        record(&site, &format!("mail {n:03}"), "bayes", true);
+    }
+
+    let first = text(site.get_htmx("/").await).await;
+    let more = first
+        .split("hx-get=\"")
+        .filter_map(|rest| rest.split('"').next())
+        .find(|link| link.contains("after="))
+        .unwrap()
+        .replace("&#38;", "&");
+    let second = text(site.get_htmx(&more).await).await;
+
+    assert!(more.contains("after="), "{more}");
+    assert!(
+        first.contains("mail 100") && !first.contains("mail 000"),
+        "{first}"
+    );
+    assert!(
+        second.contains("mail 000") && !second.contains("mail 100"),
+        "{second}"
+    );
+    assert!(!second.contains("after="), "{second}");
+}
+
+#[tokio::test]
+async fn the_whitelist_pages_on_after_the_last_address_shown() {
+    let site = site();
+    for n in 0..=100 {
+        site.db
+            .add_address(&format!("a{n:03}@example.org"), "manual")
+            .unwrap();
+    }
+
+    let first = text(site.get_htmx("/whitelist").await).await;
+    let more = first
+        .split("hx-get=\"")
+        .filter_map(|rest| rest.split('"').next())
+        .find(|link| link.contains("after="))
+        .unwrap()
+        .replace("&#38;", "&");
+    let second = text(site.get_htmx(&more).await).await;
+
+    assert!(
+        first.contains("a099@example.org") && !first.contains("a100@example.org"),
+        "{first}"
+    );
+    assert!(
+        second.contains("a100@example.org") && !second.contains("a099@example.org"),
+        "{second}"
+    );
+    assert!(!second.contains("after="), "{second}");
 }

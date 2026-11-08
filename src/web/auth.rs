@@ -96,10 +96,16 @@ fn sign_in(app: &App, credential_id: &str) -> Response {
     response
 }
 
+#[derive(serde::Deserialize, Default)]
+pub(super) struct BeginRegistration {
+    #[serde(default)]
+    token: String,
+}
+
 pub(super) async fn register_begin(
     State(app): State<App>,
     headers: HeaderMap,
-    Query(query): Query<BTreeMap<String, String>>,
+    Json(begin): Json<BeginRegistration>,
 ) -> Response {
     let keys = match load_passkeys(&app) {
         Ok(keys) => keys,
@@ -118,10 +124,9 @@ pub(super) async fn register_begin(
 
     // Last, so a failure above leaves the link usable.
     if !super::signed_in(&app, &headers) {
-        let token = query.get("token").map_or("", String::as_str);
         match app
             .db
-            .consume_enrollment(&hash_token(token), Timestamp::now())
+            .consume_enrollment(&hash_token(&begin.token), Timestamp::now())
         {
             Ok(true) => {}
             Ok(false) => {

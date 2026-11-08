@@ -75,12 +75,20 @@ fn write(path: &Path, content: &str, mode: u32) -> Result<(), Error> {
 
     let io = |err| Error::Io(path.to_path_buf(), err);
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create(true).truncate(false);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode);
+    let mut file = options.open(path).map_err(io)?;
+    // `mode` only applies to a new file; tighten an old one before it gets the key.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        file.set_permissions(std::fs::Permissions::from_mode(mode))
+            .map_err(io)?;
+    }
     #[cfg(not(unix))]
     let _ = mode;
-    let mut file = options.open(path).map_err(io)?;
+    file.set_len(0).map_err(io)?;
     file.write_all(content.as_bytes()).map_err(io)
 }
 
@@ -212,6 +220,21 @@ mod tests {
             0o600
         );
         assert_eq!(fingerprint(&cert).unwrap().split(':').count(), 32);
+    }
+
+    #[test]
+    fn a_key_file_that_already_exists_is_made_private() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = dir.path().join(KEY_FILE);
+        std::fs::write(&key, "old").unwrap();
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        self_signed(dir.path(), "tamis.example.org", at(NOW)).unwrap();
+
+        assert_eq!(
+            std::fs::metadata(&key).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
     }
 
     #[test]

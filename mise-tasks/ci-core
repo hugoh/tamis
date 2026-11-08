@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Run core CI checks (test, coverage)"
-#MISE depends=["coverage"]
-true

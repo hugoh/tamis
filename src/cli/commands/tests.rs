@@ -581,6 +581,18 @@ async fn the_web_commands_need_the_web_interface_enabled() {
 }
 
 #[tokio::test]
+async fn a_second_run_on_the_same_database_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _store) = setup(dir.path(), "");
+    let _daemon = crate::store::lock_instance(&dir.path().join("state.db")).unwrap();
+
+    let (code, _, err) = run(&["-c", &config, "run", "--once"]).await;
+
+    assert_ne!(code, 0);
+    assert!(err.contains("already running"), "{err}");
+}
+
+#[tokio::test]
 async fn enroll_prints_a_link_that_works_once() {
     let dir = tempfile::tempdir().unwrap();
     let (config, store) = setup(dir.path(), WEB);
@@ -590,7 +602,7 @@ async fn enroll_prints_a_link_that_works_once() {
     assert_eq!(code, 0, "{out}");
     let link = out.lines().last().unwrap();
     let token = link
-        .strip_prefix("https://tamis.example.org/auth/enroll?token=")
+        .strip_prefix("https://tamis.example.org/auth/enroll#token=")
         .unwrap();
     assert!(out.contains("within 15 minutes"), "{out}");
     assert!(

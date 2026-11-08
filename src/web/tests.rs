@@ -1119,3 +1119,263 @@ async fn health_does_not_call_a_pass_without_an_error_a_recovery() {
     assert!(!health.contains("recovered"), "{health}");
     assert!(!health.contains("Last error"), "{health}");
 }
+
+mod passkeys {
+    use url::Url;
+    use webauthn_authenticator_rs::WebauthnAuthenticator;
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
+    use webauthn_rs::prelude::Uuid;
+    use webauthn_rs_proto::{
+        AllowCredentials, CreationChallengeResponse, PublicKeyCredential, RequestChallengeResponse,
+    };
+
+    use super::super::auth::owner_id;
+    use super::*;
+
+    const CEREMONY_COOKIE: &str = "tamis_ceremony";
+
+    fn origin() -> Url {
+        Url::parse(ORIGIN).unwrap()
+    }
+
+    fn cookie_named(response: &Response, name: &str) -> Option<String> {
+        response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .find(|value| value.starts_with(&format!("{name}=")))
+            .and_then(|value| value.split(';').next())
+            .map(str::to_owned)
+    }
+
+    async fn post_json(
+        site: &Site,
+        uri: &str,
+        body: String,
+        cookie: Option<&str>,
+        signed_in: bool,
+    ) -> Response {
+        let mut request = Request::post(uri)
+            .header(header::ORIGIN, ORIGIN)
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(cookie) = cookie {
+            request = request.header(header::COOKIE, cookie);
+        }
+        site.send(request.body(Body::from(body)).unwrap(), signed_in)
+            .await
+    }
+
+    /// A ceremony the server has started: the options it sent and the cookie
+    /// that ties the answer to it.
+    struct Started<T> {
+        options: T,
+        cookie: String,
+    }
+
+    async fn start<T: serde::de::DeserializeOwned>(site: &Site, uri: &str) -> Started<T> {
+        let response = post_json(site, uri, "{}".to_owned(), None, true).await;
+        assert_eq!(response.status(), StatusCode::OK, "{uri}");
+        let cookie = cookie_named(&response, CEREMONY_COOKIE).unwrap();
+        let options = serde_json::from_str(&text(response).await).unwrap();
+        Started { options, cookie }
+    }
+
+    /// The software authenticator can't hold resident keys, which tamis asks
+    /// for, so the options it is given leave that out.
+    fn without_resident_key(mut options: CreationChallengeResponse) -> CreationChallengeResponse {
+        if let Some(selection) = options.public_key.authenticator_selection.as_mut() {
+            selection.resident_key = None;
+            selection.require_resident_key = false;
+        }
+        options
+    }
+
+    /// Enrols `soft`, returning the server's answer and the credential's id.
+    async fn enrol(site: &Site, soft: &mut SoftPasskey, name: &str) -> (Response, Vec<u8>) {
+        let started: Started<CreationChallengeResponse> = start(site, "/auth/register/begin").await;
+        let credential = soft
+            .do_registration(origin(), without_resident_key(started.options))
+            .unwrap();
+        let response = post_json(
+            site,
+            &format!("/auth/register/finish?name={name}"),
+            serde_json::to_string(&credential).unwrap(),
+            Some(&started.cookie),
+            false,
+        )
+        .await;
+        (response, credential.raw_id.clone())
+    }
+
+    /// What a resident-key authenticator would do: find the credential
+    /// without being told which, and name the user in its answer.
+    fn sign_in_as_owner(
+        soft: &mut SoftPasskey,
+        options: RequestChallengeResponse,
+        credential_id: &[u8],
+    ) -> PublicKeyCredential {
+        let mut options = options;
+        options.public_key.allow_credentials = vec![AllowCredentials {
+            type_: "public-key".to_owned(),
+            id: credential_id.to_vec(),
+            transports: None,
+        }];
+        let mut assertion = soft.do_authentication(origin(), options).unwrap();
+        assertion.response.user_handle = Some(owner_id().as_bytes().to_vec());
+        assertion
+    }
+
+    #[tokio::test]
+    async fn a_passkey_can_be_enrolled_and_then_signs_in() {
+        let site = site();
+        let mut soft = SoftPasskey::new(true);
+
+        let (enrolled, credential_id) = enrol(&site, &mut soft, "laptop").await;
+
+        assert_eq!(enrolled.status(), StatusCode::OK);
+        assert!(cookie_named(&enrolled, SESSION_COOKIE).is_some());
+        let after_enrolling = site.db.passkeys().unwrap();
+        let laptop = after_enrolling.iter().find(|k| k.name == "laptop").unwrap();
+
+        let started: Started<RequestChallengeResponse> = start(&site, "/auth/login/begin").await;
+        let assertion = sign_in_as_owner(&mut soft, started.options, &credential_id);
+        let signed_in = post_json(
+            &site,
+            "/auth/login/finish",
+            serde_json::to_string(&assertion).unwrap(),
+            Some(&started.cookie),
+            false,
+        )
+        .await;
+
+        assert_eq!(signed_in.status(), StatusCode::OK);
+        let session = cookie_named(&signed_in, SESSION_COOKIE).unwrap();
+        let page = site
+            .send(
+                Request::get("/")
+                    .header(header::COOKIE, &session)
+                    .body(Body::empty())
+                    .unwrap(),
+                false,
+            )
+            .await;
+        assert_eq!(page.status(), StatusCode::OK, "the new session works");
+        let after_login = site.db.passkeys().unwrap();
+        let used = after_login.iter().find(|k| k.name == "laptop").unwrap();
+        assert_ne!(
+            used.credential, laptop.credential,
+            "the signature counter was saved"
+        );
+    }
+
+    async fn finish_login(site: &Site, assertion: &PublicKeyCredential, cookie: &str) -> Response {
+        post_json(
+            site,
+            "/auth/login/finish",
+            serde_json::to_string(assertion).unwrap(),
+            Some(cookie),
+            false,
+        )
+        .await
+    }
+
+    async fn enrolled_site() -> (Site, SoftPasskey, Vec<u8>) {
+        let site = site();
+        let mut soft = SoftPasskey::new(true);
+        let (response, credential_id) = enrol(&site, &mut soft, "laptop").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        (site, soft, credential_id)
+    }
+
+    #[tokio::test]
+    async fn a_login_ceremony_can_be_finished_only_once() {
+        let (site, mut soft, id) = enrolled_site().await;
+        let started: Started<RequestChallengeResponse> = start(&site, "/auth/login/begin").await;
+        let assertion = sign_in_as_owner(&mut soft, started.options, &id);
+
+        let first = finish_login(&site, &assertion, &started.cookie).await;
+        let replayed = finish_login(&site, &assertion, &started.cookie).await;
+
+        assert_eq!(first.status(), StatusCode::OK);
+        assert_eq!(replayed.status(), StatusCode::UNAUTHORIZED);
+        assert!(cookie_named(&replayed, SESSION_COOKIE).is_none());
+    }
+
+    #[tokio::test]
+    async fn an_answer_to_another_challenge_is_refused() {
+        let (site, mut soft, id) = enrolled_site().await;
+        let asked: Started<RequestChallengeResponse> = start(&site, "/auth/login/begin").await;
+        let current: Started<RequestChallengeResponse> = start(&site, "/auth/login/begin").await;
+        let assertion = sign_in_as_owner(&mut soft, asked.options, &id);
+
+        let response = finish_login(&site, &assertion, &current.cookie).await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(cookie_named(&response, SESSION_COOKIE).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_passkey_that_was_revoked_cannot_sign_in() {
+        let (site, mut soft, id) = enrolled_site().await;
+        let laptop = site
+            .db
+            .passkeys()
+            .unwrap()
+            .into_iter()
+            .find(|key| key.name == "laptop")
+            .unwrap();
+        site.db.remove_passkey(laptop.id).unwrap();
+        let started: Started<RequestChallengeResponse> = start(&site, "/auth/login/begin").await;
+        let assertion = sign_in_as_owner(&mut soft, started.options, &id);
+
+        let response = finish_login(&site, &assertion, &started.cookie).await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(cookie_named(&response, SESSION_COOKIE).is_none());
+    }
+
+    #[tokio::test]
+    async fn an_answer_for_another_user_is_refused() {
+        let (site, mut soft, id) = enrolled_site().await;
+        let started: Started<RequestChallengeResponse> = start(&site, "/auth/login/begin").await;
+        let mut assertion = sign_in_as_owner(&mut soft, started.options, &id);
+        assertion.response.user_handle = Some(Uuid::from_u128(1).as_bytes().to_vec());
+
+        let response = finish_login(&site, &assertion, &started.cookie).await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(cookie_named(&response, SESSION_COOKIE).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_registration_answering_another_challenge_enrols_nothing() {
+        let site = site();
+        let mut soft = SoftPasskey::new(true);
+        let asked: Started<CreationChallengeResponse> = start(&site, "/auth/register/begin").await;
+        let current: Started<CreationChallengeResponse> =
+            start(&site, "/auth/register/begin").await;
+        let credential = soft
+            .do_registration(origin(), without_resident_key(asked.options))
+            .unwrap();
+
+        let response = post_json(
+            &site,
+            "/auth/register/finish?name=laptop",
+            serde_json::to_string(&credential).unwrap(),
+            Some(&current.cookie),
+            false,
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(cookie_named(&response, SESSION_COOKIE).is_none());
+        assert!(
+            site.db
+                .passkeys()
+                .unwrap()
+                .iter()
+                .all(|k| k.name != "laptop")
+        );
+    }
+}

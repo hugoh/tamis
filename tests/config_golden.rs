@@ -70,7 +70,7 @@ fn env(key: &str) -> Option<String> {
 }
 
 #[test]
-fn matches_the_go_loader() {
+fn matches_the_recorded_results() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let cases: Vec<Case> =
         serde_json::from_slice(&fs::read(root.join("golden/config.json")).unwrap()).unwrap();

@@ -1,6 +1,5 @@
 //! The words the journal records: what tamis concluded about a message, why,
-//! and what it did. They are stored as text, in the form the Go build wrote,
-//! so a database moves between the two.
+//! and what it did. They are stored as text.
 
 use std::fmt;
 use std::str::FromStr;
@@ -68,10 +67,13 @@ pub enum Reason {
     TrainFolder,
     ProviderJunk,
     Undo,
+    /// A message you sent: its recipients were whitelisted. Not a judgement of
+    /// the message, so it can't be undone or learnt from.
+    Sent,
 }
 
 impl Reason {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Bayes,
         Self::Whitelisted,
         Self::Correction,
@@ -79,6 +81,7 @@ impl Reason {
         Self::TrainFolder,
         Self::ProviderJunk,
         Self::Undo,
+        Self::Sent,
     ];
 
     #[must_use]
@@ -91,6 +94,7 @@ impl Reason {
             Self::TrainFolder => "train folder",
             Self::ProviderJunk => "provider junk",
             Self::Undo => "undo",
+            Self::Sent => "sent",
         }
     }
 
@@ -215,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn the_go_build_wrote_these_words() {
+    fn multi_word_reasons_and_moves_parse_from_their_text() {
         assert_eq!("provider junk".parse(), Ok(Reason::ProviderJunk));
         assert_eq!("train folder".parse(), Ok(Reason::TrainFolder));
         assert_eq!("move:Junk".parse(), Ok(Action::Move("Junk".into())));

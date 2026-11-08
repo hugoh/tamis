@@ -117,7 +117,7 @@ pub struct Examined {
     pub keywords_allowed: bool,
 }
 
-/// A string the way go-imap sends credentials: quoted, which every server
+/// A string as credentials are sent: quoted, which every server
 /// reads, rather than as a bare atom, which some read differently. Strings a
 /// quoted string can't hold (line breaks) go as literals.
 fn quoted(value: &str) -> Result<AString<'static>> {

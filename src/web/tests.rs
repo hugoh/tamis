@@ -786,9 +786,9 @@ async fn responses_are_compressed_for_clients_that_accept_it() {
         site.send(request, true)
     };
 
-    let script = get("/static/vendor/theme.css", "gzip").await;
+    let script = get("/static/rules.js", "gzip").await;
     let page = get("/health", "br, gzip").await;
-    let plain = get("/static/vendor/theme.css", "identity").await;
+    let plain = get("/static/rules.js", "identity").await;
 
     assert_eq!(script.headers()[header::CONTENT_ENCODING], "gzip");
     assert_eq!(page.headers()[header::CONTENT_ENCODING], "br");

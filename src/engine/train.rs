@@ -1,7 +1,10 @@
 use mail_parser::MessageParser;
 
+use jiff::Timestamp;
+
 use crate::classify::Label;
 use crate::mail::{Mailbox, Message};
+use crate::store::Decision;
 
 use super::domain::{Action, Judgement, Reason, Summary, Verdict, keyword};
 use super::{Context, Engine, Error, FETCH_BATCH, Result, training_key};
@@ -97,18 +100,17 @@ impl<M: Mailbox> Engine<M> {
         self.record(&folder.name, message, &judgement, &Action::TrainSpam, true)
     }
 
-    /// Whitelists the addresses other than the account's own and returns how
-    /// many.
-    pub(super) fn whitelist_recipients(&self, addresses: &[String]) -> Result<usize> {
-        let mut added = 0;
+    /// Whitelists the addresses other than the account's own and returns them.
+    pub(super) fn whitelist_recipients(&self, addresses: &[String]) -> Result<Vec<String>> {
+        let mut added = Vec::new();
         for address in addresses {
             if address.eq_ignore_ascii_case(&self.cfg.account.user) {
                 continue;
             }
             self.store
-                .add_address(address, "sent")
+                .add_address(address, Reason::Sent.as_str())
                 .context("whitelist recipients")?;
-            added += 1;
+            added.push(address.clone());
         }
         Ok(added)
     }
@@ -128,7 +130,24 @@ impl<M: Mailbox> Engine<M> {
             .filter_map(|mailbox| mailbox.address())
             .map(str::to_lowercase)
             .collect();
-        self.whitelist_recipients(&addresses)?;
+        let added = self.whitelist_recipients(&addresses)?;
+        if !added.is_empty() {
+            // `from` holds the recipients: the sender is always you.
+            self.store
+                .record_decision(&Decision {
+                    at: Timestamp::now(),
+                    mailbox: folder.to_owned(),
+                    uid: message.uid,
+                    message_id: message.message_id.clone(),
+                    from: added.join(", "),
+                    subject: message.subject.clone(),
+                    verdict: Verdict::Good,
+                    reason: Reason::Sent,
+                    applied: true,
+                    ..Decision::default()
+                })
+                .context("record sent")?;
+        }
 
         let Some(replied) = parsed.in_reply_to().and_then(|ids| ids.last()) else {
             return Ok(());

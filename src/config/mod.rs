@@ -527,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn host_and_port_split_like_go() {
+    fn host_and_port_are_split_apart() {
         let cases = [
             ("127.0.0.1:8484", Some("127.0.0.1")),
             ("[::1]:9000", Some("::1")),

@@ -66,21 +66,6 @@ impl Memory {
     }
 }
 
-/// Go drops the sender tokens when the From header holds 8-bit text, which
-/// loses the strongest signal on non-UTF-8 mail. The port keeps them, so the
-/// comparison ignores them for these files.
-const GO_DROPS_SENDER: &[&str] = &["score-latin1.eml"];
-
-fn without_go_bug(file: &str, tokens: Vec<String>) -> Vec<String> {
-    if !GO_DROPS_SENDER.contains(&file) {
-        return tokens;
-    }
-    tokens
-        .into_iter()
-        .filter(|t| !t.starts_with("from:") && !t.starts_with("from-domain:"))
-        .collect()
-}
-
 fn mail(name: &str) -> Vec<u8> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/mail")
@@ -89,7 +74,7 @@ fn mail(name: &str) -> Vec<u8> {
 }
 
 #[test]
-fn matches_the_go_classifier() {
+fn matches_the_recorded_results() {
     let path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden/classify_auth.json");
     let golden: Golden = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
@@ -110,7 +95,7 @@ fn matches_the_go_classifier() {
     }
 
     for case in &golden.cases {
-        let tokens = without_go_bug(&case.file, classify::tokenize(&mail(&case.file)));
+        let tokens = classify::tokenize(&mail(&case.file));
         assert_eq!(tokens, case.tokens, "tokens of {}", case.file);
 
         let with_status = classify::with_recipient_status(&tokens, &model, &golden.own);

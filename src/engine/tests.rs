@@ -849,6 +849,37 @@ async fn sent_mail_whitelists_its_recipients_but_not_you() {
 }
 
 #[tokio::test]
+async fn whitelisting_sent_recipients_is_journalled_once_per_message() {
+    let mut env = Env::new(Mode::Live);
+    env.start().await;
+    env.mail().deliver(
+        "Sent Messages",
+        "From: me@example.org\r\nTo: Bob <bob@friends.example>, me@example.org\r\nCc: carol@friends.example\r\nSubject: hi\r\nMessage-ID: <s1@x>\r\n\r\nhi",
+        &[],
+    );
+    env.mail().deliver(
+        "Sent Messages",
+        "From: me@example.org\r\nTo: me@example.org\r\nSubject: note to self\r\nMessage-ID: <s2@x>\r\n\r\nhi",
+        &[],
+    );
+
+    env.engine.run_once().await.unwrap();
+
+    let decisions = env.store().decisions(10).unwrap();
+    assert_eq!(decisions.len(), 1, "only the message with recipients");
+    let entry = &decisions[0];
+    assert_eq!(entry.mailbox, "Sent Messages");
+    assert_eq!(entry.message_id, "<s1@x>");
+    assert_eq!(entry.from, "bob@friends.example, carol@friends.example");
+    assert_eq!(entry.subject, "hi");
+    assert_eq!(entry.verdict, Verdict::Good);
+    assert_eq!(entry.reason, Reason::Sent);
+    assert!(entry.applied);
+    assert!(!crate::engine::can_undo(entry));
+    assert!(!crate::engine::can_learn(entry));
+}
+
+#[tokio::test]
 async fn answering_mail_tamis_doubted_teaches_that_it_is_good() {
     let cases = [
         ("spam in Junk", "spam", "Junk", true),

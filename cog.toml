@@ -1,7 +1,0 @@
-tag_prefix = "v"
-disable_changelog = true
-disable_bump_commit = true
-ignore_merge_commits = true
-
-[commit_types.perf]
-bump_patch = true

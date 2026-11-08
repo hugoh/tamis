@@ -77,6 +77,11 @@ jobs:
       - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
         with:
           fetch-depth: "0"
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: lint
+          save-if: "false"
       - name: Guard manual dispatch to main
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
         env:
@@ -87,10 +92,24 @@ jobs:
       - name: Semver release
         env:
           BUMP_TYPE: ${{ inputs.bump_type || 'auto' }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ "$BUMP_TYPE" = auto ]; then cog bump --auto; else cog bump "--$BUMP_TYPE"; fi
+          args=(--dry-run)
+          [ "$BUMP_TYPE" = auto ] || args+=(--default-bump "$BUMP_TYPE")
+          plan=$(anodizer tag "${args[@]}")
+          part=$(sed -n 's/^part=//p' <<<"$plan")
+          tag=$(sed -n 's/^new_tag=//p' <<<"$plan")
+          if [ "$part" = none ] || [ -z "$tag" ]; then
+            echo "No releasable commits since the last tag"
+            exit 0
+          fi
+          # main keeps 0.0.0; only the tagged commit carries the version.
+          anodizer bump "${tag#v}" --yes
+          cargo update -w
+          git commit -am "chore(release): ${tag}"
+          git tag -a "$tag" -m "$tag"
       - name: Validate release
         id: validate
         run: |
@@ -191,6 +210,17 @@ jobs:
         env:
           TAG: ${{ needs.tag.outputs.tag }}
         run: git checkout --detach "$TAG"
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: lint
+          save-if: "false"
+      # cargo publish packages the files prebuild generates; they are gitignored,
+      # so Cargo.toml's include list is what ships them.
+      - name: Generate the embedded web assets
+        run: |
+          mise run prebuild
+          cargo package --list | grep -qx web/static/vendor/theme.css
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist/
@@ -202,6 +232,7 @@ jobs:
       - name: Publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         # The preflight's GitHub push probe reads permissions.push from

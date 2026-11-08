@@ -75,6 +75,9 @@ tamis rules show       # also: check [--folders] [FILE] to validate a Sieve scri
 tamis web enroll       # one-time link to enrol a passkey for the web interface
 ```
 
+To keep `tamis run` up on a Linux server, see
+[Running as a service](../user-guide/running-as-a-service/).
+
 `tamis log` colours its output on a terminal. `--color never` (or setting
 `NO_COLOR`) turns that off; `--color always` forces it, for a pager.
 

@@ -217,7 +217,7 @@ pub(in super::super) async fn run(app: &mut App, once: bool) -> Result<()> {
 
     let mut daemon = Daemon::new(
         SharedConnector(connector),
-        store,
+        Arc::clone(&store),
         cfg,
         reload,
         app.shutdown.clone(),
@@ -234,6 +234,9 @@ pub(in super::super) async fn run(app: &mut App, once: bool) -> Result<()> {
     }
     if let Some(web) = web {
         let _ = web.await;
+    }
+    if let Err(err) = store.checkpoint() {
+        tracing::warn!(%err, "could not checkpoint the database");
     }
     Ok(())
 }

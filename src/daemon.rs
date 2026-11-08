@@ -211,6 +211,7 @@ impl<C: Connector> Daemon<C> {
             })?;
 
         let mut engine = Engine::new(mailbox, Arc::clone(&self.store), Arc::clone(&cfg));
+        engine.set_shutdown(self.shutdown.clone());
         if !cfg.rules.script.is_empty() {
             engine.set_rules(Rules::load(std::path::Path::new(&cfg.rules.script))?);
         }

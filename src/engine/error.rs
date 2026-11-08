@@ -37,6 +37,9 @@ pub enum Error {
     /// An uncertain verdict has no opposite.
     #[error("an uncertain verdict needs an explicit label: good or spam")]
     NeedsLabel,
+    /// The pass ended early because tamis is shutting down.
+    #[error("stopped for shutdown")]
+    Stopped,
     /// An error with what was being done when it happened.
     #[error("{context}: {source}")]
     Context { context: String, source: Box<Error> },
@@ -73,6 +76,16 @@ impl Error {
         match self {
             Self::Mail(mail::Error::Login(_)) => true,
             Self::Context { source, .. } => source.is_login_rejected(),
+            _ => false,
+        }
+    }
+
+    /// Whether the pass ended early because tamis is shutting down.
+    #[must_use]
+    pub fn is_stopped(&self) -> bool {
+        match self {
+            Self::Stopped => true,
+            Self::Context { source, .. } => source.is_stopped(),
             _ => false,
         }
     }

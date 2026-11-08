@@ -400,3 +400,24 @@ fn the_authserv_id_comes_from_config_then_from_what_was_learnt() {
         assert_eq!((pin.id.as_str(), pin.source), (id, source), "{name}");
     }
 }
+
+#[tokio::test]
+async fn a_stopped_pass_leaves_unhandled_mail_for_the_next_one() {
+    let mut env = Env::trained();
+    env.start().await;
+    env.mail().deliver("INBOX", &spam("s1"), &[]);
+    env.mail().deliver("INBOX", &spam("s2"), &[]);
+    let stop = CancellationToken::new();
+    env.engine.set_shutdown(stop.clone());
+    stop.cancel();
+
+    let err = env.engine.run_once().await.unwrap_err();
+
+    assert!(err.is_stopped(), "{err}");
+    assert!(env.decisions().is_empty());
+    assert_eq!(env.store().cursor("INBOX").unwrap().unwrap().last_uid, 0);
+    assert_eq!(env.mail().uids("INBOX").len(), 2, "nothing moved");
+
+    env.engine.set_shutdown(CancellationToken::new());
+    assert_eq!(env.engine.run_once().await.unwrap().spam, 2);
+}

@@ -1,0 +1,19 @@
+---
+name: rust-setup
+description: Install the pinned Rust toolchain and restore the shared cargo cache.
+inputs:
+  shared-key:
+    description: Swatinem/rust-cache shared-key.
+    required: true
+  save-if:
+    description: Whether this run may save the cache.
+    default: ${{ github.ref == 'refs/heads/main' }}
+runs:
+  using: composite
+  steps:
+    - run: rustup toolchain install
+      shell: bash
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        shared-key: ${{ inputs.shared-key }}
+        save-if: ${{ inputs.save-if }}

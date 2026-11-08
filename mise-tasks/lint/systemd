@@ -22,4 +22,5 @@ trap 'rm -rf "$work"' EXIT
 # verify needs ExecStart to exist; the check is of the unit's directives, not the binary
 sed 's#^ExecStart=/usr/bin/tamis#ExecStart=/bin/true#' "$unit" >"$work/tamis.service"
 systemd-analyze verify "$work/tamis.service"
-systemd-sysusers --dry-run packaging/tamis.sysusers
+cp packaging/tamis.sysusers "$work/tamis.conf"
+systemd-sysusers --dry-run "$work/tamis.conf"

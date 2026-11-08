@@ -574,3 +574,19 @@ async fn a_stop_does_not_wait_forever_for_a_stuck_pass() {
         .unwrap();
     drop(stuck);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_single_pass_cut_short_by_a_stop_is_not_an_error() {
+    let mut env = Env::new(|| unreachable!());
+    let mut daemon = env.daemon.take().unwrap();
+    daemon.once().await.unwrap();
+    env.mail.lock().await.deliver("INBOX", &mail_item("a"), &[]);
+    env.shutdown.cancel();
+
+    daemon.once().await.unwrap();
+
+    assert!(
+        env.store.decisions(10).unwrap().is_empty(),
+        "the mail waits for the next pass"
+    );
+}

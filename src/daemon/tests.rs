@@ -505,7 +505,8 @@ mod quality {
         let mut env = Env::new(|| Ok(config()));
         let server = Server::start(&[]).await;
 
-        daemon_pinging(&mut env, &server).check_quality();
+        let daemon = daemon_pinging(&mut env, &server);
+        daemon.check_quality();
         server.wait_for(1).await;
 
         let sent = server.requests();
@@ -522,7 +523,8 @@ mod quality {
         train_both_classes(&env.store);
         let server = Server::start(&[]).await;
 
-        daemon_pinging(&mut env, &server).check_quality();
+        let daemon = daemon_pinging(&mut env, &server);
+        daemon.check_quality();
         server.wait_for(1).await;
 
         let sent = server.requests();

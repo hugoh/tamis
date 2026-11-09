@@ -5,7 +5,7 @@ use reqwest::StatusCode;
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
+use tokio_util::sync::{CancellationToken, DropGuard};
 use url::Url;
 
 use crate::retry::{self, Backoff, Streak, log_at};
@@ -132,6 +132,8 @@ fn truncate(text: &str, max: usize) -> &str {
 struct Inner {
     shared: Arc<Shared>,
     cancel: CancellationToken,
+    /// Stops the task if the pinger is dropped without [`Pinger::close`].
+    _stop: DropGuard,
     task: JoinHandle<()>,
 }
 
@@ -175,6 +177,7 @@ impl Pinger {
         Ok(Self {
             inner: Some(Inner {
                 shared,
+                _stop: cancel.clone().drop_guard(),
                 cancel,
                 task,
             }),
@@ -277,6 +280,16 @@ fn report(shared: &Shared, cancel: &CancellationToken, streak: &mut Streak, err:
 mod tests {
     use super::super::test_server::{Request, Server};
     use super::*;
+
+    #[tokio::test]
+    async fn dropping_a_pinger_stops_its_task() {
+        let pinger = Pinger::new("http://127.0.0.1:1/abc/").unwrap();
+        let cancel = pinger.inner.as_ref().unwrap().cancel.clone();
+
+        drop(pinger);
+
+        assert!(cancel.is_cancelled());
+    }
 
     #[tokio::test]
     async fn pings_go_to_the_check_and_failures_to_its_fail_path() {

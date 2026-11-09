@@ -81,7 +81,10 @@ impl Connector for SharedConnector {
     type Mailbox = Client;
 
     async fn connect(&mut self, cfg: &Config) -> mail::Result<Client> {
-        self.0.lock().await.connect(cfg).await
+        // Only the password lookup needs the lock; dialling can take a while
+        // and must not hold up the web interface's jobs.
+        let dial = self.0.lock().await.dial_config(cfg).await?;
+        Client::dial(&dial).await
     }
 
     async fn watch(&mut self, cfg: &Config) -> Option<Watcher> {

@@ -25,6 +25,9 @@ pub struct DebugSwitch {
 struct State {
     until: Option<Timestamp>,
     timer: Option<AbortHandle>,
+    /// Counts each turning on, so a timer that fires just as the span is
+    /// renewed can tell it has been replaced.
+    generation: u64,
 }
 
 impl DebugSwitch {
@@ -84,12 +87,14 @@ impl DebugSwitch {
         self.ring.start();
         (self.apply)(true);
         state.until = Timestamp::now().checked_add(self.span).ok();
+        state.generation += 1;
+        let generation = state.generation;
         let this = Arc::clone(self);
         let span = self.span;
         state.timer = Some(
             tokio::spawn(async move {
                 tokio::time::sleep(span).await;
-                this.off();
+                this.expire(generation);
             })
             .abort_handle(),
         );
@@ -100,6 +105,19 @@ impl DebugSwitch {
             return;
         }
         let mut state = self.state();
+        self.switch_off(&mut state);
+    }
+
+    /// Turns off for the timer of `generation`, unless the span was renewed
+    /// after it started: an abort can't stop a timer that has already woken.
+    fn expire(&self, generation: u64) {
+        let mut state = self.state();
+        if state.generation == generation {
+            self.switch_off(&mut state);
+        }
+    }
+
+    fn switch_off(&self, state: &mut State) {
         if let Some(timer) = state.timer.take() {
             timer.abort();
         }
@@ -187,6 +205,18 @@ mod tests {
             level.load(Ordering::SeqCst),
             "the first timer must not fire"
         );
+    }
+
+    #[tokio::test]
+    async fn a_timer_that_already_woke_cannot_undo_a_renewal() {
+        let (debug, level, _) = switch(false, Duration::from_mins(15));
+        debug.on();
+        let stale = debug.state().generation;
+
+        debug.on();
+        debug.expire(stale);
+
+        assert!(level.load(Ordering::SeqCst) && debug.status().0);
     }
 
     #[tokio::test]

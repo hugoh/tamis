@@ -313,6 +313,54 @@ mod tests {
     }
 
     #[test]
+    fn a_new_store_counts_under_the_current_tokenizer() {
+        let (_dir, store) = open();
+        assert_eq!(
+            store.tokenizer_version().unwrap(),
+            crate::classify::TOKENIZER_VERSION
+        );
+
+        store.train("m1", &tokens(&["free"]), Label::Spam).unwrap();
+
+        assert_eq!(
+            store.tokenizer_version().unwrap(),
+            crate::classify::TOKENIZER_VERSION
+        );
+    }
+
+    #[test]
+    fn counts_learnt_before_versions_were_recorded_are_the_first_tokenizer() {
+        let (_dir, store) = open();
+        store
+            .conn()
+            .execute(
+                "INSERT INTO trained (key, label, tokens) VALUES ('m1', 1, '[\"free\"]')",
+                [],
+            )
+            .unwrap();
+
+        assert_eq!(store.tokenizer_version().unwrap(), 1);
+    }
+
+    #[test]
+    fn training_leaves_an_older_stamp_alone_until_the_counts_are_refreshed() {
+        let (_dir, store) = open();
+        store.train("m1", &tokens(&["free"]), Label::Spam).unwrap();
+        store.set_tokenizer_version(1).unwrap();
+
+        store.train("m2", &tokens(&["prize"]), Label::Spam).unwrap();
+        assert_eq!(store.tokenizer_version().unwrap(), 1);
+
+        store
+            .set_tokenizer_version(crate::classify::TOKENIZER_VERSION)
+            .unwrap();
+        assert_eq!(
+            store.tokenizer_version().unwrap(),
+            crate::classify::TOKENIZER_VERSION
+        );
+    }
+
+    #[test]
     fn untraining_forgets_the_message_and_its_unused_tokens() {
         let (_dir, store) = open();
         store

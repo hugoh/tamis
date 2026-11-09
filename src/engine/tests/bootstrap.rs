@@ -158,3 +158,30 @@ async fn a_failing_corpus_search_stops_bootstrap() {
 
     assert!(err.contains("bootstrap from INBOX"), "{err}");
 }
+
+#[tokio::test]
+async fn only_a_refresh_brings_old_counts_to_the_current_tokenizer() {
+    let mut env = Env::new(Mode::Live);
+    corpus(&mut env);
+    env.engine.bootstrap(&options()).await.unwrap();
+    env.store().set_tokenizer_version(1).unwrap();
+
+    env.engine.bootstrap(&options()).await.unwrap();
+    assert_eq!(
+        env.store().tokenizer_version().unwrap(),
+        1,
+        "learning what is new leaves the old counts as they were"
+    );
+
+    env.engine
+        .bootstrap(&BootstrapOptions {
+            refresh: true,
+            ..options()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        env.store().tokenizer_version().unwrap(),
+        crate::classify::TOKENIZER_VERSION
+    );
+}

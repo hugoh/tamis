@@ -23,6 +23,7 @@ pub fn collect(store: &Store, cfg: &Config) -> Result<Report, store::Error> {
         recent: store.decisions(WINDOW)?,
         retention: cfg.policy.journal_retention,
         auth: resolve_auth_pin(store, cfg)?,
+        tokenizer_version: store.tokenizer_version()?,
         web: collect_web(store, &cfg.web)?,
         daemon: load_daemon(store, cfg.policy.poll_interval)?,
         config: config_info(cfg),

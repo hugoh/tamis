@@ -31,6 +31,7 @@ fn input() -> Input {
             learnt_for: String::new(),
             host: String::new(),
         },
+        tokenizer_version: crate::classify::TOKENIZER_VERSION,
         web: Web::default(),
         config: ConfigInfo {
             path: "/c.toml".into(),
@@ -52,6 +53,32 @@ fn input() -> Input {
 
 fn find<'a>(report: &'a Report, check: &str) -> &'a Check {
     report.checks.iter().find(|c| c.name == check).unwrap()
+}
+
+#[test]
+fn counts_from_an_older_tokenizer_warn_until_refreshed() {
+    let current = run(&input());
+    let check = find(&current, name::TOKENIZER);
+    assert_eq!(check.status, Status::Ok);
+    assert_eq!(
+        check.detail,
+        format!("version {}", crate::classify::TOKENIZER_VERSION)
+    );
+
+    let report = run(&Input {
+        tokenizer_version: 1,
+        ..input()
+    });
+    let check = find(&report, name::TOKENIZER);
+    assert_eq!(check.status, Status::Warn);
+    assert_eq!(
+        check.detail,
+        format!(
+            "counts were learnt with version 1 and tamis tokenizes with version {}; run 'tamis bootstrap --refresh'",
+            crate::classify::TOKENIZER_VERSION
+        )
+    );
+    assert_eq!(check.section, section::TRAINING);
 }
 
 #[test]
@@ -584,7 +611,8 @@ fn collecting_reads_the_store() {
 
     let report = collect(&store, &cfg).unwrap();
 
-    assert_eq!(report.checks.len(), 13);
+    assert_eq!(report.checks.len(), 14);
+    assert_eq!(find(&report, name::TOKENIZER).status, Status::Ok);
     assert_eq!(find(&report, name::LAST).status, Status::Ok);
     assert_eq!(find(&report, name::WEB).status, Status::Skip);
     assert_eq!(

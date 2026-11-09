@@ -212,6 +212,7 @@ from the same word in the body.
 | `url:<host>` | host of each link, then each parent domain down to the registrable one | `url:a.b.example.co.uk`, `url:b.example.co.uk`, `url:example.co.uk` |
 | `skip:<letter> <length>` | each word longer than 12 characters | `skip:a 20` |
 | `<word>` | words of the text and HTML parts | `invoice` |
+| `<pair>` | two neighbouring characters of Chinese, Japanese or Thai text, with the same prefix as a word | `账户` |
 
 The words are made like this:
 
@@ -223,9 +224,19 @@ The words are made like this:
 - Links are cut out of the text first, so only `url:` tokens come from them,
   never their paths or query strings. IP addresses are used as they are, with
   no parent domains.
-- The text is lowercased and split at everything that isn't a letter or a
-  digit, in any script. There is no stemming and no stop-word list. Digits
-  count as letters, so `12345` and `abc123` are words.
+- The text is lowercased and split into words by the Unicode word-boundary
+  rules (UAX #29, via the `unicode-segmentation` crate). Apostrophes and
+  decimal points inside a word don't split it, so `don't` and `3.14` are
+  single words, and so are `foo_bar` and `abc123`. There is no stemming and
+  no stop-word list.
+- Chinese, Japanese hiragana and kanji, and Thai are written without spaces
+  between words, so the rules can't find words in them. Each uninterrupted run
+  of those characters (a space or punctuation ends it) becomes overlapping
+  pairs instead: `您的账户` gives `您的`, `的账` and `账户`. A run of one
+  character is kept as it is. In Thai the unit is a syllable cluster rather
+  than a letter. These pairs ignore the minimum length below. Katakana words
+  and Korean are not affected: they are separated by spaces or can be
+  found by the word rules, so they are words like any other.
 - Words of fewer than three characters are dropped. A word of more than twelve
   becomes a `skip:` token made of its first letter and its length rounded down
   to a multiple of ten, as SpamBayes does: long strings such as encoded
@@ -241,8 +252,9 @@ feeds [sender verification](#judging-a-message).
 ### Scoring
 
 The method is that of [SpamBayes](https://spambayes.sourceforge.io/): Robinson's
-token probabilities combined with Fisher's chi-square method. It uses single
-words only, with no word pairs.
+token probabilities combined with Fisher's chi-square method. Apart from the
+character pairs of unspaced scripts, it uses single words only, with no word
+pairs.
 
 1. **Per token.** For a token seen in `s` spam and `g` good trained messages,
    out of `S` spam and `G` good in all, the raw probability is
@@ -269,10 +281,30 @@ The verdict compares the score to `policy.spam_threshold` (default 0.9) and
 `policy.good_threshold` (default 0.2); in between is uncertain, as drawn in
 [Judging a message](#judging-a-message).
 
-Changing the tokenizer changes what counts as the same token, so the counts of
-mail learnt before no longer match. Run `tamis bootstrap --refresh` after an
-upgrade that changes it (see [Bootstrap](#bootstrap)), and measure a change
-with `tamis-eval` first (see [evaluation](../../how-it-works/evaluation/)).
+### Tokenizer version
+
+Changing the tokenizer changes what counts as the same token, so counts learnt
+before no longer match the tokens of new mail. tamis records which tokenizer
+the counts were learnt with (`classify::TOKENIZER_VERSION`, kept in the
+store's settings): the first message ever trained fixes it. A store that was
+trained before versions were recorded counts as version 1.
+
+When the stored version is not today's, `tamis run` logs a warning on its first
+pass, and `tamis doctor` and the web Health page show a warning on the
+"tokenizer" check. Mail still gets scored, but old and new tokens don't meet.
+`tamis bootstrap --refresh` learns the mail again with today's tokenizer
+(see [Bootstrap](#bootstrap)) and records today's version once it is done. A
+bootstrap without `--refresh` leaves the version alone, and so does every
+message learnt along the way. Version 2 is the Unicode word rules and the pairs
+for Chinese, Japanese and Thai.
+
+A refresh learns again only what it fetches. Mail that was learnt from
+somewhere else (a correction, a message in a training folder since emptied)
+keeps its old tokens, so name every folder you trained from with `-s` and `-g`.
+
+Measure a change to the tokenizer with `tamis-eval` first (see
+[evaluation](../../how-it-works/evaluation/)), and raise the version when it
+alters the tokens of existing mail.
 
 ## Actions
 
@@ -510,7 +542,8 @@ depends on which addresses good mail has gone to.
 
 `--refresh` learns mail that was already learnt again: each message is
 untrained, then trained with today's tokens, under its folder's label. That
-brings what was learnt before up to date after the tokenizer gains a feature.
+brings what was learnt before up to date after the tokenizer changes, and
+records the [tokenizer version](#tokenizer-version) the counts now have.
 It leaves the whitelist and the watch positions alone (unless `--sent` is
 named), and counts as "Refreshed" the messages that had been learnt. Mail
 learnt from a folder it has since left, or through a training folder, isn't

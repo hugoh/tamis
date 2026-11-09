@@ -146,6 +146,20 @@ pub(super) fn database(stats: &Stats) -> Check {
     Check::new(name::DATABASE, Status::Ok, stats.database_line())
 }
 
+pub(super) fn tokenizer(learnt_with: u32) -> Check {
+    let current = crate::classify::TOKENIZER_VERSION;
+    if learnt_with == current {
+        return Check::new(name::TOKENIZER, Status::Ok, format!("version {current}"));
+    }
+    Check::new(
+        name::TOKENIZER,
+        Status::Warn,
+        format!(
+            "counts were learnt with version {learnt_with} and tamis tokenizes with version {current}; run 'tamis bootstrap --refresh'"
+        ),
+    )
+}
+
 pub(super) fn uncertain_rate(judged: &[&Decision]) -> Check {
     if judged.len() < MIN_SAMPLE {
         return too_few(name::UNCERTAIN, judged.len());

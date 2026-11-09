@@ -89,6 +89,11 @@ impl<M: Mailbox> Engine<M> {
         }
 
         summary.refreshed = run.refreshed;
+        if opts.refresh {
+            self.store
+                .set_tokenizer_version(crate::classify::TOKENIZER_VERSION)
+                .context("bootstrap")?;
+        }
         summary.auth_server_id = self.learn_auth_server_id(&run.tally)?;
 
         if !opts.keep_cursors {

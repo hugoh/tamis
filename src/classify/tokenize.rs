@@ -21,6 +21,8 @@ const MAX_WORD_LEN: usize = 12;
 const MAX_PART_BYTES: usize = 64 << 10;
 const SKIP_BUCKET: usize = 10;
 
+// Only a link's host becomes a token, so the edges of its path don't matter. The
+// `linkify` crate scored slightly worse in tamis-eval (see evaluation.md).
 #[allow(
     clippy::expect_used,
     reason = "the pattern is a constant, checked by every test"

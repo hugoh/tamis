@@ -386,6 +386,16 @@ async fn mock_decisions_page() {
         true,
     );
     site.db.mark_undone(rescued).unwrap();
+    // A real undo also journals an `undo` entry for the message, which is what
+    // dims the original row.
+    record_as(
+        &site,
+        "Lunch on Friday?",
+        ("good", 0.0),
+        "undo",
+        "move:INBOX",
+        true,
+    );
     // Same subject, so the same Message-ID: the later correction dims the
     // original row in the page.
     record_as(

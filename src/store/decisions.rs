@@ -173,6 +173,9 @@ pub struct DecisionQuery {
     pub verdict: Option<Verdict>,
     /// Keeps one reason; `None` keeps all.
     pub reason: Option<Reason>,
+    /// Drops decisions a later correction or undo of the same message
+    /// superseded.
+    pub hide_corrected: bool,
     /// Keeps decisions whose sender, subject, reason, action or folder contain
     /// it, ignoring ASCII case.
     pub search: String,
@@ -202,6 +205,14 @@ impl DecisionQuery {
         if let Some(reason) = self.reason {
             conditions.push("reason = ?".to_owned());
             args.push(Value::Text(reason.to_string()));
+        }
+        if self.hide_corrected {
+            conditions.push(
+                "NOT EXISTS (SELECT 1 FROM decisions c
+                 WHERE decisions.message_id != '' AND c.message_id = decisions.message_id
+                   AND c.id > decisions.id AND c.reason IN ('correction', 'undo'))"
+                    .to_owned(),
+            );
         }
         if !self.search.is_empty() {
             let pattern = like_pattern(&self.search);

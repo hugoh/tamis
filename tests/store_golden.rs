@@ -308,6 +308,7 @@ fn queries_match_the_recorded_results() {
                 id: case.id,
                 verdict: case.verdict.parse().ok(),
                 reason: None,
+                hide_corrected: false,
                 search: case.search.clone(),
                 sort: DecisionSort::from_name(&case.sort),
                 asc: case.asc,

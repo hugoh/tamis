@@ -9,6 +9,7 @@
 <select name="reason" aria-label="Reason" class="select select-sm w-auto" hx-get="/" hx-trigger="change">
 {% for choice in body.reasons %}<option value="{{ choice.value }}"{% if choice.checked %} selected{% endif %}>{% if choice.value.is_empty() %}Any reason{% else %}{{ choice.value }}{% endif %}</option>
 {% endfor %}</select>
+<label class="label cursor-pointer gap-2 text-sm"><input type="checkbox" name="hide_corrected" value="1" class="checkbox checkbox-sm"{% if body.hide_corrected %} checked{% endif %} hx-get="/" hx-trigger="change">Hide corrected</label>
 <button type="submit" class="btn btn-sm">Refresh</button>
 </form>
 {% include "decisions_results.html" %}

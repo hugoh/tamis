@@ -297,6 +297,32 @@ async fn decisions_can_be_filtered_by_reason() {
     );
 }
 
+#[tokio::test]
+async fn corrected_decisions_can_be_hidden_and_offer_no_buttons() {
+    let site = site();
+    record(&site, "fixed", "bayes", true);
+    record_as(
+        &site,
+        "fixed",
+        ("good", 0.0),
+        "correction",
+        "move:INBOX",
+        true,
+    );
+
+    let page = text(site.get("/").await).await;
+    let hidden = text(site.get_htmx("/?hide_corrected=1").await).await;
+
+    assert!(
+        page.contains("data-corrected") && page.matches("label=spam").count() == 1,
+        "{page}"
+    );
+    assert!(
+        hidden.contains("1 decision match") && !hidden.contains("data-corrected"),
+        "{hidden}"
+    );
+}
+
 /// Writes a standalone decisions page (CSS inlined) for eyeballing or docs:
 /// `mise run mock-web`; set `TAMIS_MOCK_PAGE` to write elsewhere
 #[tokio::test]
@@ -360,6 +386,34 @@ async fn mock_decisions_page() {
         true,
     );
     site.db.mark_undone(rescued).unwrap();
+    // A real undo also journals an `undo` entry for the message, which is what
+    // dims the original row.
+    record_as(
+        &site,
+        "Lunch on Friday?",
+        ("good", 0.0),
+        "undo",
+        "move:INBOX",
+        true,
+    );
+    // Same subject, so the same Message-ID: the later correction dims the
+    // original row in the page.
+    record_as(
+        &site,
+        "Invoice #4821",
+        ("spam", 0.88),
+        "bayes",
+        "move:Junk",
+        true,
+    );
+    record_as(
+        &site,
+        "Invoice #4821",
+        ("good", 0.0),
+        "correction",
+        "move:INBOX",
+        true,
+    );
 
     let page = text(site.get("/").await).await;
     let css =

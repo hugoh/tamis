@@ -1,4 +1,4 @@
-<tr class="hover:bg-base-300">
+<tr class="hover:bg-base-300{% if row.corrected_by != 0 %} opacity-60{% endif %}"{% if row.corrected_by != 0 %} data-corrected{% endif %}>
 <th>{{ row.id }}</th>
 <td class="whitespace-nowrap">{{ row.when }}</td>
 <td><span class="badge badge-sm {% if row.verdict == "spam" %}badge-error{% else if row.verdict == "good" %}badge-success{% else %}badge-warning{% endif %}">{{ row.verdict }}</span>{% if row.reason == "rule" %} <span class="badge badge-sm badge-info">rule</span>{% endif %}</td>
@@ -9,8 +9,8 @@
 <td class="max-w-48 truncate" title="{{ row.from }}">{{ row.from }}</td>
 <td class="max-w-72 truncate" title="{{ row.subject }}">{{ row.subject }}</td>
 <td class="whitespace-nowrap">
-{% if row.can_undo %}<button class="btn btn-xs btn-warning btn-outline" hx-post="/decisions/{{ row.id }}/undo" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Undo</button>{% endif %}
-{% if row.can_learn %}<button class="btn btn-xs btn-error btn-outline" hx-post="/decisions/{{ row.id }}/learn?label=spam" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Spam</button>
+{% if row.can_undo && row.corrected_by == 0 %}<button class="btn btn-xs btn-warning btn-outline" hx-post="/decisions/{{ row.id }}/undo" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Undo</button>{% endif %}
+{% if row.can_learn && row.corrected_by == 0 %}<button class="btn btn-xs btn-error btn-outline" hx-post="/decisions/{{ row.id }}/learn?label=spam" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Spam</button>
 <button class="btn btn-xs btn-success btn-outline" hx-post="/decisions/{{ row.id }}/learn?label=good" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Good</button>{% endif %}
 </td>
 </tr>

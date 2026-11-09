@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use crate::config::{self, Config};
 use crate::engine::{self, Engine};
 use crate::health;
-use crate::live::{Status, Waiting};
+use crate::live::Status;
 use crate::mail::watch::Watcher;
 use crate::mail::{self, Mailbox};
 use crate::monitor::{self, Pinger};
@@ -168,7 +168,6 @@ impl<C: Connector> Daemon<C> {
         loop {
             self.prune_journal();
 
-            self.status.wait(Waiting::Running);
             let outcome = self.pass().await;
             if self.shutdown.is_cancelled() {
                 break;
@@ -185,7 +184,6 @@ impl<C: Connector> Daemon<C> {
                     }
                     self.status
                         .retry_at(now.checked_add(failure_wait).unwrap_or(now));
-                    self.status.wait(Waiting::Polling);
                     self.sleep(failure_wait).await
                 }
                 Ok(_) => self.wait_for_next_pass().await,
@@ -380,12 +378,6 @@ impl<C: Connector> Daemon<C> {
             tracing::info!(folders = ?cfg.folders.watch, "imap loop started");
         }
         let poll = self.cfg.policy.poll_interval;
-        let idling = self.watcher.as_ref().is_some_and(|w| w.idling() > 0);
-        self.status.wait(if idling {
-            Waiting::Idle
-        } else {
-            Waiting::Polling
-        });
 
         let news = async {
             match &self.watcher {

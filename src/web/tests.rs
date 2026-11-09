@@ -13,7 +13,7 @@ use tower::ServiceExt;
 
 use super::{App, Job, Options, RunJobs, SESSION_COOKIE, build, hash_token};
 use crate::config::Config;
-use crate::live::{Status, Waiting};
+use crate::live::Status;
 use crate::store::{Decision, Store};
 
 const ORIGIN: &str = "http://localhost:8484";
@@ -1097,28 +1097,19 @@ async fn health_shows_no_daemon_section_without_a_daemon() {
 async fn health_shows_a_daemon_that_has_not_passed_yet() {
     let health = health_with(Status::new(at(1_000_000))).await;
 
-    assert!(health.contains("nothing yet"), "{health}");
     assert!(health.contains("no pass yet"), "{health}");
     assert!(!health.contains("Last error"), "{health}");
 }
 
 #[tokio::test]
-async fn health_shows_what_the_daemon_is_doing_and_its_last_pass() {
-    for (waiting, label) in [
-        (Waiting::Idle, "idle"),
-        (Waiting::Polling, "polling"),
-        (Waiting::Running, "running"),
-    ] {
-        let status = Status::new(at(1_000_000));
-        status.pass_done(at(1_000_100), "moved 3 messages");
-        status.wait(waiting);
+async fn health_shows_the_last_pass() {
+    let status = Status::new(at(1_000_000));
+    status.pass_done(at(1_000_100), "moved 3 messages");
 
-        let health = health_with(status).await;
+    let health = health_with(status).await;
 
-        assert!(health.contains(&format!(">{label}<")), "{label}: {health}");
-        assert!(health.contains("moved 3 messages"), "{label}: {health}");
-        assert!(!health.contains("no pass yet"), "{label}: {health}");
-    }
+    assert!(health.contains("moved 3 messages"), "{health}");
+    assert!(!health.contains("no pass yet"), "{health}");
 }
 
 #[tokio::test]

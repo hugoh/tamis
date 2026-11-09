@@ -1,7 +1,7 @@
 use super::*;
 use crate::auth_pin::AuthSource;
 use crate::config::Config;
-use crate::live::{Snapshot, Waiting};
+use crate::live::Snapshot;
 
 fn at(seconds: i64) -> Timestamp {
     Timestamp::from_second(seconds).unwrap()
@@ -311,7 +311,6 @@ fn snapshot() -> Snapshot {
         last_pass: Some(at(NOW - 47)),
         last_summary: "scanned 0, spam 0".into(),
         updated: Some(at(NOW - 47)),
-        waiting: Some(Waiting::Idle),
         ..Snapshot::default()
     }
 }

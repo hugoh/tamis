@@ -6,7 +6,6 @@
 </div>
 {% if let Some(daemon) = body.daemon %}<h2 class="text-lg font-semibold mb-2">Daemon</h2>
 <div class="stats stats-vertical sm:stats-horizontal shadow-sm bg-base-200 mb-4">
-<div class="stat"><div class="stat-title">Doing</div><div class="stat-value text-xl">{% if daemon.doing.is_empty() %}nothing yet{% else %}{{ daemon.doing }}{% endif %}</div></div>
 <div class="stat"><div class="stat-title">Uptime</div><div class="stat-value text-xl">{{ daemon.uptime }}</div><div class="stat-desc">since {{ daemon.started }}</div></div>
 <div class="stat"><div class="stat-title">Passes</div><div class="stat-value text-xl">{{ daemon.passes }}</div></div>
 <div class="stat"><div class="stat-title">Last pass</div><div class="stat-value text-xl">{{ daemon.last_pass }}</div><div class="stat-desc">{{ daemon.summary }}</div></div>

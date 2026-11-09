@@ -1,4 +1,4 @@
-<tr class="hover:bg-base-300">
+<tr class="hover:bg-base-300{% if row.corrected_by != 0 %} opacity-60{% endif %}"{% if row.corrected_by != 0 %} data-corrected{% endif %}>
 <th>{{ row.id }}</th>
 <td class="whitespace-nowrap">{{ row.when }}</td>
 <td><span class="badge badge-sm {% if row.verdict == "spam" %}badge-error{% else if row.verdict == "good" %}badge-success{% else %}badge-warning{% endif %}">{{ row.verdict }}</span>{% if row.reason == "rule" %} <span class="badge badge-sm badge-info">rule</span>{% endif %}</td>

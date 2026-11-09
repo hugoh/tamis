@@ -908,6 +908,21 @@ async fn pages_load_the_feedback_script_and_a_toast_area() {
 }
 
 #[tokio::test]
+async fn pages_link_the_svg_favicon_and_serve_it_as_an_image() {
+    let site = site();
+
+    let page = text(site.get("/").await).await;
+    let icon = site.get("/static/favicon.svg").await;
+
+    assert!(
+        page.contains("<link rel=\"icon\" type=\"image/svg+xml\" href=\"/static/favicon.svg"),
+        "{page}"
+    );
+    assert_eq!(icon.status(), StatusCode::OK);
+    assert_eq!(icon.headers()[header::CONTENT_TYPE], "image/svg+xml");
+}
+
+#[tokio::test]
 async fn an_action_note_is_marked_for_the_toast() {
     let run: RunJobs = Arc::new(|_| Box::pin(async { Err("the mailbox moved on".to_owned()) }));
     let site = site_with(Options {

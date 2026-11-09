@@ -11,6 +11,7 @@ export default defineConfig({
     mermaid(),
     starlight({
       title: "tamis",
+      favicon: "/favicon.svg",
       customCss: ["./src/styles/theme.css"],
       description: "A spam filter and Sieve mail sorter for remote mailboxes.",
       social: [

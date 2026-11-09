@@ -18,7 +18,6 @@ use super::{App, Job, fail};
 use crate::classify::Label;
 use crate::engine;
 use crate::journal::{Action, Reason, Verdict};
-use crate::live::Waiting;
 use crate::store::{self, Decision, DecisionQuery, DecisionSort};
 use crate::{health, rules};
 
@@ -407,7 +406,6 @@ struct DaemonView {
     uptime: String,
     last_pass: String,
     summary: String,
-    doing: String,
     passes: u32,
     last_error: String,
     recovered: bool,
@@ -469,13 +467,6 @@ fn daemon_view(app: &App) -> Option<DaemonView> {
             .last_pass
             .map_or_else(|| "no pass yet".to_owned(), local_time),
         summary: snap.last_summary,
-        doing: match snap.waiting {
-            Some(Waiting::Idle) => "idle",
-            Some(Waiting::Polling) => "polling",
-            Some(Waiting::Running) => "running",
-            None => "",
-        }
-        .to_owned(),
         passes: snap.passes,
         last_error,
         recovered,

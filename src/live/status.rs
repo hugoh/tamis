@@ -7,16 +7,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// commands that run in another process to read.
 pub const SETTING_KEY: &str = "daemon_status";
 
-/// What the daemon is doing: waiting for new mail (`Idle`), waiting out the
-/// poll interval (`Polling`), or judging mail (`Running`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Waiting {
-    Idle,
-    Polling,
-    Running,
-}
-
 /// The timestamp a file written before `null` meant "never" used for it.
 const OLD_NEVER_PREFIX: &str = "0001-01-01";
 
@@ -79,40 +69,6 @@ pub struct Snapshot {
     /// that has stopped from one that is merely quiet.
     #[serde(with = "time_or_never")]
     pub updated: Option<Timestamp>,
-    /// Empty before the first pass starts.
-    #[serde(with = "waiting_or_empty")]
-    pub waiting: Option<Waiting>,
-}
-
-mod waiting_or_empty {
-    use super::{Deserialize, Deserializer, Serialize, Serializer, Waiting};
-
-    #[allow(
-        clippy::ref_option,
-        clippy::trivially_copy_pass_by_ref,
-        reason = "the signature serde's `with` needs"
-    )]
-    pub fn serialize<S: Serializer>(
-        value: &Option<Waiting>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        match value {
-            Some(waiting) => waiting.serialize(serializer),
-            None => serializer.serialize_str(""),
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Option<Waiting>, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        match text.as_str() {
-            "idle" => Ok(Some(Waiting::Idle)),
-            "polling" => Ok(Some(Waiting::Polling)),
-            "running" => Ok(Some(Waiting::Running)),
-            _ => Ok(None),
-        }
-    }
 }
 
 impl Snapshot {
@@ -217,11 +173,6 @@ impl Status {
         self.update(|snap| snap.rejected = true, true);
     }
 
-    /// Records what the daemon is doing now.
-    pub fn wait(&self, mode: Waiting) {
-        self.update(|snap| snap.waiting = Some(mode), false);
-    }
-
     /// A copy of the current state.
     #[must_use]
     pub fn snapshot(&self) -> Snapshot {
@@ -243,7 +194,6 @@ impl Status {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
 
     use super::*;
 
@@ -309,28 +259,8 @@ mod tests {
     }
 
     #[test]
-    fn changes_are_saved_but_waiting_is_not() {
-        let saved = Arc::new(Mutex::new(Vec::new()));
-        let status = Status::new(at(0));
-        let sink = Arc::clone(&saved);
-        status.persist(move |snap| sink.lock().unwrap().push(snap.clone()));
-
-        status.wait(Waiting::Running);
-        assert!(saved.lock().unwrap().is_empty());
-
-        status.pass_done(at(5), "ok");
-        status.save(at(9));
-
-        let saved = saved.lock().unwrap();
-        assert_eq!(saved.len(), 2);
-        assert_eq!(saved[1].updated, Some(at(9)));
-        assert_eq!(saved[1].waiting, Some(Waiting::Running));
-    }
-
-    #[test]
     fn snapshots_round_trip_through_their_saved_form() {
         let status = Status::new(at(1_700_000_000));
-        status.wait(Waiting::Idle);
         status.failed(at(1_700_000_100), "boom");
 
         let snapshot = status.snapshot();
@@ -347,14 +277,11 @@ mod tests {
         let saved = r#"{"started":"2026-11-02T13:01:07.123456789+01:00","passes":785,"lastPass":"2026-11-03T13:02:00Z",
             "lastSummary":"scanned 0","lastError":"","lastErrorAt":"0001-01-01T00:00:00Z","failures":0,
             "failingSince":"0001-01-01T00:00:00Z","retryAt":"0001-01-01T00:00:00Z","rejected":false,
-            "recoveredAt":"2026-11-03T10:16:56Z","updated":"2026-11-03T13:02:00Z","waiting":"idle"}"#;
+            "recoveredAt":"2026-11-03T10:16:56Z","updated":"2026-11-03T13:02:00Z"}"#;
 
         let snapshot = Snapshot::decode(saved).unwrap();
 
-        assert_eq!(
-            (snapshot.passes, snapshot.waiting, snapshot.failures),
-            (785, Some(Waiting::Idle), 0)
-        );
+        assert_eq!((snapshot.passes, snapshot.failures), (785, 0));
         assert_eq!(snapshot.last_error_at, None);
         assert_eq!(
             snapshot.recovered_at,

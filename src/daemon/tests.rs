@@ -425,11 +425,7 @@ async fn the_status_follows_the_passes() {
         snapshot.last_summary,
         "scanned 0, spam 0, uncertain 0, good 0, corrected 0, trained 0, rescued 0"
     );
-    assert_eq!(
-        (snapshot.failures, snapshot.waiting),
-        (0, Some(Waiting::Polling)),
-        "nothing is idling here"
-    );
+    assert_eq!(snapshot.failures, 0);
     env.stop(handle).await;
 }
 

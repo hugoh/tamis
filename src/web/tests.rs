@@ -360,6 +360,24 @@ async fn mock_decisions_page() {
         true,
     );
     site.db.mark_undone(rescued).unwrap();
+    // Same subject, so the same Message-ID: the later correction dims the
+    // original row in the page.
+    record_as(
+        &site,
+        "Invoice #4821",
+        ("spam", 0.88),
+        "bayes",
+        "move:Junk",
+        true,
+    );
+    record_as(
+        &site,
+        "Invoice #4821",
+        ("good", 0.0),
+        "correction",
+        "move:INBOX",
+        true,
+    );
 
     let page = text(site.get("/").await).await;
     let css =

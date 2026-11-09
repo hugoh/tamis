@@ -54,6 +54,7 @@ pub mod name {
     pub const DATABASE: &str = "database";
     pub const RECENT: &str = "recent verdicts";
     pub const AUTH_ID: &str = "provider auth id";
+    pub const TOKENIZER: &str = "tokenizer";
     pub const WEB: &str = "web interface";
     pub const PASSKEYS: &str = "web passkeys";
     pub const CONFIG: &str = "config file";
@@ -77,7 +78,7 @@ fn section_of(check: &str) -> &'static str {
         name::CONFIG | name::FOLDERS | name::AUTH_ID => section::CONFIG,
         name::RULES => section::RULES,
         name::DAEMON => section::DAEMON,
-        name::BALANCE | name::DATABASE => section::TRAINING,
+        name::BALANCE | name::DATABASE | name::TOKENIZER => section::TRAINING,
         name::UNCERTAIN | name::CORRECTIONS | name::LAST | name::JOURNAL | name::RECENT => {
             section::DECISIONS
         }
@@ -206,6 +207,8 @@ pub struct Input {
     /// How long the journal is kept; zero means forever.
     pub retention: Duration,
     pub auth: AuthPin,
+    /// The tokenizer version the token counts were learnt with.
+    pub tokenizer_version: u32,
     pub web: Web,
     pub config: ConfigInfo,
     pub rules: RulesInfo,
@@ -227,6 +230,7 @@ pub fn run(input: &Input) -> Report {
         daemon::check(&input.daemon, input.now, &input.zone),
         checks::balance(&input.stats),
         checks::database(&input.stats),
+        checks::tokenizer(input.tokenizer_version),
         checks::uncertain_rate(&judged),
         checks::correction_rate(&judged),
         checks::last_decision(&input.recent, input.now),

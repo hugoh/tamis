@@ -53,6 +53,8 @@ pub struct Engine<M: Mailbox> {
     rules: Option<Rules>,
     /// The authserv-id to pin to, once resolved.
     auth_id: Option<String>,
+    /// Whether the tokenizer version of the counts was checked already.
+    tokenizer_checked: bool,
     /// Checked between messages: a stop waits for the current one to finish.
     stop: CancellationToken,
 }
@@ -66,6 +68,7 @@ impl<M: Mailbox> Engine<M> {
             cfg,
             rules: None,
             auth_id: None,
+            tokenizer_checked: false,
             stop: CancellationToken::new(),
         }
     }
@@ -102,6 +105,7 @@ impl<M: Mailbox> Engine<M> {
     pub async fn run_once(&mut self) -> Result<Summary> {
         let mut summary = Summary::default();
 
+        self.warn_about_old_counts();
         self.resolve_pending_moves().await?;
 
         for folder in self.train_folders() {
@@ -129,6 +133,23 @@ impl<M: Mailbox> Engine<M> {
             self.learn_from_keywords(&mut summary).await?;
         }
         Ok(summary)
+    }
+
+    /// Says once that the counts were learnt with another tokenizer, since
+    /// they score today's mail worse until they are learnt again.
+    fn warn_about_old_counts(&mut self) {
+        if std::mem::replace(&mut self.tokenizer_checked, true) {
+            return;
+        }
+        match self.store.tokenizer_version() {
+            Ok(version) if version != crate::classify::TOKENIZER_VERSION => tracing::warn!(
+                learnt_with = version,
+                current = crate::classify::TOKENIZER_VERSION,
+                "the counts were learnt with another tokenizer; run tamis bootstrap --refresh"
+            ),
+            Ok(_) => {}
+            Err(err) => tracing::warn!(%err, "reading the tokenizer version failed"),
+        }
     }
 
     /// Hands the folder's messages newer than its cursor to the handler. A

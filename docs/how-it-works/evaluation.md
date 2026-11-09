@@ -78,4 +78,31 @@ tokenizer as it was then:
   [`engine.md`](../../how-it-works/engine/)), and the `- recipient tokens` variant shows what
   they contribute.
 
+On a later run (609 Junk messages against 2,500 Archive messages), each
+added on top of the tokenizer of the time, none ranked better than the
+baseline by more than noise:
+
+- `Reply-To`, `List-Id`, `X-Mailer`/`User-Agent`, content types and attachment
+  extensions, the `Received` hop count and the `Return-Path` domain: no gain,
+  or worse.
+- The `From` display name: about 0.02 points better, in 4 of 5 runs, which is
+  noise.
+- Bare domains in the text (found with a regular expression and the public
+  suffix list): slightly worse.
+- The `linkify` crate, added to the regular expression that finds `http(s)://`
+  links, slightly worse. Replacing the regular expression with it was worse
+  too, 1.225 to 1.251 in the ordered run and 1.359 to 1.387 over 20 shuffled
+  runs, and The reason is unknown. Release 0.10 also missed links whose host is a
+  bracketed IPv6 address, which lost the `url:` token; the fix is merged
+  upstream but wasn't in a release when this was measured, and didn't change
+  the scores. Since only a link's host is used, the regular expression was
+  kept.
+- Word splitting by the Unicode word rules (UAX #29) instead of splitting at
+  non-letters: 1.203 to 1.227 in the ordered run and 1.396 to 1.371 over 20
+  shuffled runs, which is noise. It is in the tokenizer for its handling of
+  contractions and numbers, and for languages written with spaces.
+
+That mailbox has almost no Chinese, Japanese or Thai text, so the character
+pairs for those scripts are not measured here.
+
 One mailbox is one data point: run your own.

@@ -58,7 +58,7 @@ combiner. The other rows are not built.
 
 | Signal | Why |
 |---|---|
-| Token Bayes (Robinson/Fisher chi-square) | Cheap; covers headers, URLs, structure |
+| Token Bayes (Robinson/Fisher chi-square; [details](../../how-it-works/engine/#tokens-and-scoring)) | Cheap; covers headers, URLs, structure |
 | Jev zero-shot Choice (opt-in) | Strong from day one with no corpus; errors complement Bayes |
 | Embedding nearest-neighbour (later) | Local alternative for reworded spam; learns from one correction |
 | Correspondent whitelist | Strongest ham signal; only counts when DKIM/DMARC passes |

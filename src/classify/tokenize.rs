@@ -11,7 +11,7 @@ use html5ever::tokenizer::{
 };
 use mail_parser::{AddressList, MessageParser, PartKind};
 use regex::Regex;
-use unicode_general_category::{GeneralCategory, get_general_category};
+use unicode_segmentation::UnicodeSegmentation as _;
 use url::Url;
 
 use super::recipients::{MAX_RECIPIENTS, RECIPIENT_PREFIX};
@@ -21,6 +21,8 @@ const MAX_WORD_LEN: usize = 12;
 const MAX_PART_BYTES: usize = 64 << 10;
 const SKIP_BUCKET: usize = 10;
 
+// Only a link's host becomes a token, so the edges of its path don't matter. The
+// `linkify` crate scored slightly worse in tamis-eval (see evaluation.md).
 #[allow(
     clippy::expect_used,
     reason = "the pattern is a constant, checked by every test"
@@ -151,25 +153,58 @@ impl TokenSet {
         }
         rest.push_str(&text[last..]);
 
-        for word in rest
-            .to_lowercase()
-            .split(|c: char| !is_letter_or_digit(c))
-            .filter(|w| !w.is_empty())
-        {
-            let length = word.chars().count();
-            if length < MIN_WORD_LEN {
+        self.add_words(prefix, &rest.to_lowercase());
+    }
+
+    /// Adds the words of `text` by the Unicode word-boundary rules (UAX #29).
+    /// Chinese, Japanese hiragana and kanji, and Thai have no spaces between
+    /// words, so each uninterrupted run of them is added as overlapping pairs
+    /// instead.
+    fn add_words(&mut self, prefix: &str, text: &str) {
+        let mut run: Vec<&str> = Vec::new();
+        let mut run_end = 0;
+
+        for (start, word) in text.unicode_word_indices() {
+            if word.chars().all(is_unspaced_script) {
+                if start != run_end {
+                    self.add_pairs(prefix, &mut run);
+                }
+                run.push(word);
+                run_end = start + word.len();
                 continue;
             }
-            if length > MAX_WORD_LEN {
-                let first = word.chars().next().unwrap_or_default();
-                self.add(&format!(
-                    "skip:{first} {}",
-                    length / SKIP_BUCKET * SKIP_BUCKET
-                ));
-            } else {
-                self.add(&format!("{prefix}{word}"));
-            }
+            self.add_pairs(prefix, &mut run);
+            self.add_word(prefix, word);
         }
+        self.add_pairs(prefix, &mut run);
+    }
+
+    fn add_word(&mut self, prefix: &str, word: &str) {
+        let length = word.chars().count();
+        if length < MIN_WORD_LEN {
+            return;
+        }
+        if length > MAX_WORD_LEN {
+            let first = word.chars().next().unwrap_or_default();
+            self.add(&format!(
+                "skip:{first} {}",
+                length / SKIP_BUCKET * SKIP_BUCKET
+            ));
+        } else {
+            self.add(&format!("{prefix}{word}"));
+        }
+    }
+
+    /// Adds each pair of neighbours in `run`, or the lone unit of a run of
+    /// one, and empties the run.
+    fn add_pairs(&mut self, prefix: &str, run: &mut Vec<&str>) {
+        if let [only] = run.as_slice() {
+            self.add(&format!("{prefix}{only}"));
+        }
+        for pair in run.windows(2) {
+            self.add(&format!("{prefix}{}{}", pair[0], pair[1]));
+        }
+        run.clear();
     }
 
     /// Records the link's host and each parent domain down to the registrable
@@ -208,19 +243,17 @@ fn hostname(url: &Url) -> Option<String> {
     (!host.is_empty()).then(|| host.to_lowercase())
 }
 
-fn is_letter_or_digit(c: char) -> bool {
-    use GeneralCategory::{
-        DecimalNumber, LowercaseLetter, ModifierLetter, OtherLetter, TitlecaseLetter,
-        UppercaseLetter,
-    };
+/// Whether `c` is written without spaces between words: Han ideographs,
+/// hiragana and Thai. Katakana words and Hangul are left to the word rules.
+fn is_unspaced_script(c: char) -> bool {
     matches!(
-        get_general_category(c),
-        UppercaseLetter
-            | LowercaseLetter
-            | TitlecaseLetter
-            | ModifierLetter
-            | OtherLetter
-            | DecimalNumber
+        u32::from(c),
+        0x0E00..=0x0E7F
+            | 0x3040..=0x309F
+            | 0x3400..=0x4DBF
+            | 0x4E00..=0x9FFF
+            | 0xF900..=0xFAFF
+            | 0x20000..=0x2FA1F
     )
 }
 
@@ -285,5 +318,106 @@ impl TokenSink for TextSink {
             }
             _ => TokenSinkResult::Continue,
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "a test that cannot build its message should panic"
+)]
+mod tests {
+    use super::tokenize;
+
+    fn tokens(subject: &str, body: &str) -> Vec<String> {
+        let raw = format!(
+            "From: a@example.com\r\nSubject: {subject}\r\n\
+             Content-Type: text/plain; charset=utf-8\r\n\r\n{body}\r\n"
+        );
+        tokenize(raw.as_bytes())
+    }
+
+    fn body(text: &str) -> Vec<String> {
+        tokens("x", text)
+    }
+
+    fn has(tokens: &[String], wanted: &[&str]) -> bool {
+        wanted.iter().all(|w| tokens.iter().any(|t| t == w))
+    }
+
+    #[test]
+    fn contractions_and_decimals_stay_whole() {
+        let t = body("don't pay 3.14 now");
+        assert!(has(&t, &["don't", "pay", "3.14", "now"]), "{t:?}");
+        assert!(!has(&t, &["don"]), "{t:?}");
+    }
+
+    #[test]
+    fn chinese_becomes_overlapping_pairs() {
+        let t = body("您的账户已被冻结");
+        assert!(
+            has(
+                &t,
+                &["您的", "的账", "账户", "户已", "已被", "被冻", "冻结"]
+            ),
+            "{t:?}"
+        );
+        assert!(!has(&t, &["您"]), "{t:?}");
+    }
+
+    #[test]
+    fn punctuation_ends_a_run_of_pairs() {
+        let t = body("冻结。验证");
+        assert!(has(&t, &["冻结", "验证"]), "{t:?}");
+        assert!(!has(&t, &["结验"]), "{t:?}");
+    }
+
+    #[test]
+    fn a_lone_ideograph_is_kept() {
+        let t = body("好 hello");
+        assert!(has(&t, &["好", "hello"]), "{t:?}");
+    }
+
+    #[test]
+    fn words_of_other_scripts_are_not_paired() {
+        let t = body("Hello 世界 world");
+        assert!(has(&t, &["hello", "世界", "world"]), "{t:?}");
+        assert!(!has(&t, &["o世", "界w"]), "{t:?}");
+    }
+
+    #[test]
+    fn japanese_pairs_kana_and_kanji_but_keeps_katakana_words() {
+        let t = body("今すぐ確認 アカウント");
+        assert!(
+            has(&t, &["今す", "すぐ", "ぐ確", "確認", "アカウント"]),
+            "{t:?}"
+        );
+    }
+
+    #[test]
+    fn thai_pairs_syllable_clusters() {
+        let t = body("บัญชี");
+        assert!(has(&t, &["บัญ", "ญชี"]), "{t:?}");
+    }
+
+    #[test]
+    fn subject_pairs_are_prefixed() {
+        let t = tokens("账户冻结", "hello");
+        assert!(
+            has(&t, &["subject:账户", "subject:户冻", "subject:冻结"]),
+            "{t:?}"
+        );
+    }
+
+    #[test]
+    fn korean_words_are_unchanged() {
+        let t = body("계정이 정지되었습니다");
+        assert!(has(&t, &["계정이", "정지되었습니다"]), "{t:?}");
+    }
+
+    #[test]
+    fn long_words_still_collapse_to_skip_tokens() {
+        let t = body("abcdefghijklmnopqrstuvwxyz");
+        assert!(has(&t, &["skip:a 20"]), "{t:?}");
     }
 }

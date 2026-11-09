@@ -17,7 +17,10 @@ fn stored_training(conn: &Connection, key: &str) -> Result<Option<(i64, String)>
         )
         .optional()?)
 }
-use crate::classify::{Label, Model};
+use crate::classify::{FIRST_TOKENIZER_VERSION, Label, Model, TOKENIZER_VERSION};
+
+/// The store key for the tokenizer version the counts were learnt with.
+pub const TOKENIZER_SETTING: &str = "tokenizer_version";
 
 impl Store {
     /// Records the message identified by `key` as `label`. Training a message
@@ -38,6 +41,13 @@ impl Store {
                 adjust(tx, &old_tokens, label_from_int(old_label), -1)?;
             }
 
+            // The first message ever learnt fixes the version: later changes
+            // to the tokenizer don't touch counts that were already learnt.
+            tx.execute(
+                "INSERT OR IGNORE INTO settings (key, value)
+                 SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM trained)",
+                params![TOKENIZER_SETTING, TOKENIZER_VERSION.to_string()],
+            )?;
             adjust(tx, tokens, label, 1)?;
             tx.execute(
                 "INSERT INTO trained (key, label, tokens) VALUES (?, ?, ?)
@@ -79,6 +89,37 @@ impl Store {
             })
             .optional()?;
         Ok(label.map(label_from_int))
+    }
+
+    /// The tokenizer version the counts were learnt with. A store with no
+    /// training counts as current; one trained before versions were recorded
+    /// as the first.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn tokenizer_version(&self) -> Result<u32> {
+        if let Some(stamp) = self.setting(TOKENIZER_SETTING)?
+            && let Ok(version) = stamp.parse()
+        {
+            return Ok(version);
+        }
+        let trained: i64 = self
+            .conn()
+            .query_row("SELECT COUNT(*) FROM trained", [], |row| row.get(0))?;
+        Ok(if trained == 0 {
+            TOKENIZER_VERSION
+        } else {
+            FIRST_TOKENIZER_VERSION
+        })
+    }
+
+    /// Records the tokenizer version the counts were learnt with, once they
+    /// have all been learnt again.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn set_tokenizer_version(&self, version: u32) -> Result<()> {
+        self.set_setting(TOKENIZER_SETTING, &version.to_string())
     }
 
     /// The statistics of the given tokens, for scoring.

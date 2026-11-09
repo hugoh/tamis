@@ -9,8 +9,8 @@
 <td class="max-w-48 truncate" title="{{ row.from }}">{{ row.from }}</td>
 <td class="max-w-72 truncate" title="{{ row.subject }}">{{ row.subject }}</td>
 <td class="whitespace-nowrap">
-{% if row.can_undo %}<button class="btn btn-xs btn-warning btn-outline" hx-post="/decisions/{{ row.id }}/undo" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Undo</button>{% endif %}
-{% if row.can_learn %}<button class="btn btn-xs btn-error btn-outline" hx-post="/decisions/{{ row.id }}/learn?label=spam" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Spam</button>
+{% if row.can_undo && row.corrected_by == 0 %}<button class="btn btn-xs btn-warning btn-outline" hx-post="/decisions/{{ row.id }}/undo" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Undo</button>{% endif %}
+{% if row.can_learn && row.corrected_by == 0 %}<button class="btn btn-xs btn-error btn-outline" hx-post="/decisions/{{ row.id }}/learn?label=spam" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Spam</button>
 <button class="btn btn-xs btn-success btn-outline" hx-post="/decisions/{{ row.id }}/learn?label=good" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="this">Good</button>{% endif %}
 </td>
 </tr>

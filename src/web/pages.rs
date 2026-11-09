@@ -127,6 +127,7 @@ struct DecisionsBody {
     verdicts: Vec<VerdictChoice>,
     reason: String,
     reasons: Vec<ReasonChoice>,
+    hide_corrected: bool,
     columns: Vec<Column>,
     more_href: String,
     only_id: i64,
@@ -253,6 +254,10 @@ pub(super) async fn decisions(
     let chosen_reason: Option<Reason> = query.get("reason").and_then(|v| v.parse().ok());
     let reason = chosen_reason.map_or_else(String::new, |r| r.to_string());
     state.filters.insert("reason", reason.clone());
+    let hide_corrected = query.get("hide_corrected").is_some_and(|v| v == "1");
+    if hide_corrected {
+        state.filters.insert("hide_corrected", "1".to_owned());
+    }
     let only_id = query
         .get("id")
         .and_then(|id| id.parse::<i64>().ok())
@@ -266,6 +271,7 @@ pub(super) async fn decisions(
         id: only_id,
         verdict: chosen,
         reason: chosen_reason,
+        hide_corrected,
         search: state.search.clone(),
         sort: DecisionSort::from_name(state.sort),
         asc: state.asc,
@@ -303,7 +309,11 @@ pub(super) async fn decisions(
             total,
             "decision",
             "decisions",
-            !verdict.is_empty() || !reason.is_empty() || !state.search.is_empty() || only_id > 0,
+            !verdict.is_empty()
+                || !reason.is_empty()
+                || hide_corrected
+                || !state.search.is_empty()
+                || only_id > 0,
         ),
         generated: local_clock(Timestamp::now()),
         more_href: state.more_href(&found.last().map_or(0, |d| d.id).to_string(), more),
@@ -313,6 +323,7 @@ pub(super) async fn decisions(
         verdicts,
         reason,
         reasons,
+        hide_corrected,
         only_id,
     };
 

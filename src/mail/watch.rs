@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
+use tokio_util::sync::{CancellationToken, DropGuard};
 
 use super::client::{Client, DialConfig};
 use super::{Error, Result};
@@ -52,6 +52,10 @@ impl Trigger {
 pub struct Watcher {
     shared: Arc<Shared>,
     cancel: CancellationToken,
+    /// Stops the connections if the watcher is dropped without [`close`].
+    ///
+    /// [`close`]: Watcher::close
+    _stop: DropGuard,
     tasks: Vec<JoinHandle<()>>,
 }
 
@@ -78,6 +82,7 @@ impl Watcher {
             .collect();
         Self {
             shared,
+            _stop: cancel.clone().drop_guard(),
             cancel,
             tasks,
         }
@@ -88,9 +93,11 @@ impl Watcher {
     #[must_use]
     pub fn detached() -> (Self, Trigger) {
         let shared = Arc::new(Shared::default());
+        let cancel = CancellationToken::new();
         let watcher = Self {
             shared: Arc::clone(&shared),
-            cancel: CancellationToken::new(),
+            _stop: cancel.clone().drop_guard(),
+            cancel,
             tasks: Vec::new(),
         };
         (watcher, Trigger(shared))
@@ -190,7 +197,10 @@ impl Keeper {
     /// IDLEs on the folder, reporting changes, until the connection fails
     /// (`Err`) or the watcher is closed (`Ok`).
     async fn idle_on(&mut self) -> Result<()> {
-        let mut client = Client::dial(&self.config).await?;
+        let mut client = tokio::select! {
+            () = self.cancel.cancelled() => return Ok(()),
+            dialled = Client::dial(&self.config) => dialled?,
+        };
         if !client.supports_idle() {
             return Err(Error::NoIdle);
         }
@@ -227,5 +237,20 @@ impl IdleGuard {
 impl Drop for IdleGuard {
     fn drop(&mut self) {
         self.0.idling.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn dropping_a_watcher_stops_its_connections() {
+        let (watcher, _) = Watcher::detached();
+        let cancel = watcher.cancel.clone();
+
+        drop(watcher);
+
+        assert!(cancel.is_cancelled());
     }
 }

@@ -31,7 +31,7 @@ flowchart LR
 | Package | Role |
 |---|---|
 | `mail` | IMAP operations: folder state, UID search, peeked fetch, move, keywords, IDLE watching (see [imap.md](../../how-it-works/imap/)) |
-| `classify` | Turns a message into tokens and scores them (SpamBayes-style chi-square) |
+| `classify` | Turns a message into tokens and scores them (SpamBayes-style chi-square, see [Tokens and scoring](#tokens-and-scoring)) |
 | `auth` | Decides whether the provider authenticated the `From` domain |
 | `store` | Token counts, trained messages, whitelist, folder cursors and mod-sequences, decision journal |
 | `rules` | Runs the user's Sieve script on a message and names the folder to file it in (see [rules.md](../../how-it-works/rules/)) |
@@ -177,13 +177,9 @@ counts, and `tamis doctor` and the `run` log say to run
 `tamis bootstrap` again. `tamis doctor` shows which is in use. Set `policy.whitelist_requires_auth = false` to trust the
 address alone.
 
-**Scoring.** `classify` tokenizes the subject, the `From` address and domain,
-the `To` and `Cc` addresses and their domains (at most ten addresses), the
-words in text and HTML parts, and the hosts of links. Each token's spam
-probability is smoothed towards 0.5 when it has been seen rarely. The 150 most
-decisive tokens are combined with Fisher's chi-square method into a score from
-0 (good) to 1 (spam). A message with no decisive tokens scores 0.5, which
-falls in the uncertain band.
+**Scoring.** `classify` turns the message into tokens and combines the most
+decisive ones into a score from 0 (good) to 1 (spam). [Tokens and
+scoring](#tokens-and-scoring) says how.
 
 **Recipients.** Mail to an address you don't normally get mail on is a strong
 sign of spam (BCC blasts, relays, a stranger's address). Besides the `to:`
@@ -196,6 +192,87 @@ learnt, so it is worked out each time a message is scored or trained, and
 stored with the training. Messages learnt before this existed carry no
 recipient tokens; the model picks them up from new mail, or from
 `tamis bootstrap --refresh`, which learns them again.
+
+## Tokens and scoring
+
+### Tokens
+
+`classify` reduces a message to a set of distinct tokens. Each counts once per
+message, however often it appears. The prefix keeps a word in the subject apart
+from the same word in the body.
+
+| Token | Source | Example |
+|---|---|---|
+| `subject:<word>` | words of the decoded `Subject` | `subject:invoice` |
+| `from:<address>` | `From` address, lowercased; the display name is ignored | `from:billing@example.com` |
+| `from-domain:<domain>` | domain of the `From` address | `from-domain:example.com` |
+| `to:<address>` | `To` and `Cc` addresses, at most ten distinct | `to:me@example.net` |
+| `to-domain:<domain>` | domains of those addresses | `to-domain:example.net` |
+| `rcpt:<status>` | one per message; see Recipients above | `rcpt:mine` |
+| `url:<host>` | host of each link, then each parent domain down to the registrable one | `url:a.b.example.co.uk`, `url:b.example.co.uk`, `url:example.co.uk` |
+| `skip:<letter> <length>` | each word longer than 12 characters | `skip:a 20` |
+| `<word>` | words of the text and HTML parts | `invoice` |
+
+The words are made like this:
+
+- Only `text/plain` and `text/html` parts are read, each up to its first
+  64 KiB. A part without a content type counts as plain text. Attachments and
+  other types are ignored.
+- In HTML, the visible text and the `href` of each link are kept. Scripts,
+  styles, tags and other attributes are not.
+- Links are cut out of the text first, so only `url:` tokens come from them,
+  never their paths or query strings. IP addresses are used as they are, with
+  no parent domains.
+- The text is lowercased and split at everything that isn't a letter or a
+  digit, in any script. There is no stemming and no stop-word list. Digits
+  count as letters, so `12345` and `abc123` are words.
+- Words of fewer than three characters are dropped. A word of more than twelve
+  becomes a `skip:` token made of its first letter and its length rounded down
+  to a multiple of ten, as SpamBayes does: long strings such as encoded
+  blobs or tracking IDs are rarely the same twice, but their shape is. A
+  `skip:` token has no `subject:` prefix.
+- A message that can't be parsed into headers is tokenized whole, as if it
+  were body text.
+
+Other headers (`Received`, `Message-ID`, `Reply-To`, `X-Mailer`, `List-*`) and
+the structure of the message are not tokenized. `Authentication-Results` only
+feeds [sender verification](#judging-a-message).
+
+### Scoring
+
+The method is that of [SpamBayes](https://spambayes.sourceforge.io/): Robinson's
+token probabilities combined with Fisher's chi-square method. It uses single
+words only, with no word pairs.
+
+1. **Per token.** For a token seen in `s` spam and `g` good trained messages,
+   out of `S` spam and `G` good in all, the raw probability is
+   `(s/S) / (s/S + g/G)`. Dividing by the class sizes keeps a big pile of good
+   mail from drowning out the spam. With `n = s + g`, it is then pulled
+   towards 0.5:
+
+   ```text
+   p = (0.45 × 0.5 + n × raw) / (0.45 + n)
+   ```
+
+   A token never seen has `p = 0.5`.
+2. **Selection.** Tokens with `p` within 0.1 of 0.5 are ignored. Of the rest,
+   the 150 furthest from 0.5 are kept; these are the clues.
+3. **Combination.** With `p₁ … pₖ` the clues, Fisher's method turns the
+   products of the `pᵢ` and of the `1 − pᵢ` into two chi-square tail
+   probabilities, one for spam (`S`) and one for good (`H`). The score is
+   `(S − H + 1) / 2`.
+
+A score near 0.5 means either no evidence or evidence in both directions. A
+message with no clues scores exactly 0.5.
+
+The verdict compares the score to `policy.spam_threshold` (default 0.9) and
+`policy.good_threshold` (default 0.2); in between is uncertain, as drawn in
+[Judging a message](#judging-a-message).
+
+Changing the tokenizer changes what counts as the same token, so the counts of
+mail learnt before no longer match. Run `tamis bootstrap --refresh` after an
+upgrade that changes it (see [Bootstrap](#bootstrap)), and measure a change
+with `tamis-eval` first (see [evaluation](../../how-it-works/evaluation/)).
 
 ## Actions
 

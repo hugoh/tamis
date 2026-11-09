@@ -317,6 +317,11 @@ async fn corrected_decisions_can_be_hidden_and_offer_no_buttons() {
         page.contains("data-corrected") && page.matches("label=spam").count() == 1,
         "{page}"
     );
+    assert_eq!(
+        page.matches("<span class=\"line-through\">").count(),
+        1,
+        "{page}"
+    );
     assert!(
         hidden.contains("1 decision match") && !hidden.contains("data-corrected"),
         "{hidden}"
@@ -920,6 +925,24 @@ async fn pages_link_the_svg_favicon_and_serve_it_as_an_image() {
     );
     assert_eq!(icon.status(), StatusCode::OK);
     assert_eq!(icon.headers()[header::CONTENT_TYPE], "image/svg+xml");
+}
+
+#[tokio::test]
+async fn navigation_swaps_the_page_content_and_keeps_the_header() {
+    let site = site();
+
+    let page = text(site.get("/").await).await;
+
+    for expected in [
+        "<ul id=\"nav\" class=\"menu menu-horizontal\" hx-boost=\"true\"",
+        "hx-target=\"main\"",
+        "hx-select=\"main\"",
+        "hx-select-oob=\"#nav\"",
+        "/static/rules.js?v=",
+        "/static/whitelist.js?v=",
+    ] {
+        assert!(page.contains(expected), "{expected}: {page}");
+    }
 }
 
 #[tokio::test]

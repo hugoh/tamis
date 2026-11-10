@@ -14,3 +14,4 @@
 <div id="result"></div>
 {% else %}<p class="py-8 opacity-70">No rules script configured. Set <code>rules.script</code> to a Sieve file to file good mail into folders.</p>{% endif %}
 {% endblock %}
+{% block scripts %}<script src="/static/rules.js?v={{ version }}"></script>{% endblock %}

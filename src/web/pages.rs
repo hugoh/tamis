@@ -40,12 +40,8 @@ pub(super) fn render(template: &impl Template) -> Response {
     }
 }
 
-/// Whether the request wants a fragment. Boosted navigation (the nav bar)
-/// also sends `HX-Request` but selects `main` out of a full page, so it must
-/// get the whole page.
 pub(super) fn is_htmx(headers: &HeaderMap) -> bool {
-    let is = |name| headers.get(name).is_some_and(|v| v == "true");
-    is("hx-request") && !is("hx-boosted")
+    headers.get("hx-request").is_some_and(|v| v == "true")
 }
 
 pub(super) fn params(query: Query<BTreeMap<String, String>>) -> BTreeMap<String, String> {

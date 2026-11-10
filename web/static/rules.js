@@ -25,13 +25,5 @@ const highlight = (source) => {
   return fragment;
 };
 
-const highlightPage = () => {
-  const pre = document.getElementById("rules-source");
-  if (pre && !pre.dataset.highlighted) {
-    pre.replaceChildren(highlight(pre.textContent));
-    pre.dataset.highlighted = "";
-  }
-};
-
-highlightPage();
-document.addEventListener("htmx:afterSettle", highlightPage);
+const pre = document.getElementById("rules-source");
+if (pre) pre.replaceChildren(highlight(pre.textContent));

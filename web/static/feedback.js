@@ -24,13 +24,12 @@ document.addEventListener("htmx:beforeRequest", (event) => {
 });
 
 document.addEventListener("htmx:afterRequest", (event) => {
-  const { elt, xhr, successful, boosted } = event.detail;
+  const { elt, xhr, successful } = event.detail;
   if (elt.dataset.label) elt.textContent = elt.dataset.label;
   if (!successful) {
     toast(failure(xhr.status), true);
     return;
   }
-  if (boosted) return;
   const html = new DOMParser().parseFromString(
     `<table>${xhr.responseText}</table>`,
     "text/html",
@@ -40,12 +39,4 @@ document.addEventListener("htmx:afterRequest", (event) => {
   const failed = note.hasAttribute("data-failed");
   toast(note.textContent, failed);
   if (!failed) htmx.trigger("#toolbar", "submit");
-});
-
-document.addEventListener("htmx:beforeSwap", (event) => {
-  const { boosted, xhr } = event.detail;
-  if (boosted && new URL(xhr.responseURL).pathname === "/login") {
-    event.detail.shouldSwap = false;
-    location.assign(xhr.responseURL);
-  }
 });

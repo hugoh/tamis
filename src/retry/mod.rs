@@ -3,6 +3,7 @@
 
 use std::time::{Duration, SystemTime};
 
+use backon::{BackoffBuilder as _, ExponentialBackoff, ExponentialBuilder};
 use tracing::Level;
 
 /// Logs an event at a level chosen at run time, such as one from [`level`].
@@ -19,53 +20,51 @@ macro_rules! log_at {
 }
 pub(crate) use log_at;
 
-const MULTIPLIER: u32 = 2;
-const JITTER: f64 = 0.2;
 /// Spaces the reminders once a streak is long.
 const REMINDER_EVERY: u32 = 20;
 /// Spaces the reminders of a rejected login: with the usual 15 minutes
 /// between tries, it is hourly.
 const REJECTION_EVERY: u32 = 4;
 
-/// A sequence of delays that starts near `first`, doubles on each call to
-/// [`Backoff::next_delay`] up to about `limit`, and varies by 20% so that
-/// several connections don't retry in step. It never gives up; [`Backoff::reset`]
-/// starts it over after a success. The limit is raised to `first` when smaller.
-#[derive(Clone, Debug)]
+/// A sequence of delays that starts at `first`, doubles on each call to
+/// [`Backoff::next_delay`] up to `limit`, and adds a random share of each
+/// delay so that several connections don't retry in step. It never gives up;
+/// [`Backoff::reset`] starts it over after a success. The limit is raised to
+/// `first` when smaller.
+#[derive(Debug)]
 pub struct Backoff {
-    first: Duration,
-    max: Duration,
-    current: Duration,
+    plan: ExponentialBuilder,
+    delays: ExponentialBackoff,
+    nominal: ExponentialBackoff,
 }
 
 impl Backoff {
     #[must_use]
     pub fn new(first: Duration, limit: Duration) -> Self {
+        let plan = ExponentialBuilder::default()
+            .with_min_delay(first)
+            .with_max_delay(first.max(limit))
+            .without_max_times();
         Self {
-            first,
-            max: first.max(limit),
-            current: first,
+            delays: plan.with_jitter().build(),
+            nominal: plan.build(),
+            plan,
         }
     }
 
     pub fn next_delay(&mut self) -> Duration {
-        let spread = self.current.mul_f64(JITTER);
-        let low = self.current.saturating_sub(spread);
-        let delay = low + (spread * 2).mul_f64(fastrand::f64());
-
-        self.current = (self.current * MULTIPLIER).min(self.max);
-        delay
+        self.delays.next().unwrap_or(Duration::MAX)
     }
 
-    /// The next delay without jitter, for working out when things would happen.
+    /// The next delay without jitter: for working out when things would happen,
+    /// and for a lone sender with nobody to retry in step with.
     pub fn next_nominal(&mut self) -> Duration {
-        let delay = self.current;
-        self.current = (self.current * MULTIPLIER).min(self.max);
-        delay
+        self.nominal.next().unwrap_or(Duration::MAX)
     }
 
     pub fn reset(&mut self) {
-        self.current = self.first;
+        self.delays = self.plan.with_jitter().build();
+        self.nominal = self.plan.build();
     }
 }
 
@@ -167,23 +166,35 @@ mod tests {
         for _ in 0..10 {
             last = backoff.next_delay();
             assert!(
-                last <= Duration::from_secs(12),
-                "the limit, plus its jitter"
+                last <= 20 * SECOND,
+                "the limit, plus up to as much again in jitter"
             );
         }
-        assert!(last >= Duration::from_secs(8), "it settles near the limit");
+        assert!(last >= 10 * SECOND, "it settles at the limit or above");
 
         backoff.reset();
         assert!(
-            backoff.next_delay() <= Duration::from_millis(1200),
+            (SECOND..=2 * SECOND).contains(&backoff.next_delay()),
             "a success starts it over"
         );
     }
 
     #[test]
     fn backoff_limit_never_below_first() {
-        let mut backoff = Backoff::new(Duration::from_secs(60), SECOND);
-        assert!(backoff.next_delay() >= Duration::from_secs(48));
+        for _ in 0..50 {
+            let mut backoff = Backoff::new(Duration::from_secs(60), SECOND);
+            assert!(backoff.next_delay() >= Duration::from_secs(60));
+            assert!(backoff.next_delay() >= Duration::from_secs(60));
+        }
+    }
+
+    #[test]
+    fn nominal_delays_double_to_the_limit_without_jitter() {
+        let mut backoff = Backoff::new(SECOND, 5 * SECOND);
+
+        let delays: Vec<_> = (0..5).map(|_| backoff.next_nominal()).collect();
+
+        assert_eq!(delays, [1, 2, 4, 5, 5].map(Duration::from_secs),);
     }
 
     #[test]

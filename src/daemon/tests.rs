@@ -407,7 +407,7 @@ async fn a_broken_rules_script_fails_the_pass_without_stopping_the_daemon() {
         "it retries with backoff while the script is broken"
     );
     after(20).await;
-    assert!(env.connects() >= 4, "and keeps retrying");
+    assert!(env.connects() >= 3, "and keeps retrying");
 
     env.stop(handle).await;
 }

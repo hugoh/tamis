@@ -92,6 +92,7 @@ pub(super) struct DecisionRow {
     pub score: String,
     pub action: String,
     pub folder: String,
+    pub dest: String,
     pub from: String,
     pub subject: String,
     pub can_undo: bool,
@@ -223,9 +224,10 @@ fn decision_row(decision: &Decision) -> DecisionRow {
         reason: decision.reason.to_string(),
         score: format!("{:.2}", decision.score),
         action: action_label(decision),
-        folder: match &decision.action {
-            Action::Move(target) => format!("{} → {target}", decision.mailbox),
-            _ => decision.mailbox.clone(),
+        folder: decision.mailbox.clone(),
+        dest: match &decision.action {
+            Action::Move(target) if *target != decision.mailbox => target.clone(),
+            _ => String::new(),
         },
         from: decision.from.clone(),
         subject: decision.subject.clone(),

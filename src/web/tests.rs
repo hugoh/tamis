@@ -286,6 +286,16 @@ async fn the_decisions_list_says_when_it_was_generated() {
 }
 
 #[tokio::test]
+async fn a_move_to_the_folder_it_is_already_in_shows_no_destination() {
+    let site = site();
+    record_as(&site, "stays", ("good", 0.0), "correction", "move:INBOX", true);
+
+    let page = text(site.get("/").await).await;
+
+    assert!(!page.contains("data-dest") && !page.contains("data-arrow"), "{page}");
+}
+
+#[tokio::test]
 async fn a_rule_decision_gets_a_second_pill_and_a_move_shows_its_destination() {
     let site = site();
     record(&site, "filed", "rule", true);
@@ -294,7 +304,10 @@ async fn a_rule_decision_gets_a_second_pill_and_a_move_shows_its_destination() {
     let page = text(site.get("/").await).await;
 
     assert_eq!(page.matches("badge-info").count(), 1, "{page}");
-    assert!(page.contains("INBOX → Junk"), "{page}");
+    assert!(
+        page.contains("INBOX</span><span data-arrow> → </span><span data-dest>Junk</span>"),
+        "{page}"
+    );
 }
 
 #[tokio::test]
@@ -361,6 +374,7 @@ const MOCK_FREEZE: &str = "<style>a,button,input,select,textarea,label,summary,[
 /// `mise run mock-web`; set `TAMIS_MOCK_PAGE` to write elsewhere
 #[tokio::test]
 #[ignore = "writes a file; run by hand"]
+#[allow(clippy::too_many_lines, reason = "a list of sample rows")]
 async fn mock_decisions_page() {
     let site = site();
     record_as(
@@ -449,13 +463,28 @@ async fn mock_decisions_page() {
         true,
     );
 
+    record_as(
+        &site,
+        "Cheap watches",
+        ("spam", 0.97),
+        "bayes",
+        "move:Junk",
+        false,
+    );
+
     let page = text(site.get("/").await).await;
+    let decisions_css =
+        std::fs::read_to_string("web/static/decisions.css").expect("web/static/decisions.css");
     let css =
         std::fs::read_to_string("web/static/vendor/theme.css").expect("run mise run vendor-web");
     let page = page
         .replace(
             "<link rel=\"stylesheet\" href=\"/static/vendor/theme.css?v=\">",
             &format!("<style>{css}</style>"),
+        )
+        .replace(
+            "<link rel=\"stylesheet\" href=\"/static/decisions.css?v=\">",
+            &format!("<style>{decisions_css}</style>"),
         )
         .replace(
             "<script src=\"/static/vendor/htmx.min.js?v=\"></script>",
@@ -913,7 +942,7 @@ async fn versioned_asset_urls_are_cached_for_good_and_bare_ones_are_revalidated(
     let bare = site.get("/static/rules.js").await;
     let empty = site.get("/static/rules.js?v=").await;
 
-    for asset in ["vendor/theme.css", "vendor/htmx.min.js", "feedback.js"] {
+    for asset in ["vendor/theme.css", "decisions.css", "vendor/htmx.min.js", "feedback.js"] {
         assert!(
             page.contains(&format!("/static/{asset}?v=1.2.3\"")),
             "{page}"

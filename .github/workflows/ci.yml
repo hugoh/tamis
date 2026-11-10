@@ -13,6 +13,10 @@ on:
         description: "Version bump type"
         default: auto
         options: [auto, patch, minor, major]
+      dry_run:
+        type: boolean
+        description: "Rehearse the release (plan, preflight, tag) without pushing the tag or publishing; allowed on any branch"
+        default: false
 
 permissions: {}
 
@@ -91,24 +95,17 @@ jobs:
           path: crap-baseline.json
           if-no-files-found: error
 
-  tag:
-    needs: [hk, test]
+  plan:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     outputs:
-      tag: ${{ steps.validate.outputs.tag }}
-    env:
-      MISE_ENV: package
-    concurrency:
-      group: release
-      cancel-in-progress: false
+      tag: ${{ steps.plan.outputs.tag }}
     steps:
       - name: Guard manual dispatch to main
-        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && !inputs.dry_run
         env:
           GITHUB_REF: ${{ github.ref }}
         run: |
@@ -117,16 +114,11 @@ jobs:
       - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
         with:
           fetch-depth: "0"
-      - uses: ./.github/actions/rust-setup
-        with:
-          shared-key: lint
-          save-if: "false"
-      - name: Semver release
+      - name: Plan the release
+        id: plan
         env:
           BUMP_TYPE: ${{ inputs.bump_type || 'auto' }}
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           args=(--dry-run)
           [ "$BUMP_TYPE" = auto ] || args+=(--default-bump "$BUMP_TYPE")
           plan=$(anodizer tag "${args[@]}")
@@ -136,11 +128,62 @@ jobs:
             echo "No releasable commits since the last tag"
             exit 0
           fi
-          # main keeps 0.0.0; only the tagged commit carries the version.
-          anodizer bump "${tag#v}" --yes
-          cargo update -w
-          git commit -am "chore(release): ${tag}"
-          git tag -a "$tag" -m "$tag"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+  preflight:
+    needs: plan
+    if: needs.plan.outputs.tag != ''
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: package
+    steps:
+      - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
+        with:
+          fetch-depth: "0"
+      - uses: ./.github/actions/rust-setup
+        with:
+          shared-key: lint
+          save-if: "false"
+      - uses: ./.github/actions/apply-tag
+        with:
+          tag: ${{ needs.plan.outputs.tag }}
+      - name: Preflight
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: anodizer preflight
+
+  tag:
+    needs: [plan, hk, test, preflight]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      # Empty on a dry run, so build and release are skipped.
+      tag: ${{ !inputs.dry_run && steps.validate.outputs.tag || '' }}
+    env:
+      MISE_ENV: package
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
+        with:
+          fetch-depth: "0"
+      - uses: ./.github/actions/rust-setup
+        with:
+          shared-key: lint
+          save-if: "false"
+      - uses: ./.github/actions/apply-tag
+        with:
+          tag: ${{ needs.plan.outputs.tag }}
       - name: Validate release
         id: validate
         run: |
@@ -151,15 +194,8 @@ jobs:
             exit 0
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-      - name: Preflight
-        if: steps.validate.outputs.tag != ''
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
-        run: anodizer preflight
       - name: Push tag
-        if: steps.validate.outputs.tag != ''
+        if: steps.validate.outputs.tag != '' && !inputs.dry_run
         env:
           TAG: ${{ steps.validate.outputs.tag }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

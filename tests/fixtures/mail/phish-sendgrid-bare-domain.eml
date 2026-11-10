@@ -1,0 +1,200 @@
+Return-path: <bounces+9536854-17ed-me=example.org@sendgrid.net>
+Original-recipient: rfc822;me@example.org
+Received: from p00-icloudmta-smtpin-us-west-3a-60-percent-13 by p57-mailgateway-smtp-7cd74cd4d8-vmxzw (mailgateway 2634B97)
+	with SMTP id redacted
+	for <me@example.org>; Wed, 23 Sep 2026 10:14:29 GMT
+Received: from o1.ptr2468.yieldstreet.com (o1.ptr2468.yieldstreet.com [149.72.160.85])
+	by redacted (Postfix) with ESMTPS id E163DC0008C
+	for <me@example.org>; Wed, 23 Sep 2026 10:14:26 +0000 (UTC)
+Authentication-Results: bimi.icloud.com; bimi=skipped reason="insufficient dmarc"
+X-ARC-Info: policy=fail; arc=none; r1=-20; r2=0
+Authentication-Results: arc.icloud.com; arc=none
+Authentication-Results: dmarc.icloud.com; dmarc=none header.from=sendgrid
+X-DMARC-Policy: none
+X-DMARC-Info: pass=none; dmarc-policy=(nopolicy); s=u0; d=u0; pdomain=sendgrid
+Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=sendgrid.net header.i=@sendgrid.net header.b=NfFQg1Y5
+Received-SPF: pass (spf.icloud.com: domain of bounces+9536854-17ed-me=example.org@sendgrid.net designates 149.72.160.85 as permitted sender) receiver=spf.icloud.com; client-ip=149.72.160.85; helo=o1.ptr2468.yieldstreet.com; envelope-from=bounces+9536854-17ed-me=example.org@sendgrid.net
+Authentication-Results: spf.icloud.com; spf=pass (spf.icloud.com: domain of bounces+9536854-17ed-me=example.org@sendgrid.net designates 149.72.160.85 as permitted sender) smtp.mailfrom=bounces+9536854-17ed-me=example.org@sendgrid.net
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=sendgrid.net;
+	h=content-type:date:from:mime-version:subject:to:cc:content-type:date:
+	from:subject:to;
+	s=smtpapi; t=1790158455;
+	bh=redacted=;
+	b=NfFQg1Y5Apt+nNi0I675K+redacted/K9
+	UaDjadVj8mXy/k5B8/hN5Wwz17KwPtbD/uhOduvrxb1ftafGCizeEyRsWnWJd+O9pdM+ur
+	redacted=
+Received: by recvd-546cc58b87-gnj5m with SMTP id recvd-546cc58b87-gnj5m-1-6AB3A677-7
+	2026-09-23 10:14:15.152385089 +0000 UTC m=+4893787.287800911
+Received: from OTUzNjg1NA (unknown)
+	by geopod-ismtpd-92 (SG) with HTTP
+	id R2sTa4esSyiWsBOO6tCVsQ
+	Wed, 23 Sep 2026 10:14:15.128 +0000 (UTC)
+Content-Type: multipart/alternative; boundary=8dadb898dfefefb27722864d67441ffec2d0da9b664e8e810e3eae4e7718
+Date: Wed, 23 Sep 2026 10:14:15 +0000 (UTC)
+From: SendGrid Account Team <noreply@sendgrid>
+Mime-Version: 1.0
+Message-ID: <R2sTa4esSyiWsBOO6tCVsQ@geopod-ismtpd-92>
+Subject: Your bounce rate needs attention
+To: me@example.org
+
+--8dadb898dfefefb27722864d67441ffec2d0da9b664e8e810e3eae4e7718
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset=us-ascii
+Mime-Version: 1.0
+
+Please view this email in an HTML-capable client.
+
+---
+Sent to: me@example.org
+Sent from: SendGrid Account Team <noreply@sendgrid>
+(c) 2026 Sendgrid (sendgrid)
+Unsubscribe: https://u9536854.ct.sendgrid.net/ls/click?upn=redacted
+redacted=
+redacted=
+redacted=
+redacted=
+2FdBprVblTuQO-2B2fE8qA-3D-3D
+--8dadb898dfefefb27722864d67441ffec2d0da9b664e8e810e3eae4e7718
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html; charset=utf-8
+Mime-Version: 1.0
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+  <meta charset=3D"UTF-8">
+  <meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D=
+1.0">
+  <title>API sending limit updated</title>
+</head>
+<body style=3D"margin:0; padding:0; background:#f5f5f5;
+  font-family:Arial,Helvetica,sans-serif; color:#242424;">
+  <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+    cellspacing=3D"0" style=3D"background:#f5f5f5;">
+    <tr>
+      <td align=3D"center" style=3D"padding:36px 16px;">
+        <table role=3D"presentation" width=3D"520" cellpadding=3D"0"
+          cellspacing=3D"0" style=3D"width:100%; max-width:520px;">
+            <td style=3D"padding:28px; background:#ffffff;
+              border:1px solid #e5e5e5; border-radius:8px;">
+              <h1 style=3D"margin:0 0 16px; font-size:25px;
+                line-height:33px;">
+                Your bounce rate needs attention
+              </h1>
+              <p style=3D"margin:0 0 22px; color:#626262;
+                font-size:15px; line-height:24px;">
+                Your account=E2=80=99s bounce rate is above our allowed
+                threshold. API sending is temporarily limited
+                until the issue is resolved.
+              </p>
+
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" style=3D"background:#fff4e8;
+                border-left:4px solid #e17a28;">
+                <tr>
+                  <td style=3D"padding:18px 20px;">
+                    <p style=3D"margin:0 0 4px; color:#874414;
+                      font-size:12px;">
+                      CURRENT API LIMIT
+                    </p>
+                    <p style=3D"margin:0; color:#482a16;
+                      font-size:30px; line-height:38px;
+                      font-weight:bold;">
+                      100 emails / day
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style=3D"margin:22px 0; color:#626262;
+                font-size:15px; line-height:24px;">
+                To address this, review your bounce reports,
+                remove invalid recipients, and stop retrying
+                permanently bounced addresses. The daily limit
+                remains in place until the issue is resolved.
+              </p>
+
+              <table role=3D"presentation" cellpadding=3D"0" cellspacing=3D=
+"0">
+                <tr>
+                  <td style=3D"background:#242424; border-radius:5px;">
+                    <a href=3D"https://u9536854.ct.sendgrid.net/ls/click?up=
+n=3Du001.redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted"
+                      style=3D"display:inline-block; padding:14px 22px;
+                      color:#ffffff; font-size:14px; font-weight:bold;
+                      text-decoration:none;">
+                      Review bounce reports
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style=3D"padding:18px 4px; color:#777777;
+              font-size:12px; line-height:19px;">
+              You can also sign in directly and open your email
+              delivery reports.
+              <a href=3D"{{support_url}}"
+                style=3D"color:#626262; text-decoration:underline;">
+                Contact support
+              </a>
+              if you need help.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+<table role=3D"presentation" cellspacing=3D"0" cellpadding=3D"0"
+       border=3D"0" align=3D"center" width=3D"100%"
+       style=3D"max-width:600px;margin-top:35px;
+              border-top:1px solid #e0e0e0;
+              font-family:Arial,Helvetica,sans-serif;
+              font-size:12px;line-height:1.6;
+              color:#777777;text-align:center;">
+  <tr>
+    <td style=3D"padding:24px 12px;">
+      <div>Sent to: <strong>me@example.org</strong></div>
+      <div>Sent from: <strong>SendGrid Account Team</strong> &lt;noreply@se=
+ndgrid&gt;</div>
+      <div style=3D"margin-top:4px;">
+        &copy; 2026 <strong>Sendgrid</strong> (sendgrid). All rights reserv=
+ed.
+      </div>
+      <div style=3D"margin-top:10px;">
+        <a href=3D"https://u9536854.ct.sendgrid.net/ls/click?upn=redacted
+redacted=
+redacted=
+redacted=
+redacted=
+FJaCGIEip3DbSpFSuYBBUg-3D-3D" style=3D"color:#0066cc;text-decoration:underl=
+ine;">
+          Unsubscribe from these emails
+        </a>
+      </div>
+    </td>
+  </tr>
+</table><img src=3D"https://u9536854.ct.sendgrid.net/wf/open?upn=redacted
+redacted=
+redacted=
+redacted=
+HhnDNEcg-3D-3D" alt=3D"" width=3D"1" height=3D"1" border=3D"0" style=3D"hei=
+ght:1px !important;width:1px !important;border-width:0 !important;margin-to=
+p:0 !important;margin-bottom:0 !important;margin-right:0 !important;margin-=
+left:0 !important;padding-top:0 !important;padding-bottom:0 !important;padd=
+ing-right:0 !important;padding-left:0 !important;"/></body>
+</html>
+
+--8dadb898dfefefb27722864d67441ffec2d0da9b664e8e810e3eae4e7718--

@@ -1,0 +1,281 @@
+Return-path: <bounces+9865591-7af9-me=example.org@em840.bombora.com>
+Original-recipient: rfc822;me@example.org
+Received: from p00-icloudmta-smtpin-us-west-2a-100-percent-33 by p57-mailgateway-smtp-7d4bbbc444-9gsb9 (mailgateway 2642B156)
+	with SMTP id redacted
+	for <me@example.org>; Mon, 9 Nov 2026 18:15:58 GMT
+Received: from o1.ptr8063.bombora.com (o1.ptr8063.bombora.com [149.72.221.84])
+	by redacted (Postfix) with ESMTPS id 34780C000E1
+	for <me@example.org>; Mon, 09 Nov 2026 18:15:56 +0000 (UTC)
+Authentication-Results: bimi.icloud.com; bimi=none
+X-ARC-Info: policy=fail; arc=none; r1=-20; r2=0
+Authentication-Results: arc.icloud.com; arc=none
+Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=bombora.com
+X-DMARC-Policy: v=DMARC1; p=quarantine;rua=mailto:dmarc_agg@vali.email;
+X-DMARC-Info: pass=pass; dmarc-policy=quarantine; s=r1; d=r1; pdomain=bombora.com
+Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=bombora.com header.i=@bombora.com header.b=lLTLZQ9a
+Received-SPF: pass (spf.icloud.com: domain of bounces+9865591-7af9-me=example.org@em840.bombora.com designates 149.72.221.84 as permitted sender) receiver=spf.icloud.com; client-ip=149.72.221.84; helo=o1.ptr8063.bombora.com; envelope-from=bounces+9865591-7af9-me=example.org@em840.bombora.com
+Authentication-Results: spf.icloud.com; spf=pass (spf.icloud.com: domain of bounces+9865591-7af9-me=example.org@em840.bombora.com designates 149.72.221.84 as permitted sender) smtp.mailfrom=bounces+9865591-7af9-me=example.org@em840.bombora.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=bombora.com;
+	h=content-type:date:from:mime-version:subject:to:cc:content-type:date:
+	from:subject:to;
+	s=s1; t=1794248153;
+	bh=redacted=;
+	b=lLTLZQ9avH4rkqZICK3EiHOVk5K/redacted/HlA
+	sh6HC1OmPnnJDg+redacted+8LGC0F+4shnhZc8MjUp
+	redacted+redacted
+	redacted+Vo2QK+PtLezm0WcQLQPONZDBLhai5qY
+	redacted==
+Received: by recvd-fb9cc649b-c4dpc with SMTP id recvd-fb9cc649b-c4dpc-1-6AF20DD9-6F
+	2026-11-09 18:15:53.654613156 +0000 UTC m=+324410.945997452
+Received: from OTg2NTU5MQ (unknown)
+	by geopod-ismtpd-105 (SG) with HTTP
+	id y-SmbhIyRQmuL89x3fzbEg
+	Mon, 09 Nov 2026 18:15:53.640 +0000 (UTC)
+Content-Type: multipart/alternative; boundary=cc7419ecc7f2ab25bf84dc973962ec618cabce90abb5fc8325edbdf60c56
+Date: Mon, 09 Nov 2026 18:15:53 +0000 (UTC)
+From: noreply <noreply@bombora.com>
+Mime-Version: 1.0
+Message-ID: <y-SmbhIyRQmuL89x3fzbEg@geopod-ismtpd-105>
+Subject: Receipt from SendGrid API
+To: me@example.org
+ l8fFwewozPlj8=
+
+--cc7419ecc7f2ab25bf84dc973962ec618cabce90abb5fc8325edbdf60c56
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset=us-ascii
+Mime-Version: 1.0
+
+Please view this email in an HTML-capable client.
+--cc7419ecc7f2ab25bf84dc973962ec618cabce90abb5fc8325edbdf60c56
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html; charset=utf-8
+Mime-Version: 1.0
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+  <meta charset=3D"UTF-8">
+  <meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D=
+1.0">
+  <title>Receipt from The Odds API</title>
+</head>
+<body style=3D"margin:0;padding:0;background-color:#e6ecf5;
+  font-family:Arial,Helvetica,sans-serif;color:#222222;">
+
+  <table role=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=
+=3D"0"
+    border=3D"0" style=3D"background-color:#e6ecf5;">
+    <tr>
+      <td align=3D"center" style=3D"padding:28px 16px 24px;">
+
+        <table role=3D"presentation" width=3D"360" cellpadding=3D"0"
+          cellspacing=3D"0" border=3D"0"
+          style=3D"width:100%;max-width:360px;">
+
+          <!-- Payment summary -->
+          <tr>
+            <td style=3D"padding:26px 24px 22px;background-color:#ffffff;
+              border-radius:10px;">
+
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0">
+                <tr>
+                  <td valign=3D"top">
+                    <p style=3D"margin:0 0 3px;font-size:11px;
+                      line-height:16px;color:#666666;">
+                      Receipt from SendGrid
+                      <span style=3D"background-color:#ffe7a0;
+                        color:#222222;">API</span>
+                    </p>
+                    <p style=3D"margin:0;font-size:28px;line-height:32px;
+                      font-weight:bold;">
+                      &#36;3,000
+                    </p>
+                    <p style=3D"margin:5px 0 0;font-size:11px;
+                      line-height:17px;color:#666666;">
+                      Paid November 9th, 2026
+                    </p>
+                  </td>
+
+                  <!-- Decorative receipt icon -->
+                  <td width=3D"48" valign=3D"middle" align=3D"right">
+                    <table role=3D"presentation" width=3D"40"
+                      cellpadding=3D"0" cellspacing=3D"0" border=3D"0"
+                      style=3D"width:40px;border:1px solid #eeeeee;
+                        border-radius:3px;">
+                      <tr>
+                        <td style=3D"padding:7px 5px;">
+                          <div style=3D"width:7px;height:7px;
+                            border-radius:50%;background-color:#dddddd;
+                            margin-bottom:6px;"></div>
+                          <div style=3D"height:3px;background-color:#eeeeee=
+;
+                            margin-bottom:5px;"></div>
+                          <div style=3D"height:3px;width:20px;
+                            background-color:#eeeeee;
+                            margin-bottom:5px;"></div>
+                          <div style=3D"height:3px;background-color:#eeeeee=
+;
+                            margin-bottom:5px;"></div>
+                          <div style=3D"height:3px;width:24px;
+                            background-color:#eeeeee;"></div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table role=3D"presentation" cellpadding=3D"0" cellspacing=3D=
+"0"
+                border=3D"0" style=3D"margin-top:14px;">
+                <tr>
+                  <td style=3D"border-top:1px solid #e7e7e7;padding-top:10p=
+x;
+                    font-size:10px;line-height:16px;">
+                    <a href=3D"#" style=3D"color:#777777;
+                      text-decoration:none;">
+                      &#8595; Download invoice
+                    </a>
+                    <span style=3D"padding:0 5px;">&nbsp;</span>
+                    <a href=3D"#" style=3D"color:#777777;
+                      text-decoration:none;">
+                      &#8595; Download receipt
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0"
+                style=3D"margin-top:22px;font-size:10px;line-height:20px;">
+                <tr>
+                  <td style=3D"color:#888888;">Receipt number</td>
+                  <td align=3D"right">2797-2904</td>
+                </tr>
+                <tr>
+                  <td style=3D"color:#888888;">Invoice number</td>
+                  <td align=3D"right">B04E138D-0003</td>
+                </tr>
+                <tr>
+                  <td style=3D"color:#888888;">Payment method</td>
+                  <td align=3D"right">
+                    <span style=3D"font-weight:bold;font-style:italic;
+                      color:#555555;">VISA</span>
+                   =20
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Centered account link -->
+          <tr>
+            <td align=3D"center" style=3D"padding:18px 0;">
+              <a href=3D"https://url3177.bombora.com/ls/click?upn=redacted
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted"
+                style=3D"color:#635bff;font-size:13px;line-height:20px;
+                  font-weight:bold;text-decoration:underline;">
+                View Account
+              </a>
+            </td>
+          </tr>
+
+          <!-- Itemized receipt -->
+          <tr>
+            <td style=3D"padding:24px 24px 18px;background-color:#ffffff;
+              border-radius:10px;">
+
+              <p style=3D"margin:0 0 24px;font-size:12px;
+                line-height:18px;font-weight:bold;">
+                Receipt #2797-2904
+              </p>
+
+              <p style=3D"margin:0 0 5px;font-size:10px;
+                line-height:16px;color:#777777;">
+                Feb 22=E2=80=93Mar 22, 2026
+              </p>
+
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0"
+                style=3D"font-size:10px;line-height:17px;">
+                <tr>
+                  <td>
+                    <span style=3D"background-color:#ffe7a0;">API</span>
+                    10 Million Credits
+                  </td>
+                  <td align=3D"right">&#36;3,000</td>
+                </tr>
+                <tr>
+                  <td colspan=3D"2" style=3D"padding:2px 0 14px;
+                    font-size:9px;color:#999999;">
+                    Qty 1
+                  </td>
+                </tr>
+                <tr>
+                  <td style=3D"padding:12px 0;
+                    border-top:1px solid #e7e7e7;">
+                    Total
+                  </td>
+                  <td align=3D"right" style=3D"padding:12px 0;
+                    border-top:1px solid #e7e7e7;">
+                    &#36;3,000
+                  </td>
+                </tr>
+                <tr>
+                  <td style=3D"padding:12px 0;
+                    border-top:1px solid #e7e7e7;
+                    border-bottom:1px solid #e7e7e7;">
+                    Amount paid
+                  </td>
+                  <td align=3D"right" style=3D"padding:12px 0;
+                    border-top:1px solid #e7e7e7;
+                    border-bottom:1px solid #e7e7e7;">
+                    &#36;3,000
+                  </td>
+                </tr>
+              </table>
+
+              <p style=3D"margin:13px 0 0;font-size:10px;
+                line-height:16px;color:#999999;">
+                Questions? Contact us at
+                <a href=3D"mailto:team@the-odds-api.com"
+                  style=3D"color:#635bff;text-decoration:none;">
+                  team@bombora.com</a>. <br>Sent from noreply@bombora.com<b=
+r>
+                  Bombora | 4832 Wall St, NY, 92831<br>
+                  This is a receipt notification
+              </p>
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+<img src=3D"https://url3177.bombora.com/wf/open?upn=redacted
+redacted=
+redacted=
+redacted" alt=
+=3D"" width=3D"1" height=3D"1" border=3D"0" style=3D"height:1px !important;=
+width:1px !important;border-width:0 !important;margin-top:0 !important;marg=
+in-bottom:0 !important;margin-right:0 !important;margin-left:0 !important;p=
+adding-top:0 !important;padding-bottom:0 !important;padding-right:0 !import=
+ant;padding-left:0 !important;"/></body>
+</html>
+
+--cc7419ecc7f2ab25bf84dc973962ec618cabce90abb5fc8325edbdf60c56--

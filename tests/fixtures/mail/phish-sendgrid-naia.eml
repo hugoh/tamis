@@ -1,0 +1,180 @@
+Return-path: <bounces+1607000-f999-me=example.org@em7135.naia.org>
+Original-recipient: rfc822;me@example.org
+Received: from p00-icloudmta-smtpin-us-central-1n-60-percent-21 by p57-mailgateway-smtp-7d4bbbc444-kdg7c (mailgateway 2642B156)
+	with SMTP id redacted
+	for <me@example.org>; Mon, 9 Nov 2026 22:02:39 GMT
+Received: from o1.ptr9629.naia.org (o1.ptr9629.naia.org [168.245.32.234])
+	by redacted (Postfix) with ESMTPS id 813EAC00266
+	for <me@example.org>; Mon, 09 Nov 2026 22:02:35 +0000 (UTC)
+Authentication-Results: bimi.icloud.com; bimi=skipped reason="insufficient dmarc"
+X-ARC-Info: policy=fail; arc=none; r1=-20; r2=0
+Authentication-Results: arc.icloud.com; arc=none
+Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=naia.org
+X-DMARC-Policy: v=DMARC1; p=none;
+X-DMARC-Info: pass=pass; dmarc-policy=none; s=r1; d=r1; pdomain=naia.org
+Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=naia.org header.i=@naia.org header.b=G5njK99o
+Received-SPF: pass (spf.icloud.com: domain of bounces+1607000-f999-me=example.org@em7135.naia.org designates 168.245.32.234 as permitted sender) receiver=spf.icloud.com; client-ip=168.245.32.234; helo=o1.ptr9629.naia.org; envelope-from=bounces+1607000-f999-me=example.org@em7135.naia.org
+Authentication-Results: spf.icloud.com; spf=pass (spf.icloud.com: domain of bounces+1607000-f999-me=example.org@em7135.naia.org designates 168.245.32.234 as permitted sender) smtp.mailfrom=bounces+1607000-f999-me=example.org@em7135.naia.org
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=naia.org;
+	h=content-type:date:from:mime-version:subject:to:cc:content-type:date:
+	from:subject:to;
+	s=s1; t=1794261753;
+	bh=redacted=;
+	b=G5njK99oOTb47Ajd+1yTX/redacted
+	IYkWKRuPzxrhoTGMRa3VOTbT78+VRV+j+redacted+MCa
+	ejDboqsm2Rp0TOSNmCJwm7GCrH2x/redacted/M6xtJAWGAk
+	WcvGhkiAnQ+redacted
+	redacted/S1meE2YAAueQgA==
+Received: by recvd-59f68bb86-mc725 with SMTP id recvd-59f68bb86-mc725-1-6AF242F9-DA
+	2026-11-09 22:02:33.847351415 +0000 UTC m=+338043.904596274
+Received: from MTYwNzAwMA (unknown)
+	by geopod-ismtpd-12 (SG) with HTTP
+	id hZjgq9feTdCf3hKpWWnTug
+	Mon, 09 Nov 2026 22:02:33.836 +0000 (UTC)
+Content-Type: multipart/alternative; boundary=21aea1d3297da6082490ec1dfe9964bfb37b673846530bb93628106ee243
+Date: Mon, 09 Nov 2026 22:02:33 +0000 (UTC)
+From: Sendgrid Account Team <noreply@naia.org>
+Mime-Version: 1.0
+Message-ID: <hZjgq9feTdCf3hKpWWnTug@geopod-ismtpd-12>
+Subject: Supporting Republicans This Election
+To: me@example.org
+ redacted==
+
+--21aea1d3297da6082490ec1dfe9964bfb37b673846530bb93628106ee243
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset=us-ascii
+Mime-Version: 1.0
+
+Please view this email in an HTML-capable client.
+--21aea1d3297da6082490ec1dfe9964bfb37b673846530bb93628106ee243
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html; charset=us-ascii
+Mime-Version: 1.0
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+  <meta charset=3D"UTF-8">
+  <meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D=
+1.0">
+  <title>Republican footer update</title>
+</head>
+<body style=3D"margin:0; padding:0; background-color:#f3f2f0; font-family:A=
+rial, Helvetica, sans-serif; color:#242424;">
+  <table role=3D"presentation" width=3D"100%" cellpadding=3D"0" cellspacing=
+=3D"0"
+    style=3D"width:100%; border-collapse:collapse; background-color:#f3f2f0=
+;">
+    <tr>
+      <td align=3D"center" style=3D"padding:18px 12px;">
+        <table role=3D"presentation" width=3D"360" cellpadding=3D"0" cellsp=
+acing=3D"0"
+          style=3D"width:100%; max-width:360px; border-collapse:collapse; b=
+ackground-color:#ffffff;">
+
+          <tr>
+            <td style=3D"padding:22px 24px 30px; color:#0a66c2; font-size:1=
+5px; line-height:20px; font-weight:bold;">
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding:0 24px 20px;">
+              <h1 style=3D"margin:0 0 12px; font-size:20px; line-height:26p=
+x; font-weight:bold;">
+                Supporting Republicans This Election
+              </h1>
+              <p style=3D"margin:0; font-size:13px; line-height:20px;">
+                We're introducing a platform-wide Republican footer that wi=
+ll
+                appear at the bottom of outgoing emails by default.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding:0 24px 20px;">
+              <h2 style=3D"margin:0 0 6px; font-size:14px; line-height:20px=
+; font-weight:bold;">
+                What&rsquo;s changing?
+              </h2>
+              <p style=3D"margin:0; font-size:13px; line-height:20px;">
+                The new Republican footer will be added to emails sent by
+                clients using our platform, unless disabled in footer setti=
+ngs.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding:0 24px 20px;">
+              <h2 style=3D"margin:0 0 6px; font-size:14px; line-height:20px=
+; font-weight:bold;">
+                How to show your support
+              </h2>
+              <p style=3D"margin:0; font-size:13px; line-height:20px;">
+                You can back the Republican footer by keeping it enabled on
+                your outgoing emails and sharing it with your recipients.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding:0 24px 20px;">
+              <h2 style=3D"margin:0 0 6px; font-size:14px; line-height:20px=
+; font-weight:bold;">
+                Prefer not to include it?
+              </h2>
+              <p style=3D"margin:0; font-size:13px; line-height:20px;">
+                You can turn off the Republican footer in your settings.
+                Use the link below to review your preferences.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding:0 24px 26px;">
+              <a href=3D"http://url763.naia.org/ls/click?upn=redacted
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted"
+                style=3D"color:#0a66c2; font-size:13px; line-height:20px; f=
+ont-weight:bold; text-decoration:underline;">
+                Manage Footer Settings
+              </a>
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding:0 24px 28px;">
+              <p style=3D"margin:0; font-size:13px; line-height:20px;">
+                Thank you,<br>
+                The SendGrid Team
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+<img src=3D"http://url763.naia.org/wf/open?upn=redacted
+redacted=
+redacted=
+redacted" alt=3D"" wid=
+th=3D"1" height=3D"1" border=3D"0" style=3D"height:1px !important;width:1px=
+ !important;border-width:0 !important;margin-top:0 !important;margin-bottom=
+:0 !important;margin-right:0 !important;margin-left:0 !important;padding-to=
+p:0 !important;padding-bottom:0 !important;padding-right:0 !important;paddi=
+ng-left:0 !important;"/></body>
+</html>
+
+--21aea1d3297da6082490ec1dfe9964bfb37b673846530bb93628106ee243--

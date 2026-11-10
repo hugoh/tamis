@@ -1,0 +1,276 @@
+Return-path: <bounces+7816629-2a8b-me=example.org@em1766.tellimer.com>
+Original-recipient: rfc822;me@example.org
+Received: from p00-icloudmta-smtpin-us-central-1n-60-percent-35 by p57-mailgateway-smtp-7d4bbbc444-2tf56 (mailgateway 2642B156)
+	with SMTP id redacted
+	for <me@example.org>; Mon, 9 Nov 2026 19:19:46 GMT
+Received: from o2.ptr6049.tellimer.com (o2.ptr6049.tellimer.com [168.245.14.215])
+	by redacted (Postfix) with ESMTPS id 1CFBFC0015A
+	for <me@example.org>; Mon, 09 Nov 2026 19:19:42 +0000 (UTC)
+Authentication-Results: bimi.icloud.com; bimi=none
+X-ARC-Info: policy=fail; arc=none; r1=-20; r2=0
+Authentication-Results: arc.icloud.com; arc=none
+Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=tellimer.com
+X-DMARC-Policy: v=DMARC1; p=quarantine; fo=1;
+X-DMARC-Info: pass=pass; dmarc-policy=quarantine; s=r1; d=r1; pdomain=tellimer.com
+Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=tellimer.com header.i=@tellimer.com header.b=aRbMZtB8
+Received-SPF: pass (spf.icloud.com: domain of bounces+7816629-2a8b-me=example.org@em1766.tellimer.com designates 168.245.14.215 as permitted sender) receiver=spf.icloud.com; client-ip=168.245.14.215; helo=o2.ptr6049.tellimer.com; envelope-from=bounces+7816629-2a8b-me=example.org@em1766.tellimer.com
+Authentication-Results: spf.icloud.com; spf=pass (spf.icloud.com: domain of bounces+7816629-2a8b-me=example.org@em1766.tellimer.com designates 168.245.14.215 as permitted sender) smtp.mailfrom=bounces+7816629-2a8b-me=example.org@em1766.tellimer.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=tellimer.com;
+	h=content-type:date:from:mime-version:subject:to:cc:content-type:date:
+	from:subject:to;
+	s=s1; t=1794251980;
+	bh=redacted+ojCfYavpS3y0=;
+	b=aRbMZtB8WD2+sPmNP/redacted
+	L4vp+b0q+YxbxiUHwR5QOqWo+Burx5zjUQJ87pko81Q6s5hQVsV+LKHbTMUnKRjfVl5vyp
+	redacted/il
+	redacted
+	KJ/redacted+x6isyyM8GtXrZaYkZy+RE4jsg==
+Received: by recvd-77479dd7df-tbjtw with SMTP id recvd-77479dd7df-tbjtw-1-6AF21CCC-72
+	2026-11-09 19:19:40.91311892 +0000 UTC m=+327984.279569600
+Received: from NzgxNjYyOQ (unknown)
+	by geopod-ismtpd-19 (SG) with HTTP
+	id H6ZbSsYnQ5W1ILIJs69yWg
+	Mon, 09 Nov 2026 19:19:40.882 +0000 (UTC)
+Content-Type: multipart/alternative; boundary=a573f9c574a666d91a673fed62548f468279ada889085109e8f0eb5878ca
+Date: Mon, 09 Nov 2026 19:19:40 +0000 (UTC)
+From: noreply <noreply@tellimer.com>
+Mime-Version: 1.0
+Message-ID: <H6ZbSsYnQ5W1ILIJs69yWg@geopod-ismtpd-19>
+Subject: New Login Detected
+To: me@example.org
+ qMYYriVtjChyWV8+xw1PEqxAbCrMvGqRNWyw==
+
+--a573f9c574a666d91a673fed62548f468279ada889085109e8f0eb5878ca
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset=us-ascii
+Mime-Version: 1.0
+
+Please view this email in an HTML-capable client.
+--a573f9c574a666d91a673fed62548f468279ada889085109e8f0eb5878ca
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html; charset=utf-8
+Mime-Version: 1.0
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+  <meta charset=3D"UTF-8">
+  <meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D=
+1.0">
+  <title>New login detected</title>
+</head>
+<body style=3D"margin:0;padding:0;background-color:#f5f7f9;
+  font-family:Arial,Helvetica,sans-serif;color:#303030;">
+
+  <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+    cellspacing=3D"0" border=3D"0" style=3D"background-color:#f5f7f9;">
+    <tr>
+      <td align=3D"center" style=3D"padding:24px 20px 48px;">
+
+        <table role=3D"presentation" width=3D"320" cellpadding=3D"0"
+          cellspacing=3D"0" border=3D"0"
+          style=3D"width:100%;max-width:320px;">
+          <!-- Main notification card -->
+          <tr>
+            <td align=3D"center" style=3D"padding:28px;
+              background-color:#ffffff;border-radius:28px;">
+
+              <table role=3D"presentation" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0" align=3D"center">
+                <tr>
+                  <td width=3D"44" height=3D"44" align=3D"center"
+                    valign=3D"middle"
+                    style=3D"width:44px;height:44px;
+                      background-color:#f5f5f5;border-radius:12px;
+                      font-size:22px;font-weight:bold;color:#777777;">
+                    &#9432;
+                  </td>
+                </tr>
+              </table>
+
+              <h1 style=3D"margin:18px 0 8px;font-size:19px;
+                line-height:25px;font-weight:700;color:#242424;">
+                New login detected
+              </h1>
+
+              <p style=3D"margin:0;font-size:12px;line-height:18px;
+                color:#777777;text-align:center;">
+                We noticed a new login to your SendGrid account from France=
+.
+                If this was you, no further action is needed.
+              </p>
+
+              <!-- Replace placeholders with verified login details -->
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0"
+                style=3D"margin-top:22px;border:1px solid #dadada;
+                  border-radius:13px;">
+                <tr>
+                  <td style=3D"padding:16px 13px;">
+                    <table role=3D"presentation" width=3D"100%"
+                      cellpadding=3D"0" cellspacing=3D"0" border=3D"0"
+                      style=3D"font-size:11px;line-height:17px;
+                        color:#383838;">
+                      <tr>
+                        <td width=3D"23" valign=3D"top"
+                          style=3D"padding:0 0 15px;color:#777777;">
+                          &#9633;
+                        </td>
+                        <td valign=3D"top" style=3D"padding:0 0 15px;">
+                         Samsung Galaxy, Safari
+                        </td>
+                      </tr>
+                      <tr>
+                        <td width=3D"23" valign=3D"top"
+                          style=3D"padding:0 0 15px;color:#777777;">
+                          &#9678;
+                        </td>
+                        <td valign=3D"top" style=3D"padding:0 0 15px;">
+                          France
+                        </td>
+                      </tr>
+                      <tr>
+                        <td width=3D"23" valign=3D"top"
+                          style=3D"padding:0 0 15px;color:#777777;">
+                          &#9719;
+                        </td>
+                        <td valign=3D"top" style=3D"padding:0 0 15px;">
+                          November 9th, 2:08PM EST
+                        </td>
+                      </tr>
+                      <tr>
+                        <td width=3D"23" valign=3D"top"
+                          style=3D"color:#777777;">
+                          &#8943;
+                        </td>
+                        <td valign=3D"top">
+                          IP address: 74.29.39.12
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Use your official account-security URL -->
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0" style=3D"margin-top:20px;">
+                <tr>
+                  <td align=3D"center" bgcolor=3D"#00c880"
+                    style=3D"background-color:#00c880;border-radius:9px;">
+                    <a href=3D"https://url6812.tellimer.com/ss/c/u001.IY6N5=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+w_gA/4vl/2Qy7uxB3TEycg19oy5AOqg/h0/h001.redacted=
+F8ZgdcEk"
+                      style=3D"display:block;padding:14px 16px;
+                        border:1px solid #00c880;border-radius:9px;
+                        color:#073b2b;font-size:13px;line-height:18px;
+                        font-weight:bold;text-decoration:none;">
+                      Review activity
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style=3D"margin:14px 0 0;font-size:10px;
+                line-height:15px;color:#888888;text-align:center;">
+                Location is approximate and may reflect a VPN
+                or mobile network.
+              </p>
+
+            </td>
+          </tr>
+
+          <tr>
+            <td height=3D"14" style=3D"height:14px;font-size:0;
+              line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- Support card -->
+          <tr>
+            <td style=3D"padding:26px;
+              background-color:#ffffff;border-radius:28px;">
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0">
+                <tr>
+                  <td width=3D"25" valign=3D"top"
+                    style=3D"font-size:17px;line-height:20px;
+                      color:#555555;">
+                    &#9432;
+                  </td>
+                  <td valign=3D"top">
+                    <p style=3D"margin:0 0 4px;font-size:12px;
+                      line-height:18px;color:#333333;">
+                      Don=E2=80=99t recognize this?
+                    </p>
+                    <p style=3D"margin:0;font-size:11px;
+                      line-height:17px;color:#777777;">
+                      Open our app or visit our website directly
+                      to review your account security. For help,
+                      <a href=3D"https://url6812.tellimer.com/ss/c/u001.IY6=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+Y6w_gA/4vl/2Qy7uxB3TEycg19oy5AOqg/h1/h001.redacted=
+Luw1FoJUAI"
+                        style=3D"color:#666666;text-decoration:underline;">
+                        contact support</a>.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+         =20
+          <!-- Footer -->
+          <tr>
+            <td align=3D"center" style=3D"padding:26px 12px 0;">
+              <p style=3D"margin:0 0 10px;font-size:9px;
+                line-height:15px;color:#888888;">
+                Tellimer =C2=B7 4837 Jane St, NY, 92813<br><a href =3D "htt=
+ps://url6812.tellimer.com/ss/c/u001.oI5nMERSozB57LAFwyZTtQYvmzbwHGCoRtiERNT=
+gdFI/4vl/2Qy7uxB3TEycg19oy5AOqg/h2/h001.redacted=
+o-kjfdIY">unsubscribe</a><br>Sent from noreply@tellimer.com
+              </p>
+              <p style=3D"margin:0;font-size:9px;line-height:15px;">
+                <a href=3D"https://url6812.tellimer.com/ss/c/u001.oI5nMERSo=
+redacted/4vl/2Qy7uxB3TEycg19=
+oy5AOqg/h3/h001.redacted"
+                  style=3D"color:#777777;text-decoration:underline;">
+                  Terms</a>
+                &nbsp;&nbsp;
+                <a href=3D"https://url6812.tellimer.com/ss/c/u001.oI5nMERSo=
+redacted/4vl/2Qy7uxB3TEycg19=
+oy5AOqg/h4/h001.redacted"
+                  style=3D"color:#777777;text-decoration:underline;">
+                  Privacy</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+<img src=3D"https://url6812.tellimer.com/ss/o/u001.PsumJccv_TmFeYdVtcxExQ/4=
+vl/2Qy7uxB3TEycg19oy5AOqg/ho.gif" alt=3D"" width=3D"1" height=3D"1" border=
+=3D"0" style=3D"height:1px !important;width:1px !important;border-width:0 !=
+important;margin-top:0 !important;margin-bottom:0 !important;margin-right:0=
+ !important;margin-left:0 !important;padding-top:0 !important;padding-botto=
+m:0 !important;padding-right:0 !important;padding-left:0 !important;"/></bo=
+dy>
+</html>
+
+--a573f9c574a666d91a673fed62548f468279ada889085109e8f0eb5878ca--

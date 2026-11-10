@@ -1,0 +1,231 @@
+Return-path: <bounces+48826113-8779-me=example.org@em955.notify.leadseeker.co>
+Original-recipient: rfc822;me@example.org
+Received: from p00-icloudmta-smtpin-us-west-1a-60-percent-26 by p57-mailgateway-smtp-7d4bbbc444-rfxcw (mailgateway 2642B156)
+	with SMTP id redacted
+	for <me@example.org>; Mon, 9 Nov 2026 19:45:59 GMT
+Received: from wfbtcffk.outbound-mail.sendgrid.net (wfbtcffk.outbound-mail.sendgrid.net [159.183.207.241])
+	by redacted (Postfix) with ESMTPS id AA08C18001CE
+	for <me@example.org>; Mon, 09 Nov 2026 19:45:55 +0000 (UTC)
+Authentication-Results: bimi.icloud.com; bimi=skipped reason="insufficient dmarc"
+X-ARC-Info: policy=fail; arc=none; r1=-20; r2=0
+Authentication-Results: arc.icloud.com; arc=none
+Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=notify.leadseeker.co
+X-DMARC-Policy: v=DMARC1; p=none;
+X-DMARC-Info: pass=pass; dmarc-policy=none; s=r1; d=r1; pdomain=notify.leadseeker.co
+Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=notify.leadseeker.co header.i=@notify.leadseeker.co header.b=z73jzGk6
+Received-SPF: pass (spf.icloud.com: domain of bounces+48826113-8779-me=example.org@em955.notify.leadseeker.co designates 159.183.207.241 as permitted sender) receiver=spf.icloud.com; client-ip=159.183.207.241; helo=wfbtcffk.outbound-mail.sendgrid.net; envelope-from=bounces+48826113-8779-me=example.org@em955.notify.leadseeker.co
+Authentication-Results: spf.icloud.com; spf=pass (spf.icloud.com: domain of bounces+48826113-8779-me=example.org@em955.notify.leadseeker.co designates 159.183.207.241 as permitted sender) smtp.mailfrom=bounces+48826113-8779-me=example.org@em955.notify.leadseeker.co
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=notify.leadseeker.co;
+	h=content-type:date:from:mime-version:subject:to:cc:content-type:date:
+	from:subject:to;
+	s=s1; t=1794253553;
+	bh=rh1nE+vNCofjaB8P5LPVvkqKvUQDfFTyjw/qOQWiQhM=;
+	b=redacted+QlHH3ITgipA4y3QH5VmUj
+	redacted/Km0j8/2smQBLv8s
+	redacted/
+	e03FU9OX68iVq3OdnaowjhT6c1d0/redacted/wbZo
+	redacted==
+Received: by recvd-77479dd7df-tbjtw with SMTP id recvd-77479dd7df-tbjtw-1-6AF222F1-C
+	2026-11-09 19:45:53.357612727 +0000 UTC m=+329556.724063395
+Received: from NDg4MjYxMTM (unknown)
+	by geopod-ismtpd-59 (SG) with HTTP
+	id MPK9ryZgQ2ujPoTQaJ-uvQ
+	Mon, 09 Nov 2026 19:45:53.276 +0000 (UTC)
+Content-Type: multipart/alternative; boundary=1118826089e2a4ed88006df27e57130f0aeb38e56b38e0c682be20035ea6
+Date: Mon, 09 Nov 2026 19:45:53 +0000 (UTC)
+From: SendGrid <noreply@notify.leadseeker.co>
+Mime-Version: 1.0
+Message-ID: <MPK9ryZgQ2ujPoTQaJ-uvQ@geopod-ismtpd-59>
+Subject: Your API requests are failing
+To: me@example.org
+ redacted=
+
+--1118826089e2a4ed88006df27e57130f0aeb38e56b38e0c682be20035ea6
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset=us-ascii
+Mime-Version: 1.0
+
+Please view this email in an HTML-capable client.
+--1118826089e2a4ed88006df27e57130f0aeb38e56b38e0c682be20035ea6
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html; charset=utf-8
+Mime-Version: 1.0
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+  <meta charset=3D"UTF-8">
+  <meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D=
+1.0">
+  <title>API request failures</title>
+</head>
+<body style=3D"margin:0;padding:0;background-color:#ffffff;
+  font-family:Arial,Helvetica,sans-serif;color:#000000;">
+
+  <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+    cellspacing=3D"0" border=3D"0" style=3D"background-color:#ffffff;">
+    <tr>
+      <td align=3D"center" style=3D"padding:48px 24px;">
+
+        <table role=3D"presentation" width=3D"480" cellpadding=3D"0"
+          cellspacing=3D"0" border=3D"0"
+          style=3D"width:100%;max-width:480px;">
+
+          <tr>
+            <td>
+              <h1 style=3D"margin:0 0 20px;font-size:25px;
+                line-height:33px;font-weight:bold;">
+                Your API requests are failing
+              </h1>
+
+              <p style=3D"margin:0 0 18px;font-size:14px;line-height:23px;"=
+>
+                We detected failed requests to
+                <code style=3D"font-family:Consolas,Menlo,monospace;
+                  font-size:13px;">/v3/batch/process</code>
+                in your project.
+              </p>
+
+              <p style=3D"margin:0 0 28px;font-size:14px;line-height:23px;"=
+>
+                Review your analytical logs for error messages,
+                response codes, and request details to help identify
+                why these requests are failing.
+              </p>
+
+              <!-- Populate with verified monitoring data -->
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0"
+                style=3D"border-top:1px solid #000000;
+                  border-bottom:1px solid #000000;">
+                <tr>
+                  <td valign=3D"top" style=3D"padding:16px 16px 8px 0;
+                    font-size:12px;line-height:20px;">
+                    Project
+                  </td>
+                  <td align=3D"right" valign=3D"top"
+                    style=3D"padding:16px 0 8px;font-size:12px;
+                      line-height:20px;">
+                    Production
+                  </td>
+                </tr>
+                <tr>
+                  <td valign=3D"top" style=3D"padding:8px 16px 8px 0;
+                    font-size:12px;line-height:20px;">
+                    Endpoint
+                  </td>
+                  <td align=3D"right" valign=3D"top"
+                    style=3D"padding:8px 0;font-size:12px;
+                      line-height:20px;
+                      font-family:Consolas,Menlo,monospace;">
+                    /v3/batch/process
+                  </td>
+                </tr>
+                <tr>
+                  <td valign=3D"top" style=3D"padding:8px 16px 8px 0;
+                    font-size:12px;line-height:20px;">
+                    Failed requests
+                  </td>
+                  <td align=3D"right" valign=3D"top"
+                    style=3D"padding:8px 0;font-size:12px;
+                      line-height:20px;">
+                    14,687
+                  </td>
+                </tr>
+                <tr>
+                  <td valign=3D"top" style=3D"padding:8px 16px 16px 0;
+                    font-size:12px;line-height:20px;">
+                    Time window
+                  </td>
+                  <td align=3D"right" valign=3D"top"
+                    style=3D"padding:8px 0 16px;font-size:12px;
+                      line-height:20px;">
+                    24 hours
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Replace with your official logs URL -->
+              <table role=3D"presentation" cellpadding=3D"0"
+                cellspacing=3D"0" border=3D"0" style=3D"margin-top:28px;">
+                <tr>
+                  <td align=3D"center"
+                    style=3D"border:1px solid #000000;
+                      background-color:#ffffff;border-radius:4px;">
+                    <a href=3D"http://url9802.notify.leadseeker.co/ls/click=
+?upn=redacted
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted"
+                      style=3D"display:inline-block;padding:13px 22px;
+                        font-size:13px;line-height:20px;
+                        font-weight:bold;color:#000000;
+                        text-decoration:none;">
+                      View analytical logs
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style=3D"margin:24px 0 0;font-size:12px;line-height:20px;"=
+>
+                You can also open your dashboard directly and
+                navigate to your project=E2=80=99s API logs.
+              </p>
+
+              <p style=3D"margin:32px 0 0;font-size:12px;line-height:20px;"=
+>
+                Need help?
+                <a href=3D"http://url9802.notify.leadseeker.co/ls/click?upn=
+=3Du001.redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted"
+                  style=3D"color:#000000;text-decoration:underline;">
+                  Contact support</a>
+                with the relevant request IDs. Never share API keys
+                or access tokens.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding-top:40px;font-size:11px;line-height:18px;"=
+>
+              SendGrid<br>
+              Automated API monitoring notification
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+<img src=3D"http://url9802.notify.leadseeker.co/wf/open?upn=redacted
+redacted=
+redacted=
+redacted" alt=
+=3D"" width=3D"1" height=3D"1" border=3D"0" style=3D"height:1px !important;=
+width:1px !important;border-width:0 !important;margin-top:0 !important;marg=
+in-bottom:0 !important;margin-right:0 !important;margin-left:0 !important;p=
+adding-top:0 !important;padding-bottom:0 !important;padding-right:0 !import=
+ant;padding-left:0 !important;"/></body>
+</html>
+
+--1118826089e2a4ed88006df27e57130f0aeb38e56b38e0c682be20035ea6--

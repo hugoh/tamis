@@ -177,6 +177,36 @@ counts, and `tamis doctor` and the `run` log say to run
 `tamis bootstrap` again. `tamis doctor` shows which is in use. Set `policy.whitelist_requires_auth = false` to trust the
 address alone.
 
+**Impersonation.** Authentication shows who sent a message, not whether
+they are who they claim to be. Phishing sent through a real service (SendGrid
+accounts that were compromised or signed up for the occasion) passes SPF,
+DKIM and DMARC for the sender's own domain while the display name says
+"SendGrid Account Team". `auth::impersonated` catches the simplest form of
+this. It takes a list of brands, each a name and the domains that may use it,
+and flags a message when:
+
+- the `From` display name contains a brand's name, ignoring case, and
+- the `From` address is on none of that brand's domains or their subdomains.
+
+`SendGrid <noreply@sendgrid.com>` and `SENDGRID <a@mail.sendgrid.com>` pass.
+`SendGrid <noreply@averiware.com>`, a lookalike such as `notsendgrid.com`,
+and `sendgrid.com.evil.example` are flagged. A message with no `From` or no
+display name is never flagged. The test does not look at whether the message
+authenticated, because the impersonator's own domain usually does.
+
+It does not catch lures whose display name claims nothing (`noreply
+<noreply@example.com>` with the subject "Receipt from SendGrid API"). Those
+still depend on the Bayes score.
+
+*Status.* The check is a tested building block that nothing calls. The
+engine doesn't use it, no config supplies the brand list, and it changes no
+score, verdict or rescue. It stays unwired because it needs a list of brands
+that someone has to maintain, and the cases it catches are narrow. The
+[phishing investigation](../../how-it-works/design/#phishing-through-real-sending-services)
+has the evidence and what would change that. The fixtures
+`tests/fixtures/mail/phish-*.eml` and `tests/auth_impersonation.rs` pin the
+behaviour.
+
 **Scoring.** `classify` turns the message into tokens and combines the most
 decisive ones into a score from 0 (good) to 1 (spam). [Tokens and
 scoring](../../how-it-works/engine/#tokens-and-scoring) says how.

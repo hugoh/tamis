@@ -1,0 +1,207 @@
+Return-path: <bounces+109159429-2a50-me=example.org@em9454.yoursuiteconcierge.com>
+Original-recipient: rfc822;me@example.org
+Received: from p00-icloudmta-smtpin-us-central-1n-100-percent-34 by p57-mailgateway-smtp-7cd74cd4d8-kn5vt (mailgateway 2634B97)
+	with SMTP id redacted
+	for <me@example.org>; Wed, 23 Sep 2026 17:47:32 GMT
+Received: from wfbthqdh.outbound-mail.sendgrid.net (wfbthqdh.outbound-mail.sendgrid.net [159.183.4.208])
+	by redacted (Postfix) with ESMTPS id 14C32C000BB
+	for <me@example.org>; Wed, 23 Sep 2026 17:47:28 +0000 (UTC)
+X-Spam-Flag: yes
+X-Suspected-Spam: true
+Authentication-Results: bimi.icloud.com; bimi=none
+X-ARC-Info: policy=fail; arc=none; r1=-20; r2=0
+Authentication-Results: arc.icloud.com; arc=none
+Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=yoursuiteconcierge.com
+X-DMARC-Policy: v=DMARC1; p=quarantine; adkim=r; aspf=r; rua=mailto:dmarc_rua@onsecureserver.net;
+X-DMARC-Info: pass=pass; dmarc-policy=quarantine; s=r1; d=r1; pdomain=yoursuiteconcierge.com
+Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=yoursuiteconcierge.com header.i=@yoursuiteconcierge.com header.b=ZlXGkSmT
+Received-SPF: pass (spf.icloud.com: domain of bounces+109159429-2a50-me=example.org@em9454.yoursuiteconcierge.com designates 159.183.4.208 as permitted sender) receiver=spf.icloud.com; client-ip=159.183.4.208; helo=wfbthqdh.outbound-mail.sendgrid.net; envelope-from=bounces+109159429-2a50-me=example.org@em9454.yoursuiteconcierge.com
+Authentication-Results: spf.icloud.com; spf=pass (spf.icloud.com: domain of bounces+109159429-2a50-me=example.org@em9454.yoursuiteconcierge.com designates 159.183.4.208 as permitted sender) smtp.mailfrom=bounces+109159429-2a50-me=example.org@em9454.yoursuiteconcierge.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=yoursuiteconcierge.com;
+	h=content-type:date:from:mime-version:subject:to:cc:content-type:date:
+	from:subject:to;
+	s=s1; t=1790185614;
+	bh=07UMA/j+CJqKA8HuEKXMFAUz//u0QO22UOwU1C3L4ZQ=;
+	b=redacted+SZ90Y1pxYaELOVHIFijthVjsvo2
+	redacted
+	jTaOyuTlAH//anRpVplzFTUugq5uv3JouBeE+redacted
+	30u5a+redacted
+	TZNAe3//fyAwn6r1QRj4pFDqbmuDp7MLrr+n/2HYHlbggieLuBd9OR4JyfMVG95g==
+Received: by recvd-54f5bdf598-fzv7c with SMTP id recvd-54f5bdf598-fzv7c-1-6AB4108E-23
+	2026-09-23 17:46:54.536104355 +0000 UTC m=+1042.546669830
+Received: from MTA5MTU5NDI5 (unknown)
+	by geopod-ismtpd-8 (SG) with HTTP
+	id lgmpJKJRT8ySW3bZnXsm7g
+	Wed, 23 Sep 2026 17:46:54.442 +0000 (UTC)
+Content-Type: multipart/alternative; boundary=79a2aff8cfcaebe49fac9d84da219f8ce392671adc6260c8754e47c9ec31
+Date: Wed, 23 Sep 2026 17:46:54 +0000 (UTC)
+From: SendGrid Account Notification <sailings@yoursuiteconcierge.com>
+Mime-Version: 1.0
+Message-ID: <lgmpJKJRT8ySW3bZnXsm7g@geopod-ismtpd-8>
+Subject: Your API requests need a review
+To: me@example.org
+
+--79a2aff8cfcaebe49fac9d84da219f8ce392671adc6260c8754e47c9ec31
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset=us-ascii
+Mime-Version: 1.0
+
+Please view this email in an HTML-capable client.
+
+---
+Sent to: me@example.org
+Sent from: SendGrid Account Notification <sailings@yoursuiteconcierge.com>
+(c) 2026 Yoursuiteconcierge (yoursuiteconcierge.com)
+Unsubscribe: http://url9469.yoursuiteconcierge.com/ls/click?upn=redacted
+redacted=
+redacted=
+redacted=
+redacted=
+redacted
+--79a2aff8cfcaebe49fac9d84da219f8ce392671adc6260c8754e47c9ec31
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html; charset=utf-8
+Mime-Version: 1.0
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+  <meta charset=3D"UTF-8">
+  <meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D=
+1.0">
+  <title>API activity update</title>
+</head>
+<body style=3D"margin:0; padding:0; background:#eef2f6;
+  font-family:Arial,Helvetica,sans-serif; color:#25364a;">
+  <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+    cellspacing=3D"0" style=3D"background:#eef2f6;">
+    <tr>
+      <td align=3D"center" style=3D"padding:40px 16px;">
+        <table role=3D"presentation" width=3D"540" cellpadding=3D"0"
+          cellspacing=3D"0" style=3D"width:100%; max-width:540px;">
+          <tr>
+            <td style=3D"padding:24px 28px; background:#172b45;
+              border-radius:10px 10px 0 0;">
+              <p style=3D"margin:0 0 10px; color:#83caff;
+                font-size:11px; font-weight:bold; letter-spacing:1px;">
+                DEVELOPER NOTIFICATION
+              </p>
+              <h1 style=3D"margin:0; color:#ffffff; font-size:25px;
+                line-height:33px; font-weight:bold;">
+                Your API requests need a review
+              </h1>
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding:28px; background:#ffffff;
+              border:1px solid #dde5ee; border-top:0;
+              border-radius:0 0 10px 10px;">
+              <p style=3D"margin:0 0 22px; color:#526478;
+                font-size:15px; line-height:25px;">
+                Some recent API calls returned errors instead of
+                completing successfully. Your developer logs contain
+                the details needed to investigate.
+              </p>
+
+              <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+                cellspacing=3D"0" style=3D"background:#f3f7fb;
+                border-left:3px solid #2196e3;">
+                <tr>
+                  <td style=3D"padding:16px 18px;">
+                    <p style=3D"margin:0 0 6px; color:#25364a;
+                      font-size:14px; font-weight:bold;">
+                      What to check
+                    </p>
+                    <p style=3D"margin:0; color:#526478;
+                      font-size:14px; line-height:23px;">
+                      Review failed requests, response codes, and
+                      error messages to identify the cause before
+                      retrying.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style=3D"margin:24px 0 0; font-size:15px;
+                line-height:24px;">
+                <a href=3D"http://url9469.yoursuiteconcierge.com/ls/click?u=
+pn=3Du001.redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted"
+                  style=3D"color:#0875ba; font-weight:bold;
+                  text-decoration:underline;">
+                  Review your developer logs
+                </a>
+              </p>
+
+              <p style=3D"margin:22px 0 0; color:#7c8999;
+                font-size:12px; line-height:20px;">
+                Prefer to navigate directly? Sign in using your
+                usual bookmark and open Developer Logs.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style=3D"padding:18px 4px; color:#7c8999;
+              font-size:12px; line-height:20px;">
+              Keep your credentials private. We=E2=80=99ll never ask you
+              to send API keys by email.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+<table role=3D"presentation" cellspacing=3D"0" cellpadding=3D"0"
+       border=3D"0" align=3D"center" width=3D"100%"
+       style=3D"max-width:600px;margin-top:35px;
+              border-top:1px solid #e0e0e0;
+              font-family:Arial,Helvetica,sans-serif;
+              font-size:12px;line-height:1.6;
+              color:#777777;text-align:center;">
+  <tr>
+    <td style=3D"padding:24px 12px;">
+      <div>Sent to: <strong>me@example.org</strong></div>
+      <div>Sent from: <strong>SendGrid Account Notification</strong> &lt;sa=
+ilings@yoursuiteconcierge.com&gt;</div>
+      <div style=3D"margin-top:4px;">
+        &copy; 2026 <strong>Yoursuiteconcierge</strong> (yoursuiteconcierge=
+.com). All rights reserved.
+      </div>
+      <div style=3D"margin-top:10px;">
+        <a href=3D"http://url9469.yoursuiteconcierge.com/ls/click?upn=redacted
+1.redacted=
+redacted=
+redacted=
+redacted=
+redacted" style=3D"color:#=
+0066cc;text-decoration:underline;">
+          Unsubscribe from these emails
+        </a>
+      </div>
+    </td>
+  </tr>
+</table><img src=3D"http://url9469.yoursuiteconcierge.com/wf/open?upn=redacted
+1.redacted=
+redacted=
+redacted=
+Qu-2BCaERdt7xsg-3D-3D" alt=3D"" width=3D"1" height=3D"1" border=3D"0" style=
+=3D"height:1px !important;width:1px !important;border-width:0 !important;ma=
+rgin-top:0 !important;margin-bottom:0 !important;margin-right:0 !important;=
+margin-left:0 !important;padding-top:0 !important;padding-bottom:0 !importa=
+nt;padding-right:0 !important;padding-left:0 !important;"/></body>
+</html>
+
+--79a2aff8cfcaebe49fac9d84da219f8ce392671adc6260c8754e47c9ec31--

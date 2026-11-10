@@ -1,0 +1,178 @@
+Return-path: <bounces+3673417-3d86-me=example.org@marketing.averiware.com>
+Original-recipient: rfc822;me@example.org
+Received: from p00-icloudmta-smtpin-us-west-2a-60-percent-1 by p57-mailgateway-smtp-7cd74cd4d8-kkd85 (mailgateway 2634B97)
+	with SMTP id redacted
+	for <me@example.org>; Wed, 23 Sep 2026 15:55:50 GMT
+Received: from s.xtrwnvrh.outbound-mail.sendgrid.net (s.xtrwnvrh.outbound-mail.sendgrid.net [167.89.40.80])
+	by redacted (Postfix) with ESMTPS id 383A6C00100
+	for <me@example.org>; Wed, 23 Sep 2026 15:55:48 +0000 (UTC)
+X-Spam-Flag: yes
+X-Suspected-Spam: true
+Authentication-Results: bimi.icloud.com; bimi=skipped reason="insufficient dmarc"
+X-ARC-Info: policy=fail; arc=none; r1=-20; r2=0
+Authentication-Results: arc.icloud.com; arc=none
+Authentication-Results: dmarc.icloud.com; dmarc=none header.from=averiware.com
+X-DMARC-Policy: none
+X-DMARC-Info: pass=none; dmarc-policy=(nopolicy); s=u0; d=u0; pdomain=averiware.com
+Authentication-Results: dkim-verifier.icloud.com; dkim=pass header.d=averiware.com header.i=@averiware.com header.b=LtHF0xbM
+Received-SPF: pass (spf.icloud.com: domain of bounces+3673417-3d86-me=example.org@marketing.averiware.com designates 167.89.40.80 as permitted sender) receiver=spf.icloud.com; client-ip=167.89.40.80; helo=s.xtrwnvrh.outbound-mail.sendgrid.net; envelope-from=bounces+3673417-3d86-me=example.org@marketing.averiware.com
+Authentication-Results: spf.icloud.com; spf=pass (spf.icloud.com: domain of bounces+3673417-3d86-me=example.org@marketing.averiware.com designates 167.89.40.80 as permitted sender) smtp.mailfrom=bounces+3673417-3d86-me=example.org@marketing.averiware.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=averiware.com;
+	h=content-type:date:from:mime-version:subject:to:cc:content-type:date:
+	from:subject:to;
+	s=s1; t=1790178946;
+	bh=Mb1kTsJx0+vD4k3Alm8cuHusRbprBNUCpm+ArUmA22g=;
+	b=LtHF0xbMCU/e5IGrQGSE6tzMmv/redacted
+	8FY1b3Mcx8VYo5nS+redacted
+	redacted+B0KEnae6kQxeA29deW
+	redacted
+	UnvWQBH81oxWM81U3GPv/redacted+hg==
+Received: by recvd-66978f4777-4dbf4 with SMTP id recvd-66978f4777-4dbf4-1-6AB3F682-15
+	2026-09-23 15:55:46.398640139 +0000 UTC m=+417284.457519069
+Received: from MzY3MzQxNw (unknown)
+	by geopod-ismtpd-4 (SG) with HTTP
+	id wf36q_o_QpidgVbCx0QK-Q
+	Wed, 23 Sep 2026 15:55:46.316 +0000 (UTC)
+Content-Type: multipart/alternative; boundary=efe3e74993d34d66a3f891235623a268261d1350ddf82b265740ca46604c
+Date: Wed, 23 Sep 2026 15:55:46 +0000 (UTC)
+From: SendGrid Account Team <noreply@averiware.com>
+Mime-Version: 1.0
+Message-ID: <wf36q_o_QpidgVbCx0QK-Q@geopod-ismtpd-4>
+Subject: Some API requests are failing
+To: me@example.org
+
+--efe3e74993d34d66a3f891235623a268261d1350ddf82b265740ca46604c
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain; charset=us-ascii
+Mime-Version: 1.0
+
+Please view this email in an HTML-capable client.
+
+---
+Sent to: me@example.org
+Sent from: SendGrid Account Team <noreply@averiware.com>
+(c) 2026 Averiware (averiware.com)
+Unsubscribe: https://u3673417.ct.sendgrid.net/ls/click?upn=redacted
+redacted=
+redacted=
+redacted=
+redacted=
+redacted
+--efe3e74993d34d66a3f891235623a268261d1350ddf82b265740ca46604c
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html; charset=us-ascii
+Mime-Version: 1.0
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+  <meta charset=3D"UTF-8">
+  <meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D=
+1.0">
+  <title>API request failures detected</title>
+</head>
+<body style=3D"margin:0; padding:0; background:#f4f6f8;
+  font-family:Arial,Helvetica,sans-serif; color:#294661;">
+  <table role=3D"presentation" width=3D"100%" cellpadding=3D"0"
+    cellspacing=3D"0">
+    <tr>
+      <td align=3D"center" style=3D"padding:40px 16px;">
+        <table role=3D"presentation" width=3D"520" cellpadding=3D"0"
+          cellspacing=3D"0" style=3D"width:100%; max-width:520px;
+          background:#ffffff; border-top:4px solid #1a82e2;">
+          <tr>
+            <td style=3D"padding:28px;">
+
+              <h1 style=3D"margin:0 0 16px; font-size:23px;
+                line-height:30px; color:#183b56;">
+                Some API requests are failing
+              </h1>
+
+              <p style=3D"margin:0 0 16px; font-size:15px;
+                line-height:24px; color:#526777;">
+                We detected unsuccessful API requests associated
+                with your account. These errors may be affecting
+                your integration.
+              </p>
+
+              <p style=3D"margin:0 0 20px; font-size:15px;
+                line-height:24px; color:#526777;">
+                Visit your developer logs to review the affected
+                requests, response codes, and error messages.
+                Use these details to identify and resolve the cause.
+              </p>
+
+              <p style=3D"margin:0 0 24px; font-size:15px;
+                line-height:24px;">
+                <a href=3D"https://u3673417.ct.sendgrid.net/ls/click?upn=redacted
+u001.redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted=
+redacted"
+                  style=3D"color:#0073b1; text-decoration:underline;">
+                  View developer logs
+                </a>
+              </p>
+
+              <p style=3D"margin:0; padding-top:18px;
+                border-top:1px solid #e6ebf0; color:#7b8b99;
+                font-size:12px; line-height:20px;">
+                You can also sign in directly and open your developer
+                logs. Never share API keys or other credentials
+                by email.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+<table role=3D"presentation" cellspacing=3D"0" cellpadding=3D"0"
+       border=3D"0" align=3D"center" width=3D"100%"
+       style=3D"max-width:600px;margin-top:35px;
+              border-top:1px solid #e0e0e0;
+              font-family:Arial,Helvetica,sans-serif;
+              font-size:12px;line-height:1.6;
+              color:#777777;text-align:center;">
+  <tr>
+    <td style=3D"padding:24px 12px;">
+      <div>Sent to: <strong>me@example.org</strong></div>
+      <div>Sent from: <strong>SendGrid Account Team</strong> &lt;noreply@av=
+eriware.com&gt;</div>
+      <div style=3D"margin-top:4px;">
+        &copy; 2026 <strong>Averiware</strong> (averiware.com). All rights =
+reserved.
+      </div>
+      <div style=3D"margin-top:10px;">
+        <a href=3D"https://u3673417.ct.sendgrid.net/ls/click?upn=redacted
+redacted=
+redacted=
+redacted=
+redacted=
+redacted" style=3D"color:#0066cc;text-d=
+ecoration:underline;">
+          Unsubscribe from these emails
+        </a>
+      </div>
+    </td>
+  </tr>
+</table><img src=3D"https://u3673417.ct.sendgrid.net/wf/open?upn=redacted
+redacted=
+redacted=
+redacted" =
+alt=3D"" width=3D"1" height=3D"1" border=3D"0" style=3D"height:1px !importa=
+nt;width:1px !important;border-width:0 !important;margin-top:0 !important;m=
+argin-bottom:0 !important;margin-right:0 !important;margin-left:0 !importan=
+t;padding-top:0 !important;padding-bottom:0 !important;padding-right:0 !imp=
+ortant;padding-left:0 !important;"/></body>
+</html>
+
+--efe3e74993d34d66a3f891235623a268261d1350ddf82b265740ca46604c--

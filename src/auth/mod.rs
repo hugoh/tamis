@@ -57,6 +57,33 @@ pub fn verified(raw: &[u8], server_id: &str) -> bool {
     false
 }
 
+/// A name that senders impersonate, and the domains that may really use it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Brand {
+    pub name: String,
+    pub domains: Vec<String>,
+}
+
+/// Returns the brand whose name the From display name claims while the From
+/// address is on none of the brand's domains or their subdomains.
+///
+/// Authentication can't catch this: the impersonator authenticates its own
+/// domain, usually through a real sending service.
+#[must_use]
+pub fn impersonated<'a>(raw: &[u8], brands: &'a [Brand]) -> Option<&'a Brand> {
+    let message = MessageParser::default().parse_headers(raw)?;
+    let from = message.from()?.first()?;
+    let name = from.name()?.to_lowercase();
+    let domain = from_domain(raw)?;
+    brands.iter().find(|brand| {
+        name.contains(&brand.name.to_lowercase())
+            && !brand
+                .domains
+                .iter()
+                .any(|own| aligned(&own.to_lowercase(), &domain))
+    })
+}
+
 /// Reports whether `authserv_id` is the configured provider's: its domain or a
 /// subdomain. Any id will do when none is configured.
 fn from_provider(authserv_id: &str, server_id: &str) -> bool {

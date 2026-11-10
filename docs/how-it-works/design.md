@@ -64,6 +64,7 @@ combiner. The other rows are not built.
 | Correspondent whitelist | Strongest ham signal; only counts when DKIM/DMARC passes |
 | Hide My Email alias ↔ expected sender | Mail to a single-site alias from someone else is suspect |
 | Provider's verdict (folder, auth headers) | Free prior |
+| Impersonation: display name claims a brand the authenticated domain doesn't own | Phishing through real sending services passes authentication; check built but not wired, see [the investigation](../../how-it-works/design/#phishing-through-real-sending-services) |
 
 The combined score maps to three tiers: **good**, **uncertain**, **spam**.
 

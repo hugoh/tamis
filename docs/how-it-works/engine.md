@@ -204,7 +204,8 @@ from the same word in the body.
 | Token | Source | Example |
 |---|---|---|
 | `subject:<word>` | words of the decoded `Subject` | `subject:invoice` |
-| `from:<address>` | `From` address, lowercased; the display name is ignored | `from:billing@example.com` |
+| `name:<word>` | words of the `From` display name, made like the subject's | `name:sendgrid` |
+| `from:<address>` | `From` address, lowercased | `from:billing@example.com` |
 | `from-domain:<domain>` | domain of the `From` address | `from-domain:example.com` |
 | `to:<address>` | `To` and `Cc` addresses, at most ten distinct | `to:me@example.net` |
 | `to-domain:<domain>` | domains of those addresses | `to-domain:example.net` |
@@ -241,9 +242,21 @@ The words are made like this:
   becomes a `skip:` token made of its first letter and its length rounded down
   to a multiple of ten, as SpamBayes does: long strings such as encoded
   blobs or tracking IDs are rarely the same twice, but their shape is. A
-  `skip:` token has no `subject:` prefix.
+  `skip:` token has no `subject:` or `name:` prefix.
 - A message that can't be parsed into headers is tokenized whole, as if it
   were body text.
+
+**Display name.** `name:` tokens let the filter learn what a sender calls
+itself, which phishing sent through a real service imitates while its
+authenticated domain is the sender's own (see
+[Impersonation](../../how-it-works/engine/#judging-a-message)). On the author's
+mailbox they lowered the evaluation loss in 10 of 10 runs, by about 0.1
+points, and left good mail unaffected. They don't stop a campaign by
+themselves: the lures there scored low because their bodies read like
+receipts. Adding tokens leaves the existing ones alone, so the
+[tokenizer version](../../how-it-works/engine/#tokenizer-version) is not
+bumped. Messages learnt before carry no `name:` tokens; the model picks them
+up from new mail, or from `tamis bootstrap --refresh`.
 
 Other headers (`Received`, `Message-ID`, `Reply-To`, `X-Mailer`, `List-*`) and
 the structure of the message are not tokenized. `Authentication-Results` only

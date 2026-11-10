@@ -47,6 +47,7 @@
         "subject:ana",
         "to:me@example.org",
         "to-domain:example.org",
+        "name:jos",
         "from:jose@example.es",
         "from-domain:example.es",
         "hola",
@@ -62,6 +63,7 @@
         "subject:ana",
         "to:me@example.org",
         "to-domain:example.org",
+        "name:jos",
         "from:jose@example.es",
         "from-domain:example.es",
         "hola",
@@ -160,6 +162,7 @@
         "to:u8@example.org",
         "to:u9@example.org",
         "to:u10@example.org",
+        "name:newsletter",
         "from:news@lists.example.org",
         "from-domain:lists.example.org",
         "hello",
@@ -181,6 +184,7 @@
         "to:u8@example.org",
         "to:u9@example.org",
         "to:u10@example.org",
+        "name:newsletter",
         "from:news@lists.example.org",
         "from-domain:lists.example.org",
         "hello",
@@ -213,6 +217,7 @@
         "to-domain:example.org",
         "to:other@example.com",
         "to-domain:example.com",
+        "name:alice",
         "from:alice@friends.example.org",
         "from-domain:friends.example.org",
         "thursday",
@@ -226,6 +231,7 @@
         "to-domain:example.org",
         "to:other@example.com",
         "to-domain:example.com",
+        "name:alice",
         "from:alice@friends.example.org",
         "from-domain:friends.example.org",
         "thursday",
@@ -234,43 +240,47 @@
         "lunch",
         "rcpt:mine"
       ],
-      "score": 0.0005104829651618736,
+      "score": 0.00040612594581274086,
       "clues": [
         {
-          "token": "to:me@example.org",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "to:me@example.org"
         },
         {
-          "token": "rcpt:mine",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "rcpt:mine"
         },
         {
-          "token": "subject:thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "subject:thursday"
         },
         {
-          "token": "from-domain:friends.example.org",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "from-domain:friends.example.org"
         },
         {
-          "token": "thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "thursday"
         },
         {
-          "token": "works",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "works"
         },
         {
-          "token": "for",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "for"
         },
         {
-          "token": "from:alice@friends.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "name:alice"
         },
         {
-          "token": "lunch",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "from:alice@friends.example.org"
+        },
+        {
+          "prob": 0.15517241379310345,
+          "token": "lunch"
         }
       ]
     },
@@ -282,6 +292,8 @@
         "subject:lunch",
         "to:me@example.org",
         "to-domain:example.org",
+        "name:alice",
+        "name:émilie",
         "from:alice@friends.example.org",
         "from-domain:friends.example.org",
         "lunch",
@@ -304,6 +316,8 @@
         "subject:lunch",
         "to:me@example.org",
         "to-domain:example.org",
+        "name:alice",
+        "name:émilie",
         "from:alice@friends.example.org",
         "from-domain:friends.example.org",
         "lunch",
@@ -321,63 +335,67 @@
         "link",
         "rcpt:mine"
       ],
-      "score": 0.18104966001643097,
+      "score": 0.13933940630065306,
       "clues": [
         {
-          "token": "to:me@example.org",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "to:me@example.org"
         },
         {
-          "token": "the",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "the"
         },
         {
-          "token": "rcpt:mine",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "rcpt:mine"
         },
         {
-          "token": "free",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "free"
         },
         {
-          "token": "subject:thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "subject:thursday"
         },
         {
-          "token": "subject:lunch",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "subject:lunch"
         },
         {
-          "token": "from-domain:friends.example.org",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "from-domain:friends.example.org"
         },
         {
-          "token": "thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "thursday"
         },
         {
-          "token": "your",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "your"
         },
         {
-          "token": "prize",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "prize"
         },
         {
-          "token": "claim",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "claim"
         },
         {
-          "token": "url:example.co.uk",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:example.co.uk"
         },
         {
-          "token": "from:alice@friends.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "name:alice"
         },
         {
-          "token": "lunch",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "from:alice@friends.example.org"
+        },
+        {
+          "prob": 0.15517241379310345,
+          "token": "lunch"
         }
       ]
     },
@@ -386,6 +404,7 @@
       "tokens": [
         "subject:recipients",
         "subject:here",
+        "name:alice",
         "from:alice@friends.example.org",
         "from-domain:friends.example.org",
         "thursday",
@@ -394,29 +413,34 @@
       "with_status": [
         "subject:recipients",
         "subject:here",
+        "name:alice",
         "from:alice@friends.example.org",
         "from-domain:friends.example.org",
         "thursday",
         "lunch",
         "rcpt:none"
       ],
-      "score": 0.016113793101411977,
+      "score": 0.011916550966883155,
       "clues": [
         {
-          "token": "from-domain:friends.example.org",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "from-domain:friends.example.org"
         },
         {
-          "token": "thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "thursday"
         },
         {
-          "token": "from:alice@friends.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "name:alice"
         },
         {
-          "token": "lunch",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "from:alice@friends.example.org"
+        },
+        {
+          "prob": 0.15517241379310345,
+          "token": "lunch"
         }
       ]
     },
@@ -427,6 +451,7 @@
         "subject:thursday",
         "to:me@example.org",
         "to-domain:example.org",
+        "name:alice",
         "from:alice@friends.example.org",
         "from-domain:friends.example.org",
         "are",
@@ -444,6 +469,7 @@
         "subject:thursday",
         "to:me@example.org",
         "to-domain:example.org",
+        "name:alice",
         "from:alice@friends.example.org",
         "from-domain:friends.example.org",
         "are",
@@ -457,67 +483,71 @@
         "works",
         "rcpt:mine"
       ],
-      "score": 0.000028400599512923286,
+      "score": 2.2611296273677972e-5,
       "clues": [
         {
-          "token": "to:me@example.org",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "to:me@example.org"
         },
         {
-          "token": "the",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "the"
         },
         {
-          "token": "rcpt:mine",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "rcpt:mine"
         },
         {
-          "token": "subject:lunch",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "subject:lunch"
         },
         {
-          "token": "subject:thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "subject:thursday"
         },
         {
-          "token": "from-domain:friends.example.org",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "from-domain:friends.example.org"
         },
         {
-          "token": "for",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "for"
         },
         {
-          "token": "thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "thursday"
         },
         {
-          "token": "usual",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "usual"
         },
         {
-          "token": "place",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "place"
         },
         {
-          "token": "works",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "works"
         },
         {
-          "token": "from:alice@friends.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "name:alice"
         },
         {
-          "token": "are",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "from:alice@friends.example.org"
         },
         {
-          "token": "still",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "are"
         },
         {
-          "token": "lunch",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "still"
+        },
+        {
+          "prob": 0.15517241379310345,
+          "token": "lunch"
         }
       ]
     },
@@ -530,6 +560,7 @@
         "subject:candidate",
         "to:me@example.org",
         "to-domain:example.org",
+        "name:nuts",
         "from:noreply@golang.example.org",
         "from-domain:golang.example.org",
         "url:github.com",
@@ -554,6 +585,7 @@
         "subject:candidate",
         "to:me@example.org",
         "to-domain:example.org",
+        "name:nuts",
         "from:noreply@golang.example.org",
         "from-domain:golang.example.org",
         "url:github.com",
@@ -572,95 +604,99 @@
         "review",
         "rcpt:mine"
       ],
-      "score": 0.00004304365812884958,
+      "score": 3.345870078358404e-5,
       "clues": [
         {
-          "token": "to:me@example.org",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "to:me@example.org"
         },
         {
-          "token": "the",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "the"
         },
         {
-          "token": "rcpt:mine",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "rcpt:mine"
         },
         {
-          "token": "for",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "for"
         },
         {
-          "token": "subject:golang",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "subject:golang"
         },
         {
-          "token": "subject:nuts",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "subject:nuts"
         },
         {
-          "token": "subject:release",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "subject:release"
         },
         {
-          "token": "subject:candidate",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "subject:candidate"
         },
         {
-          "token": "from:noreply@golang.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "name:nuts"
         },
         {
-          "token": "from-domain:golang.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "from:noreply@golang.example.org"
         },
         {
-          "token": "url:github.com",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "from-domain:golang.example.org"
         },
         {
-          "token": "release",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "url:github.com"
         },
         {
-          "token": "candidate",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "release"
         },
         {
-          "token": "ready",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "candidate"
         },
         {
-          "token": "testing",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "ready"
         },
         {
-          "token": "please",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "testing"
         },
         {
-          "token": "file",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "please"
         },
         {
-          "token": "issues",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "file"
         },
         {
-          "token": "thanks",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "issues"
         },
         {
-          "token": "help",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "thanks"
         },
         {
-          "token": "with",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "help"
         },
         {
-          "token": "review",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "with"
+        },
+        {
+          "prob": 0.15517241379310345,
+          "token": "review"
         }
       ]
     },
@@ -673,6 +709,7 @@
         "to-domain:example.org",
         "to:carol@friends.example.org",
         "to-domain:friends.example.org",
+        "name:bob",
         "from:bob@friends.example.org",
         "from-domain:friends.example.org",
         "thursday",
@@ -691,6 +728,7 @@
         "to-domain:example.org",
         "to:carol@friends.example.org",
         "to-domain:friends.example.org",
+        "name:bob",
         "from:bob@friends.example.org",
         "from-domain:friends.example.org",
         "thursday",
@@ -703,71 +741,75 @@
         "place",
         "rcpt:mine"
       ],
-      "score": 0.0000310429989383576,
+      "score": 2.4569999460932745e-5,
       "clues": [
         {
-          "token": "to:me@example.org",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "to:me@example.org"
         },
         {
-          "token": "the",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "the"
         },
         {
-          "token": "rcpt:mine",
-          "prob": 0.06521739130434782
+          "prob": 0.06521739130434782,
+          "token": "rcpt:mine"
         },
         {
-          "token": "subject:lunch",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "subject:lunch"
         },
         {
-          "token": "subject:thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "subject:thursday"
         },
         {
-          "token": "from-domain:friends.example.org",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "from-domain:friends.example.org"
         },
         {
-          "token": "thursday",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "thursday"
         },
         {
-          "token": "works",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "works"
         },
         {
-          "token": "usual",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "usual"
         },
         {
-          "token": "place",
-          "prob": 0.09183673469387754
+          "prob": 0.09183673469387754,
+          "token": "place"
         },
         {
-          "token": "to:carol@friends.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "to:carol@friends.example.org"
         },
         {
-          "token": "to-domain:friends.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "to-domain:friends.example.org"
         },
         {
-          "token": "from:bob@friends.example.org",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "name:bob"
         },
         {
-          "token": "see",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "from:bob@friends.example.org"
         },
         {
-          "token": "you",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "see"
         },
         {
-          "token": "noon",
-          "prob": 0.15517241379310345
+          "prob": 0.15517241379310345,
+          "token": "you"
+        },
+        {
+          "prob": 0.15517241379310345,
+          "token": "noon"
         }
       ]
     },
@@ -781,6 +823,8 @@
         "subject:prize",
         "to:victim@example.org",
         "to-domain:example.org",
+        "name:prize",
+        "name:desk",
         "from:winner@lottery-prizes.example.com",
         "from-domain:lottery-prizes.example.com",
         "url:claim.lottery-prizes.example.com",
@@ -809,6 +853,8 @@
         "subject:prize",
         "to:victim@example.org",
         "to-domain:example.org",
+        "name:prize",
+        "name:desk",
         "from:winner@lottery-prizes.example.com",
         "from-domain:lottery-prizes.example.com",
         "url:claim.lottery-prizes.example.com",
@@ -830,111 +876,119 @@
         "money",
         "rcpt:other"
       ],
-      "score": 0.999994936427071,
+      "score": 0.9999969061371983,
       "clues": [
         {
-          "token": "free",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "free"
         },
         {
-          "token": "now",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "now"
         },
         {
-          "token": "rcpt:other",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "rcpt:other"
         },
         {
-          "token": "to:victim@example.org",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "to:victim@example.org"
         },
         {
-          "token": "your",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "your"
         },
         {
-          "token": "prize",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "prize"
         },
         {
-          "token": "act",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "act"
         },
         {
-          "token": "big",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "big"
         },
         {
-          "token": "subject:you",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:you"
         },
         {
-          "token": "subject:have",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:have"
         },
         {
-          "token": "subject:won",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:won"
         },
         {
-          "token": "subject:free",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:free"
         },
         {
-          "token": "subject:prize",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:prize"
         },
         {
-          "token": "from:winner@lottery-prizes.example.com",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "name:prize"
         },
         {
-          "token": "from-domain:lottery-prizes.example.com",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "name:desk"
         },
         {
-          "token": "url:claim.lottery-prizes.example.com",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "from:winner@lottery-prizes.example.com"
         },
         {
-          "token": "url:lottery-prizes.example.com",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "from-domain:lottery-prizes.example.com"
         },
         {
-          "token": "url:example.com",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:claim.lottery-prizes.example.com"
         },
         {
-          "token": "skip:c 10",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:lottery-prizes.example.com"
         },
         {
-          "token": "winner",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:example.com"
         },
         {
-          "token": "claim",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "skip:c 10"
         },
         {
-          "token": "limited",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "winner"
         },
         {
-          "token": "offer",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "claim"
         },
         {
-          "token": "and",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "limited"
         },
         {
-          "token": "win",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "offer"
         },
         {
-          "token": "money",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "and"
+        },
+        {
+          "prob": 0.8448275862068967,
+          "token": "win"
+        },
+        {
+          "prob": 0.8448275862068967,
+          "token": "money"
         }
       ]
     },
@@ -949,6 +1003,7 @@
         "to-domain:example.org",
         "to:b@example.org",
         "to:c@example.org",
+        "name:deals",
         "from:deals@cheap-pills.example.net",
         "from-domain:cheap-pills.example.net",
         "url:shop.cheap-pills.example.net",
@@ -972,6 +1027,7 @@
         "to-domain:example.org",
         "to:b@example.org",
         "to:c@example.org",
+        "name:deals",
         "from:deals@cheap-pills.example.net",
         "from-domain:cheap-pills.example.net",
         "url:shop.cheap-pills.example.net",
@@ -987,91 +1043,95 @@
         "discount",
         "rcpt:other"
       ],
-      "score": 0.9999446206044591,
+      "score": 0.9999569563418711,
       "clues": [
         {
-          "token": "now",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "now"
         },
         {
-          "token": "free",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "free"
         },
         {
-          "token": "rcpt:other",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "rcpt:other"
         },
         {
-          "token": "big",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "big"
         },
         {
-          "token": "subject:cheap",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:cheap"
         },
         {
-          "token": "subject:pills",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:pills"
         },
         {
-          "token": "subject:limited",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:limited"
         },
         {
-          "token": "subject:offer",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:offer"
         },
         {
-          "token": "to:a@example.org",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "to:a@example.org"
         },
         {
-          "token": "to:b@example.org",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "to:b@example.org"
         },
         {
-          "token": "to:c@example.org",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "to:c@example.org"
         },
         {
-          "token": "from:deals@cheap-pills.example.net",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "name:deals"
         },
         {
-          "token": "from-domain:cheap-pills.example.net",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "from:deals@cheap-pills.example.net"
         },
         {
-          "token": "url:shop.cheap-pills.example.net",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "from-domain:cheap-pills.example.net"
         },
         {
-          "token": "url:cheap-pills.example.net",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:shop.cheap-pills.example.net"
         },
         {
-          "token": "url:example.net",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:cheap-pills.example.net"
         },
         {
-          "token": "buy",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:example.net"
         },
         {
-          "token": "cheap",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "buy"
         },
         {
-          "token": "pills",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "cheap"
         },
         {
-          "token": "shipping",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "pills"
         },
         {
-          "token": "discount",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "shipping"
+        },
+        {
+          "prob": 0.8448275862068967,
+          "token": "discount"
         }
       ]
     },
@@ -1084,6 +1144,8 @@
         "subject:account",
         "to:victim@example.org",
         "to-domain:example.org",
+        "name:bank",
+        "name:security",
         "from:security@bank-alerts.example.co.uk",
         "from-domain:bank-alerts.example.co.uk",
         "url:login.secure.bank-alerts.example.co.uk",
@@ -1109,6 +1171,8 @@
         "subject:account",
         "to:victim@example.org",
         "to-domain:example.org",
+        "name:bank",
+        "name:security",
         "from:security@bank-alerts.example.co.uk",
         "from-domain:bank-alerts.example.co.uk",
         "url:login.secure.bank-alerts.example.co.uk",
@@ -1128,99 +1192,107 @@
         "inside",
         "rcpt:other"
       ],
-      "score": 0.9999858354261781,
+      "score": 0.9999913611465044,
       "clues": [
         {
-          "token": "now",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "now"
         },
         {
-          "token": "free",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "free"
         },
         {
-          "token": "rcpt:other",
-          "prob": 0.9347826086956521
+          "prob": 0.9347826086956521,
+          "token": "rcpt:other"
         },
         {
-          "token": "to:victim@example.org",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "to:victim@example.org"
         },
         {
-          "token": "your",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "your"
         },
         {
-          "token": "act",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "act"
         },
         {
-          "token": "prize",
-          "prob": 0.9081632653061225
+          "prob": 0.9081632653061225,
+          "token": "prize"
         },
         {
-          "token": "subject:urgent",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:urgent"
         },
         {
-          "token": "subject:verify",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:verify"
         },
         {
-          "token": "subject:your",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:your"
         },
         {
-          "token": "subject:account",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "subject:account"
         },
         {
-          "token": "from:security@bank-alerts.example.co.uk",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "name:bank"
         },
         {
-          "token": "from-domain:bank-alerts.example.co.uk",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "name:security"
         },
         {
-          "token": "url:login.secure.bank-alerts.example.co.uk",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "from:security@bank-alerts.example.co.uk"
         },
         {
-          "token": "url:secure.bank-alerts.example.co.uk",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "from-domain:bank-alerts.example.co.uk"
         },
         {
-          "token": "url:bank-alerts.example.co.uk",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:login.secure.bank-alerts.example.co.uk"
         },
         {
-          "token": "url:example.co.uk",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:secure.bank-alerts.example.co.uk"
         },
         {
-          "token": "account",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:bank-alerts.example.co.uk"
         },
         {
-          "token": "suspended",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "url:example.co.uk"
         },
         {
-          "token": "verify",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "account"
         },
         {
-          "token": "lose",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "suspended"
         },
         {
-          "token": "access",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "verify"
         },
         {
-          "token": "inside",
-          "prob": 0.8448275862068967
+          "prob": 0.8448275862068967,
+          "token": "lose"
+        },
+        {
+          "prob": 0.8448275862068967,
+          "token": "access"
+        },
+        {
+          "prob": 0.8448275862068967,
+          "token": "inside"
         }
       ]
     }

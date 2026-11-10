@@ -31,7 +31,7 @@ static URL_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?i)https?://[^\s"'<>()]+"#).expect("the URL pattern is valid"));
 
 /// Extracts the distinct features of a raw RFC 5322 message: words from the
-/// subject and text parts, sender address and domain, recipient addresses and
+/// subject and text parts, sender display name, address and domain, recipient addresses and
 /// domains, and link hosts. It never fails; unparsable input yields whatever
 /// could be recovered.
 #[must_use]
@@ -50,6 +50,11 @@ pub fn tokenize(raw: &[u8]) -> Vec<String> {
         tokens.add_text("subject:", subject);
     }
     add_recipient_tokens(&mut tokens, message.to(), message.cc());
+    if let Some(list) = message.from() {
+        for name in list.mailboxes().filter_map(|m| m.name().map(str::to_owned)) {
+            tokens.add_text("name:", &name);
+        }
+    }
     for address in addresses(message.from()) {
         tokens.add(&format!("from:{address}"));
         if let Some((_, domain)) = address.split_once('@') {
@@ -339,6 +344,31 @@ mod tests {
 
     fn body(text: &str) -> Vec<String> {
         tokens("x", text)
+    }
+
+    fn from_name(header: &str) -> Vec<String> {
+        tokenize(format!("From: {header}\r\nSubject: x\r\n\r\nbody\r\n").as_bytes())
+    }
+
+    #[test]
+    fn display_name_words_are_prefixed_and_the_address_is_not() {
+        let t = from_name("SendGrid Account Team <noreply@example.com>");
+        assert!(has(
+            &t,
+            &[
+                "name:sendgrid",
+                "name:account",
+                "name:team",
+                "from:noreply@example.com"
+            ]
+        ));
+        assert!(!t.iter().any(|w| w.starts_with("name:example")));
+    }
+
+    #[test]
+    fn a_from_without_a_display_name_adds_no_name_tokens() {
+        let t = from_name("noreply@example.com");
+        assert!(!t.iter().any(|w| w.starts_with("name:")));
     }
 
     fn has(tokens: &[String], wanted: &[&str]) -> bool {

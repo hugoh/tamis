@@ -108,10 +108,29 @@ pub fn without_recipients() -> Variant {
     }
 }
 
+struct WithoutDisplayName;
+
+impl Featurizer for WithoutDisplayName {
+    fn tokens(&self, raw: &[u8], _: &dyn Model) -> Vec<String> {
+        let mut tokens = classify::tokenize(raw);
+        tokens.retain(|token| !token.starts_with("name:"));
+        tokens
+    }
+}
+
+/// Tokens without the words of the `From` display name.
+#[must_use]
+pub fn without_display_name() -> Variant {
+    Variant {
+        name: "- display name tokens".to_owned(),
+        new: Box::new(|| Box::new(WithoutDisplayName)),
+    }
+}
+
 /// The variants `tamis-eval run` compares; the first is the baseline.
 #[must_use]
 pub fn standard(own: &[String]) -> Vec<Variant> {
-    vec![baseline(own), without_recipients()]
+    vec![baseline(own), without_recipients(), without_display_name()]
 }
 
 #[derive(Default)]
@@ -428,6 +447,17 @@ mod tests {
     }
 
     #[test]
+    fn the_display_name_variant_drops_name_tokens_only() {
+        let raw = b"From: SendGrid Team <noreply@example.com>\r\nSubject: hi\r\n\r\nbody\r\n";
+        let with = classify::tokenize(raw);
+        let without = WithoutDisplayName.tokens(raw, &Counts::default());
+
+        assert!(with.iter().any(|t| t == "name:sendgrid"));
+        assert!(!without.iter().any(|t| t.starts_with("name:")));
+        assert_eq!(without.len() + 2, with.len());
+    }
+
+    #[test]
     fn compare_runs_every_variant_the_same_number_of_times_repeatably() {
         let variants = standard(&[]);
         let messages = corpus(20);
@@ -435,7 +465,7 @@ mod tests {
         let first = compare(&messages, &variants, 3, Options { warmup: 5 }).unwrap();
         let again = compare(&messages, &variants, 3, Options { warmup: 5 }).unwrap();
 
-        assert_eq!((first.len(), first[0].len(), first[1].len()), (2, 3, 3));
+        assert_eq!((first.len(), first[0].len(), first[1].len()), (3, 3, 3));
         assert_eq!(first, again);
         assert_eq!(
             first[0][0],
@@ -453,14 +483,14 @@ mod tests {
             ham: 10,
             spam: 10,
         };
-        let variants = standard(&[]);
+        let variants = &standard(&[])[..2];
         let results = vec![
             vec![outcome(1.0), outcome(2.0)],
             vec![outcome(0.5), outcome(2.5)],
         ];
         let mut out = Vec::new();
 
-        write_report(&mut out, &variants, &results).unwrap();
+        write_report(&mut out, variants, &results).unwrap();
 
         let text = String::from_utf8(out).unwrap();
         let lines: Vec<&str> = text.lines().collect();

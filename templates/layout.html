@@ -12,7 +12,7 @@
 <div class="navbar bg-base-200 shadow-sm px-4">
 <div class="flex-1"><span class="text-xl font-semibold">tamis</span></div>
 {% if !nav.is_empty() %}<div class="flex-none flex items-center gap-2">
-<ul id="nav" class="menu menu-horizontal" hx-boost="true" hx-target="main" hx-select="main" hx-select-oob="#nav" hx-swap="outerHTML show:window:top">
+<ul class="menu menu-horizontal">
 <li><a href="/"{% if nav == "decisions" %} class="menu-active"{% endif %}>Decisions</a></li>
 <li><a href="/health"{% if nav == "health" %} class="menu-active"{% endif %}>Health</a></li>
 <li><a href="/whitelist"{% if nav == "whitelist" %} class="menu-active"{% endif %}>Whitelist</a></li>
@@ -29,8 +29,6 @@
 <div id="toasts" class="toast toast-end" role="status" aria-live="polite"></div>
 <script src="/static/vendor/htmx.min.js?v={{ version }}"></script>
 <script src="/static/feedback.js?v={{ version }}"></script>
-{% if !nav.is_empty() %}<script src="/static/rules.js?v={{ version }}"></script>
-<script src="/static/whitelist.js?v={{ version }}"></script>
-{% endif %}{% block scripts %}{% endblock %}
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -13,10 +13,8 @@ function page() {
   const toasts = [];
   const timers = [];
   const triggered = [];
-  const assigned = [];
 
   const sandbox = {
-    URL,
     document: {
       getElementById: (id) =>
         id === "toasts" ? { append: (alert) => toasts.push(alert) } : null,
@@ -46,7 +44,6 @@ function page() {
     },
     setTimeout: (callback, delay) => timers.push({ callback, delay }),
     htmx: { trigger: (...args) => triggered.push(args) },
-    location: { assign: (url) => assigned.push(url) },
   };
   vm.runInNewContext(SCRIPT, sandbox);
 
@@ -54,7 +51,6 @@ function page() {
     toasts,
     timers,
     triggered,
-    assigned,
     fire: (name, detail) => handlers[name]({ detail }),
   };
 }
@@ -170,69 +166,4 @@ test("a toast removes itself when its timer fires", () => {
   timers[0].callback();
 
   assert.equal(toasts[0].removed, true);
-});
-
-test("navigating with a boosted link never raises a note toast", () => {
-  const { fire, toasts, triggered } = page();
-
-  fire(
-    "htmx:afterRequest",
-    respond("<main><div data-note>Old note</div></main>", { boosted: true }),
-  );
-
-  assert.deepEqual(toasts, []);
-  assert.deepEqual(triggered, []);
-});
-
-test("a boosted navigation that fails still raises an error toast", () => {
-  const { fire, toasts } = page();
-
-  fire("htmx:afterRequest", {
-    elt: { tagName: "A", dataset: {} },
-    boosted: true,
-    successful: false,
-    xhr: { status: 500 },
-  });
-
-  assert.equal(toasts[0].className, "alert alert-error");
-});
-
-test("a boosted navigation redirected to the login page reloads instead of nesting it", () => {
-  const { fire, assigned } = page();
-  const detail = {
-    boosted: true,
-    shouldSwap: true,
-    xhr: { responseURL: "https://tamis.test/login" },
-  };
-
-  fire("htmx:beforeSwap", detail);
-
-  assert.equal(detail.shouldSwap, false);
-  assert.deepEqual(assigned, ["https://tamis.test/login"]);
-});
-
-test("a boosted navigation to an ordinary page swaps normally", () => {
-  const { fire, assigned } = page();
-  const detail = {
-    boosted: true,
-    shouldSwap: true,
-    xhr: { responseURL: "https://tamis.test/health" },
-  };
-
-  fire("htmx:beforeSwap", detail);
-
-  assert.equal(detail.shouldSwap, true);
-  assert.deepEqual(assigned, []);
-});
-
-test("a non-boosted request redirected to login is left to htmx", () => {
-  const { fire } = page();
-  const detail = {
-    shouldSwap: true,
-    xhr: { responseURL: "https://tamis.test/login" },
-  };
-
-  fire("htmx:beforeSwap", detail);
-
-  assert.equal(detail.shouldSwap, true);
 });

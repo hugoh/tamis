@@ -355,31 +355,11 @@ fn nearest(target: &str, existing: &[String]) -> Option<String> {
     existing
         .iter()
         .map(|name| {
-            (
-                edit_distance(target.as_bytes(), name.to_lowercase().as_bytes()),
-                name,
-            )
+            (strsim::levenshtein(&target, &name.to_lowercase()), name)
         })
         .filter(|(distance, _)| *distance <= MAX_TYPOS)
         .min_by_key(|(distance, _)| *distance)
         .map(|(_, name)| name.clone())
-}
-
-fn edit_distance(left: &[u8], right: &[u8]) -> usize {
-    let mut previous: Vec<usize> = (0..=right.len()).collect();
-    for (row, l) in left.iter().enumerate() {
-        let mut current = vec![row + 1];
-        for (col, r) in right.iter().enumerate() {
-            let cost = usize::from(l != r);
-            current.push(
-                (previous[col + 1] + 1)
-                    .min(current[col] + 1)
-                    .min(previous[col] + cost),
-            );
-        }
-        previous = current;
-    }
-    previous[right.len()]
 }
 
 #[cfg(test)]

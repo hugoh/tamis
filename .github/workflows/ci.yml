@@ -13,6 +13,10 @@ on:
         description: "Version bump type"
         default: auto
         options: [auto, patch, minor, major]
+      dry_run:
+        type: boolean
+        description: "Rehearse the release (plan, preflight, tag) without pushing the tag or publishing; allowed on any branch"
+        default: false
 
 permissions: {}
 
@@ -101,7 +105,7 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
     steps:
       - name: Guard manual dispatch to main
-        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && !inputs.dry_run
         env:
           GITHUB_REF: ${{ github.ref }}
         run: |
@@ -162,7 +166,8 @@ jobs:
       contents: write
       id-token: write
     outputs:
-      tag: ${{ steps.validate.outputs.tag }}
+      # Empty on a dry run, so build and release are skipped.
+      tag: ${{ !inputs.dry_run && steps.validate.outputs.tag || '' }}
     env:
       MISE_ENV: package
     concurrency:
@@ -190,7 +195,7 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
       - name: Push tag
-        if: steps.validate.outputs.tag != ''
+        if: steps.validate.outputs.tag != '' && !inputs.dry_run
         env:
           TAG: ${{ steps.validate.outputs.tag }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -100,6 +100,18 @@ impl Site {
         .await
     }
 
+    async fn get_boosted(&self, uri: &str) -> Response {
+        self.send(
+            Request::get(uri)
+                .header("hx-request", "true")
+                .header("hx-boosted", "true")
+                .body(Body::empty())
+                .unwrap(),
+            true,
+        )
+        .await
+    }
+
     async fn post(&self, uri: &str, body: &str) -> Response {
         let request = Request::post(uri)
             .header(header::ORIGIN, ORIGIN)
@@ -222,6 +234,19 @@ async fn every_response_carries_the_security_headers() {
     assert_eq!(headers[header::REFERRER_POLICY], "no-referrer");
     assert_eq!(headers[header::CACHE_CONTROL], "no-store");
     assert!(text(response).await.contains("Sign in with a passkey"));
+}
+
+#[tokio::test]
+async fn boosted_navigation_gets_whole_pages_to_select_main_from() {
+    let site = site();
+
+    for uri in ["/", "/whitelist", "/logs"] {
+        let page = text(site.get_boosted(uri).await).await;
+        assert!(
+            page.contains("<main") && page.contains("id=\"nav\""),
+            "{uri}: {page}"
+        );
+    }
 }
 
 #[tokio::test]

@@ -23,6 +23,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use cookie::{Cookie, SameSite};
+use headers::{ETag, HeaderMapExt as _, IfNoneMatch};
 use rust_embed::RustEmbed;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -369,13 +370,11 @@ async fn static_file(
         return StatusCode::NOT_FOUND.into_response();
     };
     let etag = format!("\"{}\"", hex::encode(file.metadata.sha256_hash()));
-    let unchanged = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|sent| {
-            sent.split(',')
-                .any(|tag| tag.trim().trim_start_matches("W/") == etag)
-        });
+    let unchanged = etag.parse::<ETag>().is_ok_and(|current| {
+        headers
+            .typed_get::<IfNoneMatch>()
+            .is_some_and(|sent| !sent.precondition_passes(&current))
+    });
     let versioned = query
         .as_deref()
         .and_then(|query| query.split('&').find_map(|pair| pair.strip_prefix("v=")))

@@ -24,6 +24,7 @@ clap = { version = "4.6.7", features = ["derive", "env"] }
 cookie = { version = "0.18.1", default-features = false }
 fastrand = "2.5.0"
 getrandom = "0.4.3"
+headers = "0.4.1"
 hex = "0.4.3"
 html5ever = "0.40.1"
 humantime = "2.4.0"

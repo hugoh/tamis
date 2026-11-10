@@ -954,6 +954,8 @@ async fn static_files_carry_an_etag_and_answer_a_matching_one_with_not_modified(
     let same = revalidate(etag.clone()).await;
     let weakened = revalidate(format!("W/{etag}")).await;
     let other = revalidate("\"stale\"".to_owned()).await;
+    let any = revalidate("*".to_owned()).await;
+    let listed = revalidate(format!("\"stale\", {etag}")).await;
 
     assert_eq!(first.headers()[header::CACHE_CONTROL], "no-cache");
     assert_eq!(same.status(), StatusCode::NOT_MODIFIED);
@@ -961,6 +963,8 @@ async fn static_files_carry_an_etag_and_answer_a_matching_one_with_not_modified(
     assert!(text(same).await.is_empty());
     assert_eq!(weakened.status(), StatusCode::NOT_MODIFIED);
     assert_eq!(other.status(), StatusCode::OK);
+    assert_eq!(any.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(listed.status(), StatusCode::NOT_MODIFIED);
 }
 
 #[tokio::test]

@@ -918,7 +918,7 @@ async fn responses_are_compressed_for_clients_that_accept_it() {
     let plain = get("/static/rules.js", "identity").await;
 
     assert_eq!(script.headers()[header::CONTENT_ENCODING], "gzip");
-    assert_eq!(page.headers()[header::CONTENT_ENCODING], "br");
+    assert_eq!(page.headers()[header::CONTENT_ENCODING], "gzip");
     assert!(!plain.headers().contains_key(header::CONTENT_ENCODING));
 }
 

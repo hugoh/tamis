@@ -349,6 +349,14 @@ async fn corrected_decisions_can_be_hidden_and_offer_no_buttons() {
     );
 }
 
+/// Injected into the mock page: it is a static picture, so nothing in it
+/// should navigate or submit.
+const MOCK_FREEZE: &str = "<style>a,button,input,select,textarea,label,summary,[hx-get],[hx-post]\
+     {pointer-events:none!important;cursor:default!important}</style>\
+     <script>for(const t of['click','submit','keydown'])\
+     addEventListener(t,e=>{if(t!=='keydown'||e.key==='Enter')e.preventDefault()},true)</script>\
+     </head>";
+
 /// Writes a standalone decisions page (CSS inlined) for eyeballing or docs:
 /// `mise run mock-web`; set `TAMIS_MOCK_PAGE` to write elsewhere
 #[tokio::test]
@@ -453,15 +461,7 @@ async fn mock_decisions_page() {
             "<script src=\"/static/vendor/htmx.min.js?v=\"></script>",
             "",
         )
-        // The mock is a static picture: nothing in it should navigate or submit.
-        .replace(
-            "</head>",
-            "<style>a,button,input,select,textarea,label,summary,[hx-get],[hx-post]\
-             {pointer-events:none!important;cursor:default!important}</style>\
-             <script>for(const t of['click','submit','keydown'])\
-             addEventListener(t,e=>{if(t!=='keydown'||e.key==='Enter')e.preventDefault()},true)</script>\
-             </head>",
-        );
+        .replace("</head>", MOCK_FREEZE);
     let out =
         std::env::var("TAMIS_MOCK_PAGE").unwrap_or_else(|_| "target/mock-decisions.html".into());
     std::fs::write(out, page).unwrap();

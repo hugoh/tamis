@@ -452,6 +452,15 @@ async fn mock_decisions_page() {
         .replace(
             "<script src=\"/static/vendor/htmx.min.js?v=\"></script>",
             "",
+        )
+        // The mock is a static picture: nothing in it should navigate or submit.
+        .replace(
+            "</head>",
+            "<style>a,button,input,select,textarea,label,summary,[hx-get],[hx-post]\
+             {pointer-events:none!important;cursor:default!important}</style>\
+             <script>for(const t of['click','submit','keydown'])\
+             addEventListener(t,e=>{if(t!=='keydown'||e.key==='Enter')e.preventDefault()},true)</script>\
+             </head>",
         );
     let out =
         std::env::var("TAMIS_MOCK_PAGE").unwrap_or_else(|_| "target/mock-decisions.html".into());

@@ -5,5 +5,5 @@
 set -euo pipefail
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo deny check
+cargo deny check --hide-inclusion-graph
 cargo machete

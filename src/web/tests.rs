@@ -236,15 +236,47 @@ async fn every_response_carries_the_security_headers() {
     assert!(text(response).await.contains("Sign in with a passkey"));
 }
 
+/// The nav bar boosts its links and selects `main` out of the response, so
+/// every page must answer a boosted request with the whole page, however many
+/// times in a row the user navigates.
 #[tokio::test]
 async fn boosted_navigation_gets_whole_pages_to_select_main_from() {
     let site = site();
 
-    for uri in ["/", "/whitelist", "/logs"] {
+    for uri in [
+        "/",
+        "/health",
+        "/whitelist",
+        "/rules",
+        "/logs",
+        "/",
+        "/logs",
+    ] {
         let page = text(site.get_boosted(uri).await).await;
         assert!(
             page.contains("<main") && page.contains("id=\"nav\""),
             "{uri}: {page}"
+        );
+    }
+}
+
+/// The in-page controls (Refresh, filters, sorting, Undo, the logs poll) are
+/// not boosted and still get bare fragments to swap into place.
+#[tokio::test]
+async fn in_page_requests_still_get_fragments() {
+    let site = site();
+    record(&site, "lunch", "bayes", true);
+
+    for (uri, fragment) in [
+        ("/", "<div id=\"results\">"),
+        ("/?q=lunch", "<div id=\"results\">"),
+        ("/whitelist", "<div id=\"results\">"),
+        ("/logs", "<div id=\"logs\""),
+    ] {
+        let found = text(site.get_htmx(uri).await).await;
+        assert!(
+            found.starts_with(fragment) && !found.contains("<main"),
+            "{uri}: {found}"
         );
     }
 }

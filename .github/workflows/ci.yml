@@ -135,8 +135,11 @@ jobs:
     if: needs.plan.outputs.tag != ''
     timeout-minutes: 10
     runs-on: ubuntu-latest
+    # Same scopes as the old in-tag preflight: id-token for the crates.io OIDC
+    # check, contents: write so the GitHub push probe passes.
     permissions:
-      contents: read
+      contents: write
+      id-token: write
     env:
       MISE_ENV: package
     steps:

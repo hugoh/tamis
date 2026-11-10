@@ -202,7 +202,6 @@ async fn monitor_works_out_the_checks_to_create() {
         "monitor.ping_url",
         "monitor.quality_url (not set)",
         "the login is rejected",
-        "at once",
         "healthchecks.io/api/v3/checks/",
         "\"unique\":[\"name\"]",
     ] {

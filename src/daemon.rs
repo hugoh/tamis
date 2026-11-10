@@ -31,9 +31,6 @@ const STOP_GRACE: Duration = Duration::from_secs(30);
 const NEW_MAIL_SETTLE: Duration = Duration::from_secs(1);
 /// Caps the wait after failed passes.
 const MAX_PASS_RETRY: Duration = Duration::from_mins(15);
-/// The wait after a rejected login: long, so a wrong password doesn't lock the
-/// account, yet a provider's passing trouble heals without a restart.
-const LOGIN_RETRY: Duration = Duration::from_mins(15);
 /// How soon the watcher retries a folder whose connection failed.
 pub const WATCH_RETRY: Duration = Duration::from_secs(5);
 /// The journal is pruned at most this often.
@@ -273,6 +270,7 @@ impl<C: Connector> Daemon<C> {
         let failures = self.streak.fail(std::time::SystemTime::now());
         self.tell(err, failures);
 
+        let wait = self.pace.next_delay();
         if err.is_login_rejected() {
             self.login = self.login || failures == 1;
             let message = if failures == 1 {
@@ -282,12 +280,11 @@ impl<C: Connector> Daemon<C> {
             };
             log_at!(
                 retry::rejected_level(failures),
-                %err, failures, retry = ?LOGIN_RETRY, hint = "SIGHUP tries again at once", "{message}"
+                %err, failures, retry = ?wait, hint = "SIGHUP tries again at once", "{message}"
             );
-            return LOGIN_RETRY;
+            return wait;
         }
 
-        let wait = self.pace.next_delay();
         let message = if failures == 1 {
             "pass failed"
         } else {
@@ -324,14 +321,12 @@ impl<C: Connector> Daemon<C> {
         }
     }
 
-    /// Reports a failed pass to the monitoring service: a rejected login at
-    /// once, anything else once it has gone on for `fail_after` passes. Fewer
-    /// are left to the check's grace time, so a short outage doesn't page
+    /// Reports a failed pass to the monitoring service once it has gone on for
+    /// `fail_after` passes. Fewer are left to the check's grace time, so a
+    /// short outage, or a login the server refuses in passing, doesn't page
     /// anyone.
     fn tell(&self, err: &engine::Error, failures: u32) {
-        if err.is_login_rejected() {
-            self.beat.fail(&format!("login rejected: {err}"));
-        } else if failures >= self.cfg.monitor.fail_after {
+        if failures >= self.cfg.monitor.fail_after {
             let since = self.streak.since().map_or_else(String::new, |at| {
                 Timestamp::try_from(at)
                     .map(|t| t.to_string())

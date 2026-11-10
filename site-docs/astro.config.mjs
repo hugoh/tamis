@@ -6,7 +6,7 @@ import starlightLinksValidator from "starlight-links-validator";
 export default defineConfig({
   site: "https://tamis.larve.net",
   base: "/docs",
-  outDir: "../site/docs",
+  outDir: "../target/site/docs",
   integrations: [
     mermaid(),
     starlight({

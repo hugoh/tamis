@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-#MISE description="Lint code, check unused dependencies and advisories"
-#MISE depends=["lint:rust", "lint:release", "lint:systemd"]
+#MISE description="Check the code, release config and systemd unit without changing anything"
+#MISE depends=["lint:rust", "lint:package", "lint:release", "lint:systemd"]
 true

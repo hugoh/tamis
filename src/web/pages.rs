@@ -92,6 +92,7 @@ pub(super) struct DecisionRow {
     pub score: String,
     pub action: String,
     pub folder: String,
+    pub dest: String,
     pub from: String,
     pub subject: String,
     pub can_undo: bool,
@@ -223,9 +224,10 @@ fn decision_row(decision: &Decision) -> DecisionRow {
         reason: decision.reason.to_string(),
         score: format!("{:.2}", decision.score),
         action: action_label(decision),
-        folder: match &decision.action {
-            Action::Move(target) => format!("{} → {target}", decision.mailbox),
-            _ => decision.mailbox.clone(),
+        folder: decision.mailbox.clone(),
+        dest: match &decision.action {
+            Action::Move(target) if *target != decision.mailbox => target.clone(),
+            _ => String::new(),
         },
         from: decision.from.clone(),
         subject: decision.subject.clone(),
@@ -430,11 +432,21 @@ struct HealthPage {
     body: HealthBody,
 }
 
+/// How long the page keeps showing the error of a failure that has since
+/// recovered.
+const RECOVERED_ERROR_SHOWN: Duration = Duration::from_hours(6);
+
 fn daemon_view(app: &App) -> Option<DaemonView> {
     let snap = app.options.status.as_ref()?.snapshot();
     let mut last_error = String::new();
     let mut recovered = false;
-    if !snap.last_error.is_empty() {
+    let forgotten = snap.failures == 0
+        && snap.recovered_at.is_some_and(|at| {
+            Timestamp::now().duration_since(at).as_secs()
+                > RECOVERED_ERROR_SHOWN.as_secs().cast_signed()
+        });
+    let has_error = !snap.last_error.is_empty() && !forgotten;
+    if has_error {
         last_error = format!(
             "{}: {}",
             snap.last_error_at.map_or_else(String::new, local_time),
@@ -450,7 +462,7 @@ fn daemon_view(app: &App) -> Option<DaemonView> {
                 local_clock(retry)
             );
         }
-        (_, _, Some(at)) if !snap.last_error.is_empty() => {
+        (_, _, Some(at)) if has_error => {
             let _ = write!(last_error, " (recovered {})", local_clock(at));
             recovered = true;
         }

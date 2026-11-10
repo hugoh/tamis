@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Download crap-baseline.json from the last successful main run (needs gh and GH_TOKEN); a missing baseline is only a warning"
+set -euo pipefail
+id=$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+if [ "$id" = "" ] || ! gh run download "$id" --name crap-baseline; then
+  echo "::warning::No CRAP baseline found; regression check skipped"
+fi

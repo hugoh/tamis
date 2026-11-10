@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Build the documentation (Astro Starlight) into target/site/docs"
+#MISE depends=["site:reference"]
+#MISE sources=["docs/**/*.md", "site-docs/astro.config.mjs", "site-docs/package-lock.json", "site-docs/src/**", "site-docs/public/**", "mise-tasks/site/docs"]
+#MISE outputs=["target/site/docs/index.html"]
+set -euo pipefail
+
+cd site-docs
+npm ci
+npm run build

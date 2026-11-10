@@ -1,5 +1,5 @@
 # Front-end files tamis embeds (web/static/vendor). Renovate bumps the
-# versions. The prebuild task (mise run vendor-web) copies htmx and builds the
+# versions. The prebuild task (mise run web:vendor) copies htmx and builds the
 # stylesheet from them before every build and test; the results are not committed.
 [tools]
 "npm:@tailwindcss/cli" = "4.3.3"

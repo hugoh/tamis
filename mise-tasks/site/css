@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Build the landing page's daisyUI/Tailwind stylesheet into target/site"
+#MISE sources=["site/index.html", "mise-tasks/site/css"]
+#MISE outputs=["target/site/style.css"]
+set -euo pipefail
+
+mise=${TAMIS_MISE:-mise}
+cli=$("$mise" where npm:@tailwindcss/cli)/node_modules
+tailwind=("$cli"/.mise/tailwindcss@*/node_modules/tailwindcss)
+daisyui=$("$mise" where npm:daisyui)/node_modules/daisyui
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+cat >"$work/input.css" <<CSS
+@import "${tailwind[0]}/index.css" source(none);
+@plugin "$daisyui";
+@source "$PWD/site/index.html";
+CSS
+mkdir -p target/site
+"$cli/.bin/tailwindcss" --input "$work/input.css" --output target/site/style.css --minify

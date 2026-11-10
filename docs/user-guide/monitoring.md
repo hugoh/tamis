@@ -42,9 +42,8 @@ Two independent checks, both optional.
 | Event | Ping |
 |---|---|
 | A pass succeeds | Success, with the pass summary (counts only) as its text; at most once a minute, so a burst of mail doesn't ping every second. |
-| A pass fails, fewer than `fail_after` times in a row | Nothing. The check's grace time absorbs a short outage. |
+| A pass fails, a rejected login included, fewer than `fail_after` times in a row | Nothing. The check's grace time absorbs a short outage. |
 | The `fail_after`th and each later failure in a row | `/fail`, with how many passes failed, since when, and the error. The retries are paced by the back-off, so this is not a flood. |
-| The login is rejected | `/fail` at once; only you can fix it. |
 | Back to normal | The next success ping, sent at once, which the service reads as a recovery. |
 | The daemon stops, hangs or its host goes down | Nothing: the check goes down after its period plus grace. Stopping `tamis run` is silent on purpose, because a stopped daemon is something to alert on. |
 
@@ -81,7 +80,7 @@ Create two checks on the service:
 They would alert after:
   13m      the daemon stops, hangs or its host goes down
   6m       the mail server is unreachable (fail_after = 3)
-  at once  the login is rejected
+  6m       the login is rejected (fail_after = 3)
   1d       the filter's training or decisions look unhealthy
 ```
 

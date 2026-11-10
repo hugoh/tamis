@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build the site and serve it on http://127.0.0.1:8765/"
-#MISE depends=["site-build"]
+#MISE depends=["site"]
 set -euo pipefail
 
-exec python3 -m http.server "${PORT:-8765}" --bind 127.0.0.1 --directory site
+exec python3 -m http.server "${PORT:-8765}" --bind 127.0.0.1 --directory target/site

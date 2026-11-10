@@ -2,4 +2,3 @@
 #MISE description="Clean the project"
 cargo clean
 rm -rf dist
-rm -f "$COVEROUT"

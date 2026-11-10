@@ -1,13 +1,10 @@
+# Files the coverage run excludes (see mise-tasks/coverage) have no coverage data,
+# which `missing = "skip"` already leaves out, so they need no entry here.
 missing = "skip"
 exclude = [
   "src/**/tests.rs",
   "src/**/tests/**",
   "src/bin/**",
   "src/main.rs",
-  "src/eval/net.rs",
-  "src/mail/client.rs",
-  "src/mail/tasks.rs",
-  "src/probe/live.rs",
-  "src/cli/commands/probe.rs",
 ]
 allow = ["dispatch"]

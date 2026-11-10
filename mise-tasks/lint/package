@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Check the packaged crate ships the generated stylesheet"
+#MISE depends=["prebuild"]
+#MISE sources=["Cargo.toml", "web/static/**", "mise-tasks/lint/package"]
+set -euo pipefail
+
+files=$(cargo package --list --allow-dirty)
+if ! grep -qx web/static/vendor/theme.css <<<"$files"; then
+  echo "lint:package: the crate would not ship web/static/vendor/theme.css; check Cargo.toml's include list" >&2
+  exit 1
+fi

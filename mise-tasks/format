@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Format the code"
-#MISE sources=["**/*.rs", "**/*.json", "**/*.md", "**/*.toml", "**/*.yaml", "**/*.yml"]
-set -e
-cargo fmt
-hk fix --all

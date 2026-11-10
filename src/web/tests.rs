@@ -286,6 +286,26 @@ async fn the_decisions_list_says_when_it_was_generated() {
 }
 
 #[tokio::test]
+async fn a_move_to_the_folder_it_is_already_in_shows_no_destination() {
+    let site = site();
+    record_as(
+        &site,
+        "stays",
+        ("good", 0.0),
+        "correction",
+        "move:INBOX",
+        true,
+    );
+
+    let page = text(site.get("/").await).await;
+
+    assert!(
+        !page.contains("data-dest") && !page.contains("data-arrow"),
+        "{page}"
+    );
+}
+
+#[tokio::test]
 async fn a_rule_decision_gets_a_second_pill_and_a_move_shows_its_destination() {
     let site = site();
     record(&site, "filed", "rule", true);
@@ -294,7 +314,10 @@ async fn a_rule_decision_gets_a_second_pill_and_a_move_shows_its_destination() {
     let page = text(site.get("/").await).await;
 
     assert_eq!(page.matches("badge-info").count(), 1, "{page}");
-    assert!(page.contains("INBOX → Junk"), "{page}");
+    assert!(
+        page.contains("INBOX</span><span data-arrow> → </span><span data-dest>Junk</span>"),
+        "{page}"
+    );
 }
 
 #[tokio::test]
@@ -358,9 +381,10 @@ const MOCK_FREEZE: &str = "<style>a,button,input,select,textarea,label,summary,[
      </head>";
 
 /// Writes a standalone decisions page (CSS inlined) for eyeballing or docs:
-/// `mise run mock-web`; set `TAMIS_MOCK_PAGE` to write elsewhere
+/// `mise run web:mock`; set `TAMIS_MOCK_PAGE` to write elsewhere
 #[tokio::test]
 #[ignore = "writes a file; run by hand"]
+#[allow(clippy::too_many_lines, reason = "a list of sample rows")]
 async fn mock_decisions_page() {
     let site = site();
     record_as(
@@ -449,13 +473,28 @@ async fn mock_decisions_page() {
         true,
     );
 
+    record_as(
+        &site,
+        "Cheap watches",
+        ("spam", 0.97),
+        "bayes",
+        "move:Junk",
+        false,
+    );
+
     let page = text(site.get("/").await).await;
+    let decisions_css =
+        std::fs::read_to_string("web/static/decisions.css").expect("web/static/decisions.css");
     let css =
-        std::fs::read_to_string("web/static/vendor/theme.css").expect("run mise run vendor-web");
+        std::fs::read_to_string("web/static/vendor/theme.css").expect("run mise run web:vendor");
     let page = page
         .replace(
             "<link rel=\"stylesheet\" href=\"/static/vendor/theme.css?v=\">",
             &format!("<style>{css}</style>"),
+        )
+        .replace(
+            "<link rel=\"stylesheet\" href=\"/static/decisions.css?v=\">",
+            &format!("<style>{decisions_css}</style>"),
         )
         .replace(
             "<script src=\"/static/vendor/htmx.min.js?v=\"></script>",
@@ -669,6 +708,57 @@ async fn health_and_rules_pages_render() {
 }
 
 #[tokio::test]
+async fn cookies_are_secure_only_when_the_origin_is_https() {
+    let cookie_for = |origin: &'static str| async move {
+        let site = site_at(origin, Options::default(), "");
+        site.db
+            .add_enrollment(
+                &hash_token("link"),
+                Timestamp::now() + std::time::Duration::from_secs(300),
+            )
+            .unwrap();
+        let request = Request::post("/auth/register/begin")
+            .header(header::ORIGIN, origin)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::json!({ "token": "link" }).to_string(),
+            ))
+            .unwrap();
+        let response = site.send(request, false).await;
+        response.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .to_owned()
+    };
+
+    let secure = cookie_for("https://tamis.example.org").await;
+    let plain = cookie_for(ORIGIN).await;
+
+    assert!(
+        secure.contains("; Secure") && secure.contains("Path=/auth/"),
+        "{secure}"
+    );
+    assert!(
+        !plain.contains("Secure") && plain.contains("Max-Age="),
+        "{plain}"
+    );
+}
+
+#[test]
+fn assets_get_the_content_type_of_their_extension() {
+    for (path, want) in [
+        ("vendor/theme.css", "text/css"),
+        ("rules.js", "text/javascript"),
+        ("favicon.svg", "image/svg+xml"),
+        ("font.woff2", "font/woff2"),
+        ("unknown.zzz", "application/octet-stream"),
+        ("no-extension", "application/octet-stream"),
+    ] {
+        assert_eq!(super::content_type(path), want, "{path}");
+    }
+}
+
+#[tokio::test]
 async fn enrolling_needs_a_link_that_works_once() {
     let site = site();
     site.db
@@ -864,6 +954,8 @@ async fn static_files_carry_an_etag_and_answer_a_matching_one_with_not_modified(
     let same = revalidate(etag.clone()).await;
     let weakened = revalidate(format!("W/{etag}")).await;
     let other = revalidate("\"stale\"".to_owned()).await;
+    let any = revalidate("*".to_owned()).await;
+    let listed = revalidate(format!("\"stale\", {etag}")).await;
 
     assert_eq!(first.headers()[header::CACHE_CONTROL], "no-cache");
     assert_eq!(same.status(), StatusCode::NOT_MODIFIED);
@@ -871,6 +963,8 @@ async fn static_files_carry_an_etag_and_answer_a_matching_one_with_not_modified(
     assert!(text(same).await.is_empty());
     assert_eq!(weakened.status(), StatusCode::NOT_MODIFIED);
     assert_eq!(other.status(), StatusCode::OK);
+    assert_eq!(any.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(listed.status(), StatusCode::NOT_MODIFIED);
 }
 
 #[tokio::test]
@@ -889,7 +983,7 @@ async fn responses_are_compressed_for_clients_that_accept_it() {
     let plain = get("/static/rules.js", "identity").await;
 
     assert_eq!(script.headers()[header::CONTENT_ENCODING], "gzip");
-    assert_eq!(page.headers()[header::CONTENT_ENCODING], "br");
+    assert_eq!(page.headers()[header::CONTENT_ENCODING], "gzip");
     assert!(!plain.headers().contains_key(header::CONTENT_ENCODING));
 }
 
@@ -913,7 +1007,12 @@ async fn versioned_asset_urls_are_cached_for_good_and_bare_ones_are_revalidated(
     let bare = site.get("/static/rules.js").await;
     let empty = site.get("/static/rules.js?v=").await;
 
-    for asset in ["vendor/theme.css", "vendor/htmx.min.js", "feedback.js"] {
+    for asset in [
+        "vendor/theme.css",
+        "decisions.css",
+        "vendor/htmx.min.js",
+        "feedback.js",
+    ] {
         assert!(
             page.contains(&format!("/static/{asset}?v=1.2.3\"")),
             "{page}"
@@ -1211,12 +1310,18 @@ async fn health_shows_a_failure_without_a_retry_time_as_the_bare_error() {
     assert!(health.contains("alert-error"), "{health}");
 }
 
+fn ago(seconds: u64) -> Timestamp {
+    Timestamp::now()
+        .checked_sub(Duration::from_secs(seconds))
+        .unwrap()
+}
+
 #[tokio::test]
 async fn health_shows_a_recovered_daemon_as_a_success() {
-    let status = Status::new(at(1_000_000));
-    status.failed(at(1_000_100), "connection refused");
-    status.retry_at(at(1_000_400));
-    status.pass_done(at(1_000_500), "all quiet");
+    let status = Status::new(ago(7200));
+    status.failed(ago(600), "connection refused");
+    status.retry_at(ago(500));
+    status.pass_done(ago(400), "all quiet");
 
     let health = health_with(status).await;
 
@@ -1224,6 +1329,18 @@ async fn health_shows_a_recovered_daemon_as_a_success() {
     assert!(health.contains("(recovered "), "{health}");
     assert!(health.contains("alert-success"), "{health}");
     assert!(!health.contains("in a row"), "{health}");
+}
+
+#[tokio::test]
+async fn health_forgets_an_error_recovered_more_than_six_hours_ago() {
+    let status = Status::new(ago(8 * 3600));
+    status.failed(ago(7 * 3600 + 600), "connection refused");
+    status.pass_done(ago(7 * 3600), "all quiet");
+
+    let health = health_with(status).await;
+
+    assert!(!health.contains("connection refused"), "{health}");
+    assert!(!health.contains("recovered"), "{health}");
 }
 
 #[tokio::test]

@@ -276,17 +276,25 @@ async fn failed_passes_back_off() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_rejected_login_waits_long_and_sighup_retries_at_once() {
+async fn a_rejected_login_backs_off_from_the_poll_interval_and_sighup_retries_at_once() {
     let mut env = Env::new(|| Ok(config()));
+    env.fail_next(mail::Error::Login("nope".into()));
     env.fail_next(mail::Error::Login("nope".into()));
     let handle = env.spawn();
 
-    after(10).await;
-    assert_eq!(env.connects(), 1, "not tried again for 15 minutes");
+    after(1).await;
+    assert_eq!(
+        env.connects(),
+        1,
+        "not tried again before the poll interval"
+    );
+
+    after(4).await;
+    assert_eq!(env.connects(), 2, "tried again after two to four minutes");
 
     env.hangup.notify_one();
     tokio::time::sleep(Duration::from_secs(1)).await;
-    assert_eq!(env.connects(), 2);
+    assert_eq!(env.connects(), 3);
     assert_eq!(env.reloads.load(Ordering::SeqCst), 1);
     env.stop(handle).await;
 }
@@ -407,7 +415,7 @@ async fn a_broken_rules_script_fails_the_pass_without_stopping_the_daemon() {
         "it retries with backoff while the script is broken"
     );
     after(20).await;
-    assert!(env.connects() >= 4, "and keeps retrying");
+    assert!(env.connects() >= 3, "and keeps retrying");
 
     env.stop(handle).await;
 }
@@ -464,6 +472,51 @@ async fn a_rejected_login_is_marked_in_the_status() {
 
     assert!(env.status.snapshot().rejected);
     env.stop(handle).await;
+}
+
+mod heartbeat {
+    use super::*;
+    use crate::monitor::test_server::Server;
+
+    const SETTLE: Duration = Duration::from_millis(300);
+
+    fn login_rejected() -> engine::Error {
+        mail::Error::Login("nope".into()).into()
+    }
+
+    #[tokio::test]
+    async fn one_rejected_login_does_not_page() {
+        let mut env = Env::new(|| Ok(config()));
+        let server = Server::start(&[]).await;
+        let daemon = env
+            .daemon
+            .take()
+            .unwrap()
+            .with_heartbeat(Pinger::new(&server.url).unwrap());
+
+        daemon.tell(&login_rejected(), 1);
+        tokio::time::sleep(SETTLE).await;
+
+        assert!(server.requests().is_empty(), "{:?}", server.requests());
+    }
+
+    #[tokio::test]
+    async fn rejected_logins_page_at_fail_after() {
+        let mut env = Env::new(|| Ok(config()));
+        let server = Server::start(&[]).await;
+        let daemon = env
+            .daemon
+            .take()
+            .unwrap()
+            .with_heartbeat(Pinger::new(&server.url).unwrap());
+
+        daemon.tell(&login_rejected(), daemon.cfg.monitor.fail_after);
+        server.wait_for(1).await;
+
+        let sent = server.requests();
+        assert_eq!(sent[0].path, "/fail");
+        assert!(sent[0].body.contains("login"), "{}", sent[0].body);
+    }
 }
 
 mod quality {

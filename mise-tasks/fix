@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-#MISE description="Lint and fix code"
-set -e
-mise run lint:rust -- --fix
+#MISE description="Fix everything fixable with hk: rustfmt, clippy, formatters"
+set -euo pipefail
+hk fix --all

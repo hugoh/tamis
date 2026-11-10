@@ -105,7 +105,7 @@ impl Shared {
             if attempt > 0 {
                 tokio::select! {
                     () = cancel.cancelled() => return Err(last),
-                    () = tokio::time::sleep(pace.next_delay()) => {}
+                    () = tokio::time::sleep(pace.next_nominal()) => {}
                 }
             }
             match self.deliver(next.path, &next.body).await {

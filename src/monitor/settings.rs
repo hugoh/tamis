@@ -84,7 +84,10 @@ pub fn recommend(inputs: &Inputs) -> Settings {
                 ),
                 failure_wait(inputs),
             ),
-            alert("the login is rejected", Duration::ZERO),
+            alert(
+                &format!("the login is rejected (fail_after = {})", inputs.fail_after),
+                failure_wait(inputs),
+            ),
             alert("the filter's training or decisions look unhealthy", DAY),
         ],
     }
@@ -140,8 +143,8 @@ mod tests {
             .collect();
 
         // stops: period + grace; unreachable: the waits before the 3rd failure
-        // (2m + 4m); login: at once; quality: a day.
-        assert_eq!(alerts, [780, 360, 0, 86_400]);
+        // (2m + 4m); login: the same; quality: a day.
+        assert_eq!(alerts, [780, 360, 360, 86_400]);
     }
 
     #[test]

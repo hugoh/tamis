@@ -1,50 +1,13 @@
 #!/usr/bin/env bash
 #MISE description="Run the IMAP client tests against a Dovecot container (Apple's container, Docker or Podman)"
+#MISE depends=["test:imap-server"]
 set -euo pipefail
 
-name=tamis-dovecot
-dir="$PWD/tests/dovecot"
-image=docker.io/dovecot/dovecot@sha256:43c14def08a57f25107593cbcf64a0a6fbae84a7b9de7aa038513c9b21e91914
-
-runtime=
-for candidate in container docker podman; do
-  if command -v "$candidate" >/dev/null; then
-    runtime=$candidate
-    break
-  fi
-done
-if [ "$runtime" = "" ]; then
-  echo "test:imap needs Apple's container CLI, Docker or Podman" >&2
-  exit 1
-fi
-
-args=(
-  --name "$name" --user 0:0
-  -v "$dir/dovecot.conf:/etc/dovecot/dovecot.conf:ro"
-  -v "$dir/passwd:/etc/passwd:ro"
-  -v "$dir/group:/etc/group:ro"
-)
-if [ "$runtime" = container ]; then
-  container system status >/dev/null 2>&1 || container system start --enable-kernel-install
-else
-  args+=(-p 127.0.0.1::143)
-fi
-
-"$runtime" rm -f "$name" >/dev/null 2>&1 || true
-"$runtime" run -d "${args[@]}" "$image" >/dev/null
+runtime=""
+name=""
+address=""
+# shellcheck source=/dev/null
+source target/imap-server.env
 trap '"$runtime" rm -f "$name" >/dev/null 2>&1 || true' EXIT
-
-if [ "$runtime" = container ]; then
-  address=$("$runtime" inspect "$name" | jq -r '.. | objects | select(has("ipv4Address")) | .ipv4Address' | head -1 | cut -d/ -f1):143
-else
-  address=$("$runtime" port "$name" 143/tcp | head -1)
-fi
-
-host=${address%:*}
-port=${address##*:}
-for _ in {1..60}; do
-  (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null && break
-  sleep 0.5
-done
 
 TAMIS_TEST_IMAP="$address" cargo nextest run --test imap_dovecot --test cli_dovecot "$@"

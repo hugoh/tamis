@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Lint Rust source"
+#MISE description="Check Rust formatting, clippy, advisories and unused dependencies (changes nothing)"
 #MISE sources=["src/**/*.rs", "Cargo.toml", "Cargo.lock", "clippy.toml", "deny.toml"]
 #MISE depends=["prebuild"]
-#USAGE flag "--fix" help="Automatically fix issues"
-set -e
-if [ "${usage_fix:-}" != "" ]; then
-  cargo fmt
-  cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged
-else
-  cargo fmt --check
-  cargo clippy --all-targets --all-features -- -D warnings
-fi
-cargo deny check
+set -euo pipefail
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo deny check --hide-inclusion-graph
 cargo machete

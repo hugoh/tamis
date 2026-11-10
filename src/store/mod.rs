@@ -9,6 +9,7 @@ mod schema;
 mod web;
 
 use std::fs::{File, OpenOptions, TryLockError};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -53,8 +54,12 @@ pub enum Error {
         path: PathBuf,
         source: std::io::Error,
     },
-    #[error("another tamis is already running on {0}")]
-    AlreadyRunning(PathBuf),
+    #[error(
+        "another tamis is already running on {}{}",
+        path.display(),
+        pid.map_or_else(String::new, |pid| format!(" (pid {pid})"))
+    )]
+    AlreadyRunning { path: PathBuf, pid: Option<u32> },
     #[error(
         "database is from a newer tamis (schema {found}, this build knows {known}): upgrade tamis"
     )]
@@ -191,7 +196,8 @@ fn count(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
 
 /// Takes the lock that keeps a second `tamis run` off the database at `path`:
 /// two daemons would judge and move the same mail. It lasts until the file is
-/// dropped or the process ends.
+/// dropped or the process ends. The lock file holds the owner's process ID,
+/// which a refused second instance reports.
 ///
 /// # Errors
 /// [`Error::AlreadyRunning`] when another process holds it.
@@ -211,8 +217,19 @@ pub fn lock_instance(path: &Path) -> Result<File> {
         .open(&lock_path)
         .map_err(io)?;
     match file.try_lock() {
-        Ok(()) => Ok(file),
-        Err(TryLockError::WouldBlock) => Err(Error::AlreadyRunning(path.to_path_buf())),
+        Ok(()) => {
+            file.set_len(0).map_err(io)?;
+            (&file)
+                .write_all(std::process::id().to_string().as_bytes())
+                .map_err(io)?;
+            Ok(file)
+        }
+        Err(TryLockError::WouldBlock) => Err(Error::AlreadyRunning {
+            path: path.to_path_buf(),
+            pid: std::fs::read_to_string(&lock_path)
+                .ok()
+                .and_then(|text| text.trim().parse().ok()),
+        }),
         Err(TryLockError::Error(source)) => Err(io(source)),
     }
 }
@@ -472,7 +489,15 @@ mod tests {
         let second = lock_instance(&path).unwrap_err();
         drop(first);
 
-        assert!(matches!(second, Error::AlreadyRunning(_)), "{second}");
+        let Error::AlreadyRunning { pid, .. } = second else {
+            panic!("{second}");
+        };
+        assert_eq!(pid, Some(std::process::id()));
+        assert!(
+            second
+                .to_string()
+                .contains(&format!("pid {}", std::process::id()))
+        );
         assert!(lock_instance(&path).is_ok());
     }
 

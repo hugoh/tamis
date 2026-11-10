@@ -165,6 +165,77 @@ scoring each message before learning it, so a variant that downweights old
 training can be compared with today's behaviour on real mail. See
 [evaluation.md](../../how-it-works/evaluation/).
 
+## Phishing through real sending services
+
+In November 2026 seven messages posing as "SendGrid Account Team" notices
+(failing API requests, a bounce rate, a login alert, a receipt) reached the
+author's inbox. Four were judged by tamis before being moved to Junk by hand:
+three as good (scores 0.01, 0.01 and 0.04) and one as uncertain (0.57). Spam
+scoring alone does not fit this kind of mail, and the notes below record why,
+what was tried, and what would be worth trying next.
+
+### Why the existing defences miss it
+
+- **Authentication passes.** The messages were sent through real SendGrid
+  accounts belonging to unrelated companies, with SPF, DKIM and DMARC aligned
+  to the sending account's own domain. Authentication shows who sent a
+  message, not whether the display name is true.
+- **The display name was invisible.** Only the address was tokenized. Five
+  of the seven claimed to be SendGrid in the display name; two said only
+  "noreply" and put the brand in the subject.
+- **The bodies read like receipts.** Scored against a model trained on the
+  author's mail (2,500 good, 609 spam), three of the seven scored 0.00 and the
+  rest 0.34 to 0.52. Their strongest good clues were the words of a receipt
+  (months, quantities, dates), which the author's archive is full of. The one
+  spam clue, `sendgrid`, was outvoted.
+- **The links say nothing.** Every link goes through the sender's own
+  click-tracking host, so the destination is not visible, and the plain-text
+  part is a one-line stub.
+
+### What was tried
+
+| Idea | Result |
+|---|---|
+| Brand check: flag a display name that claims a brand whose domains the sender is not on (`auth::impersonated`) | Catches 5 of the 7 fixtures, none of the two "noreply" ones. Needs a list of brands, which someone must maintain. Built and tested, kept on a branch, **not merged and not wired** into the engine. [Details](../../how-it-works/engine/#judging-a-message) |
+| Tokenize the display name (`name:<word>`) | Shipped, see [Tokens](../../how-it-works/engine/#tokens). Evaluation loss 1.225 to 1.130, better in 10 of 10 runs, good mail unaffected. It moved the SendGrid-named fixtures up by only 0.04 to 0.2: a gain in general, not a fix for this campaign |
+| Learn which brand uses which domain from good mail | Not possible here: none of the 2,500 good messages had a SendGrid sender, so there was nothing to learn |
+| Link text versus link target (as Rspamd's phishing module does) | Nothing to compare: the lures show no URL text, only buttons behind tracking links |
+| Phishing feeds (OpenPhish, PhishTank) or domain lists (SURBL) | A local feed file keeps mail private but needs a refresh job, and a fresh tracking URL on a hijacked account is unlikely to be listed. A DNS list sends the checked domains to a third party |
+
+Prior art found: SpamAssassin's `FromNameSpoof` and `Phishing` plugins,
+Rspamd's phishing module (URL based) and commercial brand rules such as
+Sublime's. No Rust crate does message-level phishing detection; the nearest
+(`mailguard-rs`, `nettfiske`) look up domains. This was a web search, not a
+review of their source.
+
+### Possible next steps
+
+Each has a trigger, so none is built on speculation.
+
+- **Wire the brand check.** Trigger: a message whose display name claims a
+  brand reaches the inbox after the display name tokens shipped. Sketch: a
+  flagged message that is not whitelisted is judged spam (or uncertain, behind
+  a setting), journalled with its own reason, not trained on, and never
+  rescued; a whitelisted sender with passing authentication wins, so a false
+  positive stays correctable. Open: ship a short built-in brand list or
+  require one in the config. The author prefers not to maintain a list.
+- **Find out why receipts score 0.00.** Trigger: any further good verdict on
+  a lure. Look at the clue list of the decision before adding features.
+- **A "first message from this domain" token.** Trigger: lures from senders
+  never seen before keep scoring as good. Test it as a `tamis-eval` variant.
+- **A local phishing feed**, off by default. Trigger: phishing that links to a
+  known-bad URL.
+- **Link text versus target.** Trigger: lures that show a URL whose host
+  differs from the link's.
+
+### Tracking
+
+Add the sanitized message to `tests/fixtures/mail/` as `phish-*.eml` (replace
+the recipient, drop per-recipient headers and tracking tokens, as the existing
+ones are), and score it with `tamis-eval`. A resolved step moves out of this
+list and into [engine.md](../../how-it-works/engine/); the Roadmap row below
+points here for the rest.
+
 ## Actions and safety
 
 Built, and described in [engine.md](../../how-it-works/engine/): [actions](../../how-it-works/engine/#actions)
@@ -294,5 +365,5 @@ web UI / API, TOML config
 | Filing (done, see [rules.md](../../how-it-works/rules/)) | Sieve rules file good mail into folders; `tamis rules`; web Rules page |
 | Corrections and rescue (done, see [engine.md](../../how-it-works/engine/)) | Inferred corrections, `$Junk`/`$NotJunk` marks, rescue from Junk, undo and learn |
 | Web interface (done) | Passkey sign-in, decisions with undo and learn, whitelist, rules, health, logs |
-| Next | Opt-in Jev signal and the combiner, digest, Hide My Email alias check, token aging (open question above) |
+| Next | Opt-in Jev signal and the combiner, digest, Hide My Email alias check, token aging (open question above), [phishing next steps](../../how-it-works/design/#phishing-through-real-sending-services) |
 | Later | JMAP, OAuth (Gmail, Microsoft), local embeddings, optional Rspamd signal |

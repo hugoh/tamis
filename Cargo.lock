@@ -3923,6 +3923,7 @@ dependencies = [
  "keyring",
  "keyring-core",
  "mail-parser 1.0.1",
+ "mime_guess",
  "psl",
  "rcgen",
  "regex",

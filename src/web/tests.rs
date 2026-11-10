@@ -744,6 +744,20 @@ async fn cookies_are_secure_only_when_the_origin_is_https() {
     );
 }
 
+#[test]
+fn assets_get_the_content_type_of_their_extension() {
+    for (path, want) in [
+        ("vendor/theme.css", "text/css"),
+        ("rules.js", "text/javascript"),
+        ("favicon.svg", "image/svg+xml"),
+        ("font.woff2", "font/woff2"),
+        ("unknown.zzz", "application/octet-stream"),
+        ("no-extension", "application/octet-stream"),
+    ] {
+        assert_eq!(super::content_type(path), want, "{path}");
+    }
+}
+
 #[tokio::test]
 async fn enrolling_needs_a_link_that_works_once() {
     let site = site();

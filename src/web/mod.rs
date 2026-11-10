@@ -355,12 +355,9 @@ fn set_cookie(
 }
 
 fn content_type(path: &str) -> &'static str {
-    match path.rsplit_once('.').map(|(_, extension)| extension) {
-        Some("css") => "text/css",
-        Some("js") => "text/javascript",
-        Some("svg") => "image/svg+xml",
-        _ => "application/octet-stream",
-    }
+    mime_guess::from_path(path)
+        .first_raw()
+        .unwrap_or("application/octet-stream")
 }
 
 async fn static_file(

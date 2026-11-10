@@ -354,9 +354,7 @@ fn nearest(target: &str, existing: &[String]) -> Option<String> {
     let target = target.to_lowercase();
     existing
         .iter()
-        .map(|name| {
-            (strsim::levenshtein(&target, &name.to_lowercase()), name)
-        })
+        .map(|name| (strsim::levenshtein(&target, &name.to_lowercase()), name))
         .filter(|(distance, _)| *distance <= MAX_TYPOS)
         .min_by_key(|(distance, _)| *distance)
         .map(|(_, name)| name.clone())

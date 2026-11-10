@@ -288,11 +288,21 @@ async fn the_decisions_list_says_when_it_was_generated() {
 #[tokio::test]
 async fn a_move_to_the_folder_it_is_already_in_shows_no_destination() {
     let site = site();
-    record_as(&site, "stays", ("good", 0.0), "correction", "move:INBOX", true);
+    record_as(
+        &site,
+        "stays",
+        ("good", 0.0),
+        "correction",
+        "move:INBOX",
+        true,
+    );
 
     let page = text(site.get("/").await).await;
 
-    assert!(!page.contains("data-dest") && !page.contains("data-arrow"), "{page}");
+    assert!(
+        !page.contains("data-dest") && !page.contains("data-arrow"),
+        "{page}"
+    );
 }
 
 #[tokio::test]
@@ -698,6 +708,43 @@ async fn health_and_rules_pages_render() {
 }
 
 #[tokio::test]
+async fn cookies_are_secure_only_when_the_origin_is_https() {
+    let cookie_for = |origin: &'static str| async move {
+        let site = site_at(origin, Options::default(), "");
+        site.db
+            .add_enrollment(
+                &hash_token("link"),
+                Timestamp::now() + std::time::Duration::from_secs(300),
+            )
+            .unwrap();
+        let request = Request::post("/auth/register/begin")
+            .header(header::ORIGIN, origin)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::json!({ "token": "link" }).to_string(),
+            ))
+            .unwrap();
+        let response = site.send(request, false).await;
+        response.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .to_owned()
+    };
+
+    let secure = cookie_for("https://tamis.example.org").await;
+    let plain = cookie_for(ORIGIN).await;
+
+    assert!(
+        secure.contains("; Secure") && secure.contains("Path=/auth/"),
+        "{secure}"
+    );
+    assert!(
+        !plain.contains("Secure") && plain.contains("Max-Age="),
+        "{plain}"
+    );
+}
+
+#[tokio::test]
 async fn enrolling_needs_a_link_that_works_once() {
     let site = site();
     site.db
@@ -942,7 +989,12 @@ async fn versioned_asset_urls_are_cached_for_good_and_bare_ones_are_revalidated(
     let bare = site.get("/static/rules.js").await;
     let empty = site.get("/static/rules.js?v=").await;
 
-    for asset in ["vendor/theme.css", "decisions.css", "vendor/htmx.min.js", "feedback.js"] {
+    for asset in [
+        "vendor/theme.css",
+        "decisions.css",
+        "vendor/htmx.min.js",
+        "feedback.js",
+    ] {
         assert!(
             page.contains(&format!("/static/{asset}?v=1.2.3\"")),
             "{page}"

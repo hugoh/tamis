@@ -22,6 +22,7 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header}
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
+use cookie::{Cookie, SameSite};
 use rust_embed::RustEmbed;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -311,13 +312,10 @@ fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
-        .flat_map(|line| line.split(';'))
-        .find_map(|pair| {
-            pair.trim()
-                .strip_prefix(name)?
-                .strip_prefix('=')
-                .map(str::to_owned)
-        })
+        .flat_map(Cookie::split_parse)
+        .filter_map(Result::ok)
+        .find(|pair| pair.name() == name)
+        .map(|pair| pair.value().to_owned())
 }
 
 fn signed_in(app: &Shared, headers: &HeaderMap) -> bool {
@@ -341,12 +339,16 @@ fn set_cookie(
     path: &str,
     ttl: Option<Duration>,
 ) -> HeaderValue {
-    let max_age = ttl.map_or(0, |ttl| ttl.as_secs());
-    let secure = if app.secure { "; Secure" } else { "" };
-    HeaderValue::from_str(&format!(
-        "{name}={value}; Path={path}; Max-Age={max_age}; HttpOnly; SameSite=Strict{secure}"
-    ))
-    .unwrap_or_else(|err| {
+    let max_age = ttl.map_or(time::Duration::ZERO, |ttl| {
+        time::Duration::try_from(ttl).unwrap_or(time::Duration::MAX)
+    });
+    let cookie = Cookie::build((name, value))
+        .path(path)
+        .max_age(max_age)
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .secure(app.secure);
+    HeaderValue::from_str(&cookie.to_string()).unwrap_or_else(|err| {
         warn!(%err, cookie = name, "cookie value is not a valid header: sending none");
         HeaderValue::from_static("")
     })

@@ -31,7 +31,7 @@ flowchart LR
 | Package | Role |
 |---|---|
 | `mail` | IMAP operations: folder state, UID search, peeked fetch, move, keywords, IDLE watching (see [imap.md](../../how-it-works/imap/)) |
-| `classify` | Turns a message into tokens and scores them (SpamBayes-style chi-square, see [Tokens and scoring](#tokens-and-scoring)) |
+| `classify` | Turns a message into tokens and scores them (SpamBayes-style chi-square, see [Tokens and scoring](../../how-it-works/engine/#tokens-and-scoring)) |
 | `auth` | Decides whether the provider authenticated the `From` domain |
 | `store` | Token counts, trained messages, whitelist, folder cursors and mod-sequences, decision journal |
 | `rules` | Runs the user's Sieve script on a message and names the folder to file it in (see [rules.md](../../how-it-works/rules/)) |
@@ -179,7 +179,7 @@ address alone.
 
 **Scoring.** `classify` turns the message into tokens and combines the most
 decisive ones into a score from 0 (good) to 1 (spam). [Tokens and
-scoring](#tokens-and-scoring) says how.
+scoring](../../how-it-works/engine/#tokens-and-scoring) says how.
 
 **Recipients.** Mail to an address you don't normally get mail on is a strong
 sign of spam (BCC blasts, relays, a stranger's address). Besides the `to:`
@@ -247,7 +247,7 @@ The words are made like this:
 
 Other headers (`Received`, `Message-ID`, `Reply-To`, `X-Mailer`, `List-*`) and
 the structure of the message are not tokenized. `Authentication-Results` only
-feeds [sender verification](#judging-a-message).
+feeds [sender verification](../../how-it-works/engine/#judging-a-message).
 
 ### Scoring
 
@@ -279,7 +279,7 @@ message with no clues scores exactly 0.5.
 
 The verdict compares the score to `policy.spam_threshold` (default 0.9) and
 `policy.good_threshold` (default 0.2); in between is uncertain, as drawn in
-[Judging a message](#judging-a-message).
+[Judging a message](../../how-it-works/engine/#judging-a-message).
 
 ### Tokenizer version
 
@@ -293,7 +293,7 @@ When the stored version is not today's, `tamis run` logs a warning on its first
 pass, and `tamis doctor` and the web Health page show a warning on the
 "tokenizer" check. Mail still gets scored, but old and new tokens don't meet.
 `tamis bootstrap --refresh` learns the mail again with today's tokenizer
-(see [Bootstrap](#bootstrap)) and records today's version once it is done. A
+(see [Bootstrap](../../how-it-works/engine/#bootstrap)) and records today's version once it is done. A
 bootstrap without `--refresh` leaves the version alone, and so does every
 message learnt along the way. Version 2 is the Unicode word rules and the pairs
 for Chinese, Japanese and Thai.
@@ -543,7 +543,7 @@ depends on which addresses good mail has gone to.
 `--refresh` learns mail that was already learnt again: each message is
 untrained, then trained with today's tokens, under its folder's label. That
 brings what was learnt before up to date after the tokenizer changes, and
-records the [tokenizer version](#tokenizer-version) the counts now have.
+records the [tokenizer version](../../how-it-works/engine/#tokenizer-version) the counts now have.
 It leaves the whitelist and the watch positions alone (unless `--sent` is
 named), and counts as "Refreshed" the messages that had been learnt. Mail
 learnt from a folder it has since left, or through a training folder, isn't

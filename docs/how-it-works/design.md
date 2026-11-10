@@ -208,6 +208,15 @@ Sublime's. No Rust crate does message-level phishing detection; the nearest
 (`mailguard-rs`, `nettfiske`) look up domains. This was a web search, not a
 review of their source.
 
+The author's own [cf-spam-gate](https://github.com/hugoh/cf-spam-gate), a
+Cloudflare Worker, already scores links locally, with no network lookup: a
+link domain that differs from the sender's, suspicious TLDs, IP-literal hosts,
+punycode and Unicode-confusable hosts, and anchor text that names a different
+domain than the link. Its one lookup is a Spamhaus DNS query on the
+connecting IP, which would not have helped here: the lures came from real
+SendGrid addresses. It combines its signals as a weighted average with fixed
+weights, where tamis learns from corrections.
+
 ### Possible next steps
 
 Each has a trigger, so none is built on speculation.
@@ -226,7 +235,14 @@ Each has a trigger, so none is built on speculation.
 - **A local phishing feed**, off by default. Trigger: phishing that links to a
   known-bad URL.
 - **Link text versus target.** Trigger: lures that show a URL whose host
-  differs from the link's.
+  differs from the link's. cf-spam-gate has a tested implementation to port
+  from.
+- **Host-shape tokens.** Emit a token per link for a host that is an IP
+  literal, punycode, or a Unicode confusable (for example `url-shape:ip`), and
+  let Bayes weigh them from corrections. Local and private, with no list to
+  maintain. Trigger: phishing with such hosts, or simply as a `tamis-eval`
+  variant, since it is cheap to measure. It would not have caught the
+  SendGrid lures, whose links are on the sender's own tracking host.
 
 ### Tracking
 

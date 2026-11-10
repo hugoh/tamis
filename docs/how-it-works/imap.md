@@ -18,7 +18,11 @@ A connection is TLS to `account.host` (port 993 by default) followed by `LOGIN`.
 A rejected login is retried by the pass like any other failure, and only every
 15 minutes by each watcher, so a wrong password doesn't lock the account yet a
 provider's passing trouble heals without a restart (`tamis run --once` exits
-instead). Failures are retried ever more slowly, with some jitter: a failed pass
+instead). A refusal that says the server has too many connections open (Gmail's
+"Too many simultaneous connections", Dovecot's "Maximum number of connections
+from user+IP exceeded") is not a rejected login: it is an ordinary failure,
+retried on the schedule below and reported as `pass failed` or `watch failed`.
+Failures are retried ever more slowly, with some jitter: a failed pass
 after `policy.poll_interval`, doubling up to 15 minutes; a watcher after 5
 seconds, doubling up to 10 minutes. A pass that succeeds, or a watcher
 connection that stayed up for a minute, starts the wait over. The log says when
@@ -37,8 +41,8 @@ Daemon section: ok while passes succeed (with how long the daemon has been up,
 the last pass and any recent recovery), WARN while they fail or when nothing has been heard for longer than
 the daemon is due to report (a back-off wait counts as due), and FAIL, so
 `doctor` exits 1, while the login is rejected. Between
-a watcher's attempts the poll every `policy.poll_interval` covers the gap. A server that limits concurrent sessions may refuse the watchers; the
-polling pass still runs.
+a watcher's attempts the poll every `policy.poll_interval` covers the gap. A server that limits concurrent sessions may refuse the watchers, which retry
+with the back-off above; the polling pass still runs.
 
 ## Capabilities
 

@@ -283,7 +283,11 @@ async fn a_rejected_login_backs_off_from_the_poll_interval_and_sighup_retries_at
     let handle = env.spawn();
 
     after(1).await;
-    assert_eq!(env.connects(), 1, "not tried again before the poll interval");
+    assert_eq!(
+        env.connects(),
+        1,
+        "not tried again before the poll interval"
+    );
 
     after(4).await;
     assert_eq!(env.connects(), 2, "tried again after two to four minutes");

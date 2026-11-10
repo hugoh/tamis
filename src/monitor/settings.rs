@@ -85,10 +85,7 @@ pub fn recommend(inputs: &Inputs) -> Settings {
                 failure_wait(inputs),
             ),
             alert(
-                &format!(
-                    "the login is rejected (fail_after = {})",
-                    inputs.fail_after
-                ),
+                &format!("the login is rejected (fail_after = {})", inputs.fail_after),
                 failure_wait(inputs),
             ),
             alert("the filter's training or decisions look unhealthy", DAY),

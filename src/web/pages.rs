@@ -432,11 +432,21 @@ struct HealthPage {
     body: HealthBody,
 }
 
+/// How long the page keeps showing the error of a failure that has since
+/// recovered.
+const RECOVERED_ERROR_SHOWN: Duration = Duration::from_hours(6);
+
 fn daemon_view(app: &App) -> Option<DaemonView> {
     let snap = app.options.status.as_ref()?.snapshot();
     let mut last_error = String::new();
     let mut recovered = false;
-    if !snap.last_error.is_empty() {
+    let forgotten = snap.failures == 0
+        && snap.recovered_at.is_some_and(|at| {
+            Timestamp::now().duration_since(at).as_secs()
+                > RECOVERED_ERROR_SHOWN.as_secs().cast_signed()
+        });
+    let has_error = !snap.last_error.is_empty() && !forgotten;
+    if has_error {
         last_error = format!(
             "{}: {}",
             snap.last_error_at.map_or_else(String::new, local_time),
@@ -452,7 +462,7 @@ fn daemon_view(app: &App) -> Option<DaemonView> {
                 local_clock(retry)
             );
         }
-        (_, _, Some(at)) if !snap.last_error.is_empty() => {
+        (_, _, Some(at)) if has_error => {
             let _ = write!(last_error, " (recovered {})", local_clock(at));
             recovered = true;
         }

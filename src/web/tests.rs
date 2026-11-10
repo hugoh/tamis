@@ -1310,12 +1310,18 @@ async fn health_shows_a_failure_without_a_retry_time_as_the_bare_error() {
     assert!(health.contains("alert-error"), "{health}");
 }
 
+fn ago(seconds: u64) -> Timestamp {
+    Timestamp::now()
+        .checked_sub(Duration::from_secs(seconds))
+        .unwrap()
+}
+
 #[tokio::test]
 async fn health_shows_a_recovered_daemon_as_a_success() {
-    let status = Status::new(at(1_000_000));
-    status.failed(at(1_000_100), "connection refused");
-    status.retry_at(at(1_000_400));
-    status.pass_done(at(1_000_500), "all quiet");
+    let status = Status::new(ago(7200));
+    status.failed(ago(600), "connection refused");
+    status.retry_at(ago(500));
+    status.pass_done(ago(400), "all quiet");
 
     let health = health_with(status).await;
 
@@ -1323,6 +1329,18 @@ async fn health_shows_a_recovered_daemon_as_a_success() {
     assert!(health.contains("(recovered "), "{health}");
     assert!(health.contains("alert-success"), "{health}");
     assert!(!health.contains("in a row"), "{health}");
+}
+
+#[tokio::test]
+async fn health_forgets_an_error_recovered_more_than_six_hours_ago() {
+    let status = Status::new(ago(8 * 3600));
+    status.failed(ago(7 * 3600 + 600), "connection refused");
+    status.pass_done(ago(7 * 3600), "all quiet");
+
+    let health = health_with(status).await;
+
+    assert!(!health.contains("connection refused"), "{health}");
+    assert!(!health.contains("recovered"), "{health}");
 }
 
 #[tokio::test]

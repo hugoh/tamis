@@ -77,6 +77,33 @@ jobs:
           path: crap-baseline.json
           if-no-files-found: error
 
+  # Advisory: not in the tag job's needs, so a surviving mutant never blocks a release.
+  mutants:
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
+        with:
+          fetch-depth: "0"
+      - uses: ./.github/actions/rust-setup
+        with:
+          shared-key: mutants
+          save-if: "false"
+      - run: mise run prebuild
+      - run: mise run mutants:diff
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutants-diff-out
+          path: mutants.out
+          if-no-files-found: ignore
+
   plan:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10

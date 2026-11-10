@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Mutation-test only the lines changed since the base branch (BASE_REF, default main)"
+set -euo pipefail
+diff_file=target/mutants.diff
+mkdir -p target
+git diff "origin/${BASE_REF:-main}...HEAD" >"$diff_file"
+cargo mutants --test-tool nextest --in-diff "$diff_file"

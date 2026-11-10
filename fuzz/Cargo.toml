@@ -1,0 +1,36 @@
+[package]
+name = "tamis-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[[bin]]
+bench = false
+doc = false
+name = "tokenize"
+path = "fuzz_targets/tokenize.rs"
+test = false
+
+[[bin]]
+bench = false
+doc = false
+name = "rules_parse"
+path = "fuzz_targets/rules_parse.rs"
+test = false
+
+[[bin]]
+bench = false
+doc = false
+name = "utf7_roundtrip"
+path = "fuzz_targets/utf7_roundtrip.rs"
+test = false
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tamis = { path = "..", version = "0.0.0" }

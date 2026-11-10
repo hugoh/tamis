@@ -26,3 +26,8 @@ eval-data/
 /site-docs/.astro/
 docs/reference/sieve-extensions.md
 crap-baseline.json
+/mutants.out*/
+/fuzz/target/
+/fuzz/artifacts/
+/fuzz/corpus/
+/fuzz/Cargo.lock

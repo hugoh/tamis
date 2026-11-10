@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Run mutation testing (slow; pass cargo-mutants args, e.g. --file src/rules/scan.rs)"
+set -euo pipefail
+cargo mutants --test-tool nextest "$@"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Fuzz one target (tokenize, rules_parse, utf7_roundtrip) for a while"
+#USAGE arg "<target>" help="Fuzz target name"
+#USAGE arg "[seconds]" help="Time budget" default="60"
+set -euo pipefail
+rustup toolchain install nightly --profile minimal --no-self-update
+cargo +nightly fuzz run "${usage_target:?}" -- -max_total_time="${usage_seconds:-60}"

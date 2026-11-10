@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Compile every fuzz target without running it"
+set -euo pipefail
+rustup toolchain install nightly --profile minimal --no-self-update
+cargo +nightly fuzz build

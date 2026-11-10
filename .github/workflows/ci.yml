@@ -60,34 +60,16 @@ jobs:
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Start Dovecot
-        run: |
-          docker run -d --name dovecot --user 0:0 -p 143:143 \
-            -v "$PWD/tests/dovecot/dovecot.conf:/etc/dovecot/dovecot.conf:ro" \
-            -v "$PWD/tests/dovecot/passwd:/etc/passwd:ro" \
-            -v "$PWD/tests/dovecot/group:/etc/group:ro" \
-            docker.io/dovecot/dovecot@sha256:43c14def08a57f25107593cbcf64a0a6fbae84a7b9de7aa038513c9b21e91914
-          for _ in $(seq 60); do
-            if (exec 3<>/dev/tcp/127.0.0.1/143) 2>/dev/null; then
-              echo "TAMIS_TEST_IMAP=127.0.0.1:143" >> "$GITHUB_ENV"
-              exit 0
-            fi
-            sleep 0.5
-          done
-          docker logs dovecot
-          exit 1
+        run: mise run test:imap-server
       - name: Fetch CRAP baseline
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          id=$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-          if [ -z "$id" ] || ! gh run download "$id" --name crap-baseline; then
-            echo "::warning::No CRAP baseline found; regression check skipped"
-          fi
+        run: mise run crap:fetch
       - name: Tests and coverage
-        run: mise run ci:core
+        run: mise run ci:test
       - name: Record CRAP baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: cargo crap --lcov lcov.info --format json --sort file --output crap-baseline.json
+        run: mise run crap:baseline
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
@@ -284,10 +266,8 @@ jobs:
           save-if: "false"
       # cargo publish packages the files prebuild generates; they are gitignored,
       # so Cargo.toml's include list is what ships them.
-      - name: Generate the embedded web assets
-        run: |
-          mise run prebuild
-          cargo package --list --allow-dirty | grep -qx web/static/vendor/theme.css
+      - name: Check the crate ships the embedded web assets
+        run: mise run lint:package
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist/

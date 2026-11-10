@@ -2,7 +2,6 @@
 /tamis
 *.test
 *.out
-lcov.info
 dist/
 
 # Local state and secrets
@@ -12,7 +11,7 @@ dist/
 # Mail copied for evaluation (see docs/evaluation.md)
 eval-data/
 
-# Built by the prebuild task (mise run vendor-web) and embedded; not committed.
+# Built by the prebuild task (mise run web:vendor) and embedded; not committed.
 /web/static/vendor/htmx.min.js
 /web/static/vendor/htmx.LICENSE
 /web/static/vendor/theme.css
@@ -21,10 +20,7 @@ eval-data/
 /target
 !tests/fixtures/golden/state.db
 
-# Built by mise run site-build.
-/site/style.css
-/site/mock/
-/site/docs/
+# Built by mise run site (into target/site, which /target covers).
 /site-docs/node_modules/
 /site-docs/dist/
 /site-docs/.astro/

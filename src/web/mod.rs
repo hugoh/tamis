@@ -58,7 +58,7 @@ struct Assets;
 const REQUIRED_ASSETS: [&str; 2] = ["vendor/theme.css", "vendor/htmx.min.js"];
 
 /// Whether this build carries the interface's CSS and JavaScript, which
-/// `mise run vendor-web` fetches.
+/// `mise run web:vendor` fetches.
 #[must_use]
 pub fn has_assets() -> bool {
     missing_assets().is_empty()
@@ -73,7 +73,7 @@ fn missing_assets() -> Vec<&'static str> {
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("this build has no web interface files ({0}): run mise run vendor-web, then rebuild")]
+    #[error("this build has no web interface files ({0}): run mise run web:vendor, then rebuild")]
     NoAssets(String),
     #[error("set up passkeys: {0}")]
     Passkeys(String),

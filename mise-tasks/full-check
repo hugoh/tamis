@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Run full pre-commit validation (format, fix, core CI)"
-set -e
-mise run format
+#MISE description="Run full pre-push validation: fix, the CI tests, then every hk check"
+set -euo pipefail
 mise run fix
-mise run ci:core
+mise run ci:test
+hk check --all

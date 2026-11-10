@@ -381,7 +381,7 @@ const MOCK_FREEZE: &str = "<style>a,button,input,select,textarea,label,summary,[
      </head>";
 
 /// Writes a standalone decisions page (CSS inlined) for eyeballing or docs:
-/// `mise run mock-web`; set `TAMIS_MOCK_PAGE` to write elsewhere
+/// `mise run web:mock`; set `TAMIS_MOCK_PAGE` to write elsewhere
 #[tokio::test]
 #[ignore = "writes a file; run by hand"]
 #[allow(clippy::too_many_lines, reason = "a list of sample rows")]
@@ -486,7 +486,7 @@ async fn mock_decisions_page() {
     let decisions_css =
         std::fs::read_to_string("web/static/decisions.css").expect("web/static/decisions.css");
     let css =
-        std::fs::read_to_string("web/static/vendor/theme.css").expect("run mise run vendor-web");
+        std::fs::read_to_string("web/static/vendor/theme.css").expect("run mise run web:vendor");
     let page = page
         .replace(
             "<link rel=\"stylesheet\" href=\"/static/vendor/theme.css?v=\">",

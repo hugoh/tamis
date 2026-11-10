@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Generate docs/reference/sieve-extensions.md from the binary's list of supported extensions"
+#MISE depends=["prebuild"]
+#MISE sources=["src/rules/**/*.rs", "mise-tasks/site/reference"]
+#MISE outputs=["docs/reference/sieve-extensions.md"]
+set -euo pipefail
+
+{
+  cat <<'MD'
+---
+title: Supported Sieve extensions
+---
+
+The extensions a rules script may `require`, as listed by `tamis rules extensions`.
+Each links to its specification.
+
+MD
+  cargo run --quiet -- rules extensions --markdown
+} >docs/reference/sieve-extensions.md

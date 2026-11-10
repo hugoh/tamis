@@ -1,5 +1,5 @@
 {
-  // Third-party minified code, copied by `mise run vendor-web`: not ours to lint or format.
+  // Third-party minified code, copied by `mise run web:vendor`: not ours to lint or format.
   "root": false,
   "extends": "//",
   "linter": { "enabled": false },

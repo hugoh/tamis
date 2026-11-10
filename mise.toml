@@ -23,7 +23,7 @@ tombi = "1.10.0"
 "github:minikin/cargo-crap" = "0.9.0"
 
 [env]
-COVEROUT = "lcov.info"
+COVEROUT = "target/lcov.info"
 
 [settings]
 task.timings = false

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Copy htmx and build the daisyUI/Tailwind stylesheet into web/static/vendor"
-#MISE sources=[".config/mise/conf.d/web.toml", "templates/*.html", "web/static/rules.js", "mise-tasks/vendor-web"]
+#MISE sources=[".config/mise/conf.d/web.toml", "templates/*.html", "web/static/rules.js", "mise-tasks/web/vendor"]
 #MISE outputs=["web/static/vendor/htmx.min.js", "web/static/vendor/htmx.LICENSE", "web/static/vendor/theme.css"]
 set -euo pipefail
 

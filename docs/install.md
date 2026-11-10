@@ -91,6 +91,6 @@ mise run build
 ```
 
 A plain `cargo build --release` of a checkout also works, but run
-`mise run vendor-web` first:
+`mise run web:vendor` first:
 without the files it embeds, the web interface refuses to start; see
 [Development](../contributing/).

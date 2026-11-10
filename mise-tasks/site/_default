@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Build the GitHub Pages site into target/site: landing page, stylesheet, mock decisions page and documentation"
+#MISE depends=["site:css", "site:static", "site:docs"]
+true

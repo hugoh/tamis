@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Copy the landing page's files and the mock decisions page into target/site"
+#MISE depends=["web:mock"]
+#MISE sources=["site/**", "target/mock-decisions.html", "mise-tasks/site/static"]
+#MISE outputs=["target/site/index.html", "target/site/mock/decisions.html"]
+set -euo pipefail
+
+mkdir -p target/site/mock
+cp -R site/. target/site/
+cp target/mock-decisions.html target/site/mock/decisions.html

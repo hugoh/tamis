@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 #MISE description="Fetch or generate the files the binary embeds but the repo does not commit"
-#MISE depends=["vendor-web"]
+#MISE depends=["web:vendor"]
 set -e

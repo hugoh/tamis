@@ -17,8 +17,8 @@ local linters = new Mapping<String, Step> {
     check = "cargo machete"
   }
   ["package-assets"] {
-    glob = List("Cargo.toml", "web/static/**", "mise-tasks/vendor-web")
-    check = "cargo package --list --allow-dirty | grep -q vendor/theme.css"
+    glob = List("Cargo.toml", "web/static/**", "mise-tasks/web/vendor")
+    check = "mise run lint:package"
   }
   ["duplication"] {
     check = "jscpd"

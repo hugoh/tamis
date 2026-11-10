@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Write crap-baseline.json from the last coverage run (run coverage first); CI records it on main"
+set -euo pipefail
+if [ ! -f "$COVEROUT" ]; then
+  echo "crap:baseline: $COVEROUT not found; run mise run coverage first" >&2
+  exit 1
+fi
+cargo crap --lcov "$COVEROUT" --format json --sort file --output crap-baseline.json

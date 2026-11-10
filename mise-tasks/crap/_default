@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Warn if any function's CRAP score regresses against crap-baseline.json, without failing (report only when absent)"
+#MISE description="CI check: warn when a function's CRAP score regresses against crap-baseline.json, without failing (report only when absent)"
 #MISE depends=["coverage"]
 set -euo pipefail
 if [ ! -f crap-baseline.json ]; then

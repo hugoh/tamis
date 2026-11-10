@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-#MISE description="Development mode"
+#MISE description="Run tamis from source; arguments go to the binary"
 #MISE depends=["prebuild"]
 cargo run -- "$@"

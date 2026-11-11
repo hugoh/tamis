@@ -16,15 +16,14 @@ concurrency:
 
 jobs:
   # A path-filtered workflow posts no check on unrelated PRs, so it can't be a
-  # required context. Filtering per job instead reports `build` as skipped,
-  # which counts as passing.
-  changes:
-    timeout-minutes: 5
+  # required context. Filtering by step instead reports `site-build` as passing
+  # without paying for a second runner.
+  site-build:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: read
-    outputs:
-      site: ${{ github.event_name != 'pull_request' || steps.filter.outputs.site == 'true' }}
     steps:
       - id: filter
         if: github.event_name == 'pull_request'
@@ -40,22 +39,17 @@ jobs:
               - web/static/**
               - mise-tasks/site/**
               - .github/workflows/pages.yml
-
-  site-build:
-    needs: changes
-    if: needs.changes.outputs.site == 'true'
-    timeout-minutes: 30
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
+      - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
+        uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
         with:
           fetch-depth: "1"
-      - uses: ./.github/actions/rust-setup
+      - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
+        uses: ./.github/actions/rust-setup
         with:
           shared-key: pages
-      - run: mise run site
+          minimal: "true"
+      - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
+        run: mise run site
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

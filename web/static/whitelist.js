@@ -18,17 +18,21 @@ document.addEventListener("change", (event) => {
 
 // The server renders the confirmation as a plain <dialog data-modal>; opening it
 // as a modal gives the inert page, focus containment, Esc and focus return.
-const openModals = () => {
-  for (const dialog of document.querySelectorAll("dialog[data-modal]")) {
+// htmx.onLoad runs for each piece of new content (the page, then every swap),
+// so only what just arrived is looked at.
+htmx.onLoad((content) => {
+  const dialogs = content.matches?.("dialog[data-modal]")
+    ? [content]
+    : (content.querySelectorAll?.("dialog[data-modal]") ?? []);
+  for (const dialog of dialogs) {
     if (!dialog.open) dialog.showModal();
   }
-};
+});
 
 document.addEventListener("htmx:afterSettle", () => {
   if (header()?.checked) {
     for (const box of rowBoxes()) box.checked = true;
   }
-  openModals();
 });
 
 // Cancel and Esc close the dialog natively; drop it so a stale copy never lingers.

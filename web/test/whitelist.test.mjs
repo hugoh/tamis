@@ -8,21 +8,31 @@ const SCRIPT = readFileSync(
   "utf8",
 );
 
-function page(dialogs) {
+function page() {
   const handlers = {};
   const sandbox = {
     document: {
       getElementById: () => null,
-      querySelectorAll: (selector) =>
-        selector.startsWith("dialog") ? dialogs : [],
+      querySelectorAll: () => [],
       addEventListener: (name, handler, capture) => {
         handlers[name] = { handler, capture };
+      },
+    },
+    htmx: {
+      onLoad: (handler) => {
+        handlers.onLoad = handler;
       },
     },
   };
   vm.runInNewContext(SCRIPT, sandbox);
   return handlers;
 }
+
+// New content as htmx hands it over: a container that may hold dialogs.
+const content = (...dialogs) => ({
+  matches: () => false,
+  querySelectorAll: () => dialogs,
+});
 
 const dialog = (open = false) => ({
   open,
@@ -40,25 +50,36 @@ const dialog = (open = false) => ({
 
 test("a confirmation swapped in by htmx is opened as a modal", () => {
   const confirm = dialog();
-  const handlers = page([confirm]);
 
-  handlers["htmx:afterSettle"].handler();
+  page().onLoad(content(confirm));
+
+  assert.equal(confirm.shown, 1);
+});
+
+test("swapped-in content that is itself the dialog is opened", () => {
+  const confirm = dialog();
+  confirm.querySelectorAll = () => [];
+
+  page().onLoad(confirm);
 
   assert.equal(confirm.shown, 1);
 });
 
 test("a dialog that is already open is not opened twice", () => {
   const confirm = dialog(true);
-  const handlers = page([confirm]);
 
-  handlers["htmx:afterSettle"].handler();
+  page().onLoad(content(confirm));
 
   assert.equal(confirm.shown, 0);
 });
 
+test("new content without a dialog is left alone", () => {
+  assert.doesNotThrow(() => page().onLoad(content()));
+});
+
 test("closing the dialog removes it, listening in the capture phase", () => {
   const confirm = dialog();
-  const handlers = page([confirm]);
+  const handlers = page();
 
   assert.equal(handlers.close.capture, true);
   handlers.close.handler({ target: confirm });
@@ -68,9 +89,8 @@ test("closing the dialog removes it, listening in the capture phase", () => {
 
 test("close events from other elements are ignored", () => {
   const other = { ...dialog(), matches: () => false };
-  const handlers = page([]);
 
-  handlers.close.handler({ target: other });
+  page().close.handler({ target: other });
 
   assert.equal(other.removed, false);
 });

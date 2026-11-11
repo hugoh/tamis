@@ -8,7 +8,15 @@ const SCRIPT = readFileSync(
   "utf8",
 );
 
-function page({ hash = "", search = "", buttons = [], respond } = {}) {
+function page({
+  hash = "",
+  search = "",
+  buttons = [],
+  respond,
+  get,
+  secure,
+  noWebauthn = false,
+} = {}) {
   const requests = [];
   const handlers = {};
   const fields = { name: { value: "passkey" } };
@@ -16,6 +24,7 @@ function page({ hash = "", search = "", buttons = [], respond } = {}) {
   const location = { hash, search, href: "" };
   const credential = { toJSON: () => ({ id: "cred" }) };
   const created = [];
+  const elements = {};
 
   const sandbox = {
     URLSearchParams,
@@ -25,14 +34,21 @@ function page({ hash = "", search = "", buttons = [], respond } = {}) {
         if (id === "status") return status;
         if (fields[id]) return fields[id];
         if (!buttons.includes(id)) return null;
-        return {
+        const button = {
+          disabled: false,
+          busy: [],
           addEventListener: (_event, handler) => {
             handlers[id] = handler;
           },
+          setAttribute: (name, value) => button.busy.push([name, value]),
+          removeAttribute: (name) => button.busy.push([name, null]),
         };
+        elements[id] = button;
+        return button;
       },
     },
     location,
+    isSecureContext: secure,
     fetch: async (url, init) => {
       requests.push({ url, body: init.body, method: init.method });
       return (
@@ -42,13 +58,15 @@ function page({ hash = "", search = "", buttons = [], respond } = {}) {
         }
       );
     },
-    PublicKeyCredential: {
-      parseRequestOptionsFromJSON: (options) => ({ request: options }),
-      parseCreationOptionsFromJSON: (options) => ({ creation: options }),
-    },
+    PublicKeyCredential: noWebauthn
+      ? undefined
+      : {
+          parseRequestOptionsFromJSON: (options) => ({ request: options }),
+          parseCreationOptionsFromJSON: (options) => ({ creation: options }),
+        },
     navigator: {
       credentials: {
-        get: async () => credential,
+        get: get ?? (async () => credential),
         create: async (options) => {
           created.push(options);
           return credential;
@@ -64,6 +82,7 @@ function page({ hash = "", search = "", buttons = [], respond } = {}) {
     status,
     location,
     fields,
+    elements,
     click: (id) => handlers[id](),
   };
 }
@@ -148,4 +167,68 @@ test("signing in begins, asks for a passkey, finishes and goes home", async () =
 
 test("the login page has no enroll button and still loads", () => {
   assert.doesNotThrow(() => page({ buttons: ["login"] }));
+});
+
+const cancelled = () => {
+  const err = new Error("The operation either timed out or was not allowed.");
+  err.name = "NotAllowedError";
+  return err;
+};
+
+test("a dismissed passkey prompt gets a neutral message, not the browser's", async () => {
+  const site = page({
+    buttons: ["login"],
+    get: async () => {
+      throw cancelled();
+    },
+  });
+
+  await site.click("login");
+
+  assert.equal(site.status.textContent, "Cancelled or timed out. Try again.");
+  assert.equal(site.location.href, "");
+});
+
+test("the button is busy and disabled while the ceremony runs, then usable again", async () => {
+  let release;
+  const site = page({
+    buttons: ["login"],
+    get: () =>
+      new Promise((resolve) => {
+        release = () => resolve({ toJSON: () => ({ id: "cred" }) });
+      }),
+  });
+
+  const pending = site.click("login");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(site.elements.login.disabled, true);
+  assert.deepEqual(site.elements.login.busy[0], ["aria-busy", "true"]);
+
+  release();
+  await pending;
+  assert.equal(site.elements.login.disabled, false);
+  assert.deepEqual(site.elements.login.busy.at(-1), ["aria-busy", null]);
+});
+
+test("the button is usable again after a failed ceremony", async () => {
+  const site = page({ buttons: ["login"], respond: () => failure("nope") });
+
+  await site.click("login");
+
+  assert.equal(site.status.textContent, "nope");
+  assert.equal(site.elements.login.disabled, false);
+});
+
+test("without WebAuthn the button is disabled and the page says why", () => {
+  const site = page({ buttons: ["login"], noWebauthn: true });
+
+  assert.match(site.status.textContent, /Passkeys are not available/);
+  assert.equal(site.elements.login.disabled, true);
+});
+
+test("an insecure context disables the button too", () => {
+  const site = page({ buttons: ["login"], secure: false });
+
+  assert.match(site.status.textContent, /HTTPS/);
+  assert.equal(site.elements.login.disabled, true);
 });

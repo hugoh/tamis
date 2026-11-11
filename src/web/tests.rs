@@ -1042,6 +1042,91 @@ async fn pages_load_the_feedback_script_and_a_toast_area() {
 }
 
 #[tokio::test]
+async fn the_toast_area_is_a_named_popover_region() {
+    let site = site();
+
+    let page = text(site.get("/").await).await;
+
+    assert!(
+        page.contains("id=\"toasts\"")
+            && page.contains("popover=\"manual\"")
+            && page.contains("aria-label=\"Notifications\""),
+        "{page}"
+    );
+    assert!(page.contains("id=\"toast-status\""), "{page}");
+}
+
+#[tokio::test]
+async fn navigation_is_a_labelled_landmark_and_marks_the_current_page() {
+    let site = site();
+
+    let decisions = text(site.get("/").await).await;
+    let health = text(site.get("/health").await).await;
+
+    assert!(
+        decisions.contains("<header") && decisions.contains("<nav aria-label=\"Main\">"),
+        "{decisions}"
+    );
+    assert!(
+        decisions.contains("<a href=\"/\" class=\"menu-active\" aria-current=\"page\">"),
+        "{decisions}"
+    );
+    assert_eq!(decisions.matches("aria-current=\"page\"").count(), 1);
+    assert!(
+        health.contains("<a href=\"/health\" class=\"menu-active\" aria-current=\"page\">"),
+        "{health}"
+    );
+    assert_eq!(health.matches("aria-current=\"page\"").count(), 1);
+}
+
+#[tokio::test]
+async fn the_remove_confirmation_is_a_native_dialog_that_cancels_without_a_request() {
+    let site = site();
+    site.db.add_address("alice@example.org", "manual").unwrap();
+
+    let confirm = text(
+        site.post("/whitelist/remove/confirm", "address=alice%40example.org")
+            .await,
+    )
+    .await;
+
+    assert!(
+        confirm.contains("<dialog class=\"modal\" data-modal"),
+        "{confirm}"
+    );
+    assert!(!confirm.contains("modal-open"), "{confirm}");
+    assert!(
+        confirm.contains(
+            "<form method=\"dialog\"><button class=\"btn\" autofocus>Cancel</button></form>"
+        ),
+        "{confirm}"
+    );
+    assert!(!confirm.contains("/whitelist/remove/cancel"), "{confirm}");
+}
+
+#[tokio::test]
+async fn the_sign_in_page_focuses_its_button_and_describes_it() {
+    let site = site();
+
+    let login = text(
+        site.send(
+            Request::get("/auth/login").body(Body::empty()).unwrap(),
+            false,
+        )
+        .await,
+    )
+    .await;
+
+    assert!(
+        login.contains("id=\"login\"")
+            && login.contains("autofocus")
+            && login.contains("aria-describedby=\"login-help\"")
+            && login.contains("id=\"login-help\""),
+        "{login}"
+    );
+}
+
+#[tokio::test]
 async fn pages_link_the_svg_favicon_and_serve_it_as_an_image() {
     let site = site();
 

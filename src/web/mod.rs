@@ -223,7 +223,6 @@ fn routes(shared: App) -> Router {
         .route("/whitelist", get(whitelist::page).post(whitelist::add))
         .route("/whitelist/remove", post(whitelist::remove))
         .route("/whitelist/remove/confirm", post(whitelist::confirm))
-        .route("/whitelist/remove/cancel", get(whitelist::cancel))
         .route("/decisions/{id}/undo", post(pages::undo))
         .route("/decisions/{id}/learn", post(pages::learn))
         .route_layer(middleware::from_fn_with_state(

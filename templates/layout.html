@@ -10,24 +10,27 @@
 <link rel="stylesheet" href="/static/decisions.css?v={{ version }}">
 </head>
 <body class="min-h-screen">
-<div class="navbar bg-base-200 shadow-sm px-4">
+<header class="navbar bg-base-200 shadow-sm px-4">
 <div class="flex-1"><span class="text-xl font-semibold">tamis</span></div>
 {% if !nav.is_empty() %}<div class="flex-none flex items-center gap-2">
+<nav aria-label="Main">
 <ul class="menu menu-horizontal">
-<li><a href="/"{% if nav == "decisions" %} class="menu-active"{% endif %}>Decisions</a></li>
-<li><a href="/health"{% if nav == "health" %} class="menu-active"{% endif %}>Health</a></li>
-<li><a href="/whitelist"{% if nav == "whitelist" %} class="menu-active"{% endif %}>Whitelist</a></li>
-<li><a href="/rules"{% if nav == "rules" %} class="menu-active"{% endif %}>Rules</a></li>
-<li><a href="/logs"{% if nav == "logs" %} class="menu-active"{% endif %}>Logs</a></li>
+<li><a href="/"{% if nav == "decisions" %} class="menu-active" aria-current="page"{% endif %}>Decisions</a></li>
+<li><a href="/health"{% if nav == "health" %} class="menu-active" aria-current="page"{% endif %}>Health</a></li>
+<li><a href="/whitelist"{% if nav == "whitelist" %} class="menu-active" aria-current="page"{% endif %}>Whitelist</a></li>
+<li><a href="/rules"{% if nav == "rules" %} class="menu-active" aria-current="page"{% endif %}>Rules</a></li>
+<li><a href="/logs"{% if nav == "logs" %} class="menu-active" aria-current="page"{% endif %}>Logs</a></li>
 </ul>
+</nav>
 <form method="post" action="/auth/logout"><button class="btn btn-ghost btn-sm">Sign out</button></form>
 </div>{% endif %}
-</div>
-<main class="mx-auto max-w-screen-2xl p-4">
+</header>
+<main class="mx-auto max-w-screen-2xl p-4" tabindex="-1">
 {% block content %}{% endblock %}
 </main>
 {% if !version.is_empty() %}<footer class="p-4 text-center text-xs opacity-60"><a class="link link-hover" href="https://tamis.larve.net/">tamis</a> {{ version }}</footer>{% endif %}
-<div id="toasts" class="toast toast-end" role="status" aria-live="polite"></div>
+<div id="toasts" class="toast toast-end" popover="manual" role="region" aria-label="Notifications"></div>
+<div id="toast-status" class="sr-only" role="status"></div>
 <script src="/static/vendor/htmx.min.js?v={{ version }}"></script>
 <script src="/static/feedback.js?v={{ version }}"></script>
 {% block scripts %}{% endblock %}

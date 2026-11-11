@@ -260,7 +260,8 @@ async fn serve_mock() {
     seed_bulk(&site, rows);
 
     // The test helper's session lasts a minute: mint one for the whole sitting
-    // and put it on every request, since there is no passkey to sign in with.
+    // and put it on every request but the sign-in pages (`/auth/...`), which stay
+    // viewable; there is no passkey to sign in with.
     let session = site
         .app
         .sessions
@@ -271,7 +272,9 @@ async fn serve_mock() {
         move |mut request: Request<Body>, next: Next| {
             let cookie = cookie.clone();
             async move {
-                request.headers_mut().insert(header::COOKIE, cookie);
+                if !request.uri().path().starts_with("/auth/") {
+                    request.headers_mut().insert(header::COOKIE, cookie);
+                }
                 next.run(request).await
             }
         },

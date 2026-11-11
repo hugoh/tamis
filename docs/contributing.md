@@ -39,6 +39,10 @@ settings are environment variables, all optional:
 - `TAMIS_MOCK_FAIL`, set to anything, makes every action fail and the daemon
   report an error, to see the error states.
 
+The sign-in page (`/auth/login`) and the enrol page (`/auth/enroll`) are served
+too, without the automatic session, so you can see them and their script run;
+the passkey ceremony itself has nothing to check against and fails.
+
 Edits to `web/static` show on reload; template and Rust changes need the task
 restarted. The interface only lives in the test build, so it adds nothing to the
 shipped binary. `mise run web:mock` writes a static snapshot of the decisions

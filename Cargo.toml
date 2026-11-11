@@ -1,6 +1,6 @@
 [package]
 name = "tamis"
-version = "0.0.0"
+version = "0.22.1"
 edition = "2024"
 description = "A spam filter and Sieve mail sorter for remote mailboxes"
 repository = "https://github.com/hugoh/tamis"

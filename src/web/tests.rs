@@ -1105,6 +1105,28 @@ async fn the_remove_confirmation_is_a_native_dialog_that_cancels_without_a_reque
 }
 
 #[tokio::test]
+async fn the_sign_in_page_focuses_its_button_and_describes_it() {
+    let site = site();
+
+    let login = text(
+        site.send(
+            Request::get("/auth/login").body(Body::empty()).unwrap(),
+            false,
+        )
+        .await,
+    )
+    .await;
+
+    assert!(
+        login.contains("id=\"login\"")
+            && login.contains("autofocus")
+            && login.contains("aria-describedby=\"login-help\"")
+            && login.contains("id=\"login-help\""),
+        "{login}"
+    );
+}
+
+#[tokio::test]
 async fn pages_link_the_svg_favicon_and_serve_it_as_an_image() {
     let site = site();
 

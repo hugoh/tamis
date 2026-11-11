@@ -16,6 +16,8 @@ use crate::config::Config;
 use crate::live::Status;
 use crate::store::{Decision, Store};
 
+mod mock;
+
 const ORIGIN: &str = "http://localhost:8484";
 
 struct Site {
@@ -384,103 +386,9 @@ const MOCK_FREEZE: &str = "<style>a,button,input,select,textarea,label,summary,[
 /// `mise run web:mock`; set `TAMIS_MOCK_PAGE` to write elsewhere
 #[tokio::test]
 #[ignore = "writes a file; run by hand"]
-#[allow(clippy::too_many_lines, reason = "a list of sample rows")]
 async fn mock_decisions_page() {
     let site = site();
-    record_as(
-        &site,
-        "Your receipt from Acme",
-        ("good", 0.03),
-        "rule",
-        "move:Receipts",
-        true,
-    );
-    record_as(
-        &site,
-        "Weekly digest",
-        ("good", 0.08),
-        "rule",
-        "move:Newsletters",
-        true,
-    );
-    record_as(
-        &site,
-        "Meeting notes",
-        ("good", 0.02),
-        "bayes",
-        "none",
-        true,
-    );
-    record_as(
-        &site,
-        "Newsletter",
-        ("good", 0.0),
-        "whitelisted",
-        "none",
-        true,
-    );
-    record_as(
-        &site,
-        "Is this you?",
-        ("uncertain", 0.52),
-        "bayes",
-        "none",
-        true,
-    );
-    record_as(
-        &site,
-        "You won a prize!!!",
-        ("spam", 0.99),
-        "bayes",
-        "move:Junk",
-        true,
-    );
-    let rescued = record_as(
-        &site,
-        "Lunch on Friday?",
-        ("spam", 0.91),
-        "bayes",
-        "move:Junk",
-        true,
-    );
-    site.db.mark_undone(rescued).unwrap();
-    // A real undo also journals an `undo` entry for the message, which is what
-    // dims the original row.
-    record_as(
-        &site,
-        "Lunch on Friday?",
-        ("good", 0.0),
-        "undo",
-        "move:INBOX",
-        true,
-    );
-    // Same subject, so the same Message-ID: the later correction dims the
-    // original row in the page.
-    record_as(
-        &site,
-        "Invoice #4821",
-        ("spam", 0.88),
-        "bayes",
-        "move:Junk",
-        true,
-    );
-    record_as(
-        &site,
-        "Invoice #4821",
-        ("good", 0.0),
-        "correction",
-        "move:INBOX",
-        true,
-    );
-
-    record_as(
-        &site,
-        "Cheap watches",
-        ("spam", 0.97),
-        "bayes",
-        "move:Junk",
-        false,
-    );
+    mock::seed_decisions(&site);
 
     let page = text(site.get("/").await).await;
     let decisions_css =

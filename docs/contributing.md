@@ -24,3 +24,22 @@ stylesheet lacks.
 A plain `cargo build` does not run it. Such a binary still works, but the web
 interface refuses to start, saying to run `mise run web:vendor` and rebuild.
 The version is at the foot of every page.
+
+### Looking at the web interface
+
+`mise run web:serve` serves the real web interface at <http://localhost:8484/>
+over throwaway sample data, signed in, with no mailbox or passkey needed. Every
+page works, and Undo, Spam and Good change the sample data as a real action
+would, so it is the way to see a template or script change in a browser. The
+settings are environment variables, all optional:
+
+- `TAMIS_MOCK_PORT` is the port (8484).
+- `TAMIS_MOCK_ROWS` is how many extra decisions and whitelist addresses to
+  add (150, enough to need a second page).
+- `TAMIS_MOCK_FAIL`, set to anything, makes every action fail and the daemon
+  report an error, to see the error states.
+
+Edits to `web/static` show on reload; template and Rust changes need the task
+restarted. The interface only lives in the test build, so it adds nothing to the
+shipped binary. `mise run web:mock` writes a static snapshot of the decisions
+page from the same sample rows, for the landing page.

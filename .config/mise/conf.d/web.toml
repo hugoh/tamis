@@ -2,7 +2,7 @@
 # versions. The prebuild task (mise run web:vendor) copies htmx and builds the
 # stylesheet from them before every build and test; the results are not committed.
 [tools]
-"npm:@tailwindcss/cli" = "4.3.5"
+"npm:@tailwindcss/cli" = "4.3.3"
 "npm:daisyui" = "5.7.50"
 "npm:htmx.org" = "2.0.11"
 

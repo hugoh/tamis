@@ -41,7 +41,7 @@ jobs:
               - mise-tasks/site/**
               - .github/workflows/pages.yml
 
-  build:
+  site-build:
     needs: changes
     if: needs.changes.outputs.site == 'true'
     timeout-minutes: 30
@@ -62,7 +62,7 @@ jobs:
           path: target/site
 
   deploy:
-    needs: build
+    needs: site-build
     if: github.event_name != 'pull_request'
     timeout-minutes: 10
     runs-on: ubuntu-latest

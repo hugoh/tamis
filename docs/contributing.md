@@ -27,7 +27,7 @@ The version is at the foot of every page.
 
 ## Looking at the web interface
 
-`mise run web:serve` serves the real web interface at <http://localhost:8484/>
+`mise run web:serve` serves the real web interface at `http://localhost:8484/`
 over throwaway sample data, signed in, with no mailbox or passkey needed. Every
 page works, and Undo, Spam and Good change the sample data as a real action
 would, so it is the way to see a template or script change in a browser. The
@@ -111,7 +111,7 @@ the script listens for.
 
 These tests see markup and script logic, not how a page looks or feels. For
 that, start the interface over sample data and use it in a browser:
-[looking at the web interface](#looking-at-the-web-interface).
+[looking at the web interface](../contributing/#looking-at-the-web-interface).
 
 ### Coverage
 

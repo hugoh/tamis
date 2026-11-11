@@ -3,10 +3,9 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: &site-paths [site/**, site-docs/**, docs/**, templates/**, src/web/**, web/static/**, mise-tasks/site/**, .github/workflows/pages.yml]
+    paths: [site/**, site-docs/**, docs/**, templates/**, src/web/**, web/static/**, mise-tasks/site/**, .github/workflows/pages.yml]
   pull_request:
     branches: [main]
-    paths: *site-paths
   workflow_dispatch:
 
 permissions: {}
@@ -16,7 +15,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # A path-filtered workflow posts no check on unrelated PRs, so it can't be a
+  # required context. Filtering per job instead reports `build` as skipped,
+  # which counts as passing.
+  changes:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      site: ${{ github.event_name != 'pull_request' || steps.filter.outputs.site == 'true' }}
+    steps:
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            site:
+              - site/**
+              - site-docs/**
+              - docs/**
+              - templates/**
+              - src/web/**
+              - web/static/**
+              - mise-tasks/site/**
+              - .github/workflows/pages.yml
+
   build:
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
     timeout-minutes: 30
     runs-on: ubuntu-latest
     permissions:

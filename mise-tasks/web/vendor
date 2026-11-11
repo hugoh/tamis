@@ -27,7 +27,18 @@ cat >"$work/input.css" <<CSS
 @source "$PWD/templates";
 @source "$PWD/web/static/rules.js";
 CSS
-"$cli/.bin/tailwindcss" --input "$work/input.css" --output "$new/theme.css" --minify
+log=$work/tailwind.log
+"$cli/.bin/tailwindcss" --input "$work/input.css" --output "$new/theme.css" --minify >"$log" 2>&1 || {
+  cat "$log"
+  exit 1
+}
+cat "$log"
+# A warning here means the optimizer dropped CSS it couldn't parse (tailwind
+# 4.3.5 lost daisyUI's .join focus and hover z-index rules this way).
+if grep -Eq 'Found [0-9]+ warning' "$log"; then
+  echo "tailwind dropped CSS; hold the tailwind or daisyUI bump" >&2
+  exit 1
+fi
 
 # The repo's end-of-file check wants every file to end in a newline.
 for file in "$new/htmx.min.js" "$new/theme.css"; do

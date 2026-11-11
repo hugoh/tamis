@@ -86,6 +86,22 @@ fn map_error(err: ClientError) -> Error {
     }
 }
 
+/// What a refused `LOGIN` means. A server at its connection limit refuses the
+/// same way as one that dislikes the password, but waiting and retrying
+/// normally can fix it, so it is not a [`Error::Login`].
+fn login_error(err: ClientError) -> Error {
+    let mapped = map_error(err);
+    let text = mapped.to_string().to_lowercase();
+    let at_limit = ["too many", "simultaneous", "number of connections"]
+        .iter()
+        .any(|phrase| text.contains(phrase));
+    if at_limit {
+        mapped
+    } else {
+        Error::Login(mapped.to_string())
+    }
+}
+
 fn source_chain(err: &dyn std::error::Error) -> String {
     let mut parts = Vec::new();
     let mut source = err.source();
@@ -168,7 +184,7 @@ impl Client {
         let imap = match timeout(DIAL_TIMEOUT, connect).await {
             Err(_) => return Err(Error::Connection("timed out connecting".to_owned())),
             Ok(Err(err)) => return Err(map_error(err)),
-            Ok(Ok(Err(err))) => return Err(Error::Login(map_error(err).to_string())),
+            Ok(Ok(Err(err))) => return Err(login_error(err)),
             Ok(Ok(Ok(imap))) => imap,
         };
         Ok(Self {
@@ -733,4 +749,38 @@ struct Held {
     uid: u32,
     message_id: String,
     size: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use imap_client::imap_types::response::{StatusBody, StatusKind};
+
+    use super::*;
+
+    fn refused(text: &'static str) -> ClientError {
+        ClientError::ResolveTask(TaskError::UnexpectedNoResponse(StatusBody {
+            kind: StatusKind::No,
+            code: None,
+            text: text.try_into().unwrap(),
+        }))
+    }
+
+    #[test]
+    fn a_rejected_password_is_a_login_error() {
+        let err = login_error(refused("[AUTHENTICATIONFAILED] Authentication failed."));
+
+        assert!(matches!(err, Error::Login(_)), "{err:?}");
+    }
+
+    #[test]
+    fn a_connection_limit_is_not_a_login_error() {
+        for text in [
+            "[ALERT] Too many simultaneous connections. (Failure)",
+            "[LIMIT] Maximum number of connections from user+IP exceeded (mail_max_userip_connections)",
+        ] {
+            let err = login_error(refused(text));
+
+            assert!(matches!(err, Error::Server(_)), "{text}: {err:?}");
+        }
+    }
 }

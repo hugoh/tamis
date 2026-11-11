@@ -317,12 +317,6 @@ pub(super) async fn confirm(State(app): State<App>, body: Bytes) -> Response {
     })
 }
 
-pub(super) async fn cancel() -> Response {
-    render(&Confirm {
-        confirm: ConfirmBody::default(),
-    })
-}
-
 pub(super) async fn remove(State(app): State<App>, body: Bytes) -> Response {
     let form = form(&body);
     let removal = match parse_removal(&app, &form) {

@@ -8,25 +8,56 @@ const SCRIPT = readFileSync(
   "utf8",
 );
 
-function page() {
+function element() {
+  return {
+    removed: false,
+    className: "",
+    textContent: "",
+    children: [],
+    listeners: {},
+    append(...kids) {
+      this.children.push(...kids);
+    },
+    addEventListener(name, handler) {
+      this.listeners[name] = handler;
+    },
+    contains: () => false,
+    remove() {
+      this.removed = true;
+    },
+  };
+}
+
+function page({ ariaNotify = true } = {}) {
   const handlers = {};
   const toasts = [];
   const timers = [];
   const triggered = [];
+  const announced = [];
+  const status = { textContent: "" };
+  const container = {
+    popoverOpen: false,
+    children: toasts,
+    append: (alert) => toasts.push(alert),
+    matches: () => container.popoverOpen,
+    showPopover: () => {
+      container.popoverOpen = true;
+    },
+    hidePopover: () => {
+      container.popoverOpen = false;
+    },
+  };
 
   const sandbox = {
     document: {
       getElementById: (id) =>
-        id === "toasts" ? { append: (alert) => toasts.push(alert) } : null,
-      createElement: () => ({
-        removed: false,
-        remove() {
-          this.removed = true;
-        },
-      }),
+        id === "toasts" ? container : id === "toast-status" ? status : null,
+      createElement: element,
+      querySelector: () => null,
       addEventListener: (name, handler) => {
         handlers[name] = handler;
       },
+      ...(ariaNotify && { ariaNotify: (m) => announced.push(m) }),
     },
     DOMParser: class {
       parseFromString(source) {
@@ -51,9 +82,14 @@ function page() {
     toasts,
     timers,
     triggered,
+    announced,
+    status,
+    container,
     fire: (name, detail) => handlers[name]({ detail }),
   };
 }
+
+const message = (alert) => alert.children[0].textContent;
 
 const button = (text) => ({
   tagName: "BUTTON",
@@ -92,7 +128,7 @@ test("elements that are not buttons keep their text while a request runs", () =>
   assert.equal(elt.dataset.label, undefined);
 });
 
-test("a failed request raises an error toast that lingers for ten seconds", () => {
+test("a failed request raises an error toast that stays until closed", () => {
   const { fire, toasts, timers } = page();
 
   fire("htmx:afterRequest", {
@@ -103,8 +139,8 @@ test("a failed request raises an error toast that lingers for ten seconds", () =
 
   assert.equal(toasts.length, 1);
   assert.equal(toasts[0].className, "alert alert-error");
-  assert.equal(toasts[0].textContent, "The request failed (HTTP 500).");
-  assert.equal(timers[0].delay, 10000);
+  assert.equal(message(toasts[0]), "The request failed (HTTP 500).");
+  assert.deepEqual(timers, []);
 });
 
 for (const status of [0, 401, 403]) {
@@ -117,7 +153,7 @@ for (const status of [0, 401, 403]) {
       xhr: { status },
     });
 
-    assert.match(toasts[0].textContent, /reload the page/);
+    assert.match(message(toasts[0]), /reload the page/);
   });
 }
 
@@ -130,7 +166,7 @@ test("an action note becomes a success toast that lingers for five seconds and r
   );
 
   assert.equal(toasts[0].className, "alert alert-success");
-  assert.equal(toasts[0].textContent, "Moved to Junk");
+  assert.equal(message(toasts[0]), "Moved to Junk");
   assert.equal(timers[0].delay, 5000);
   assert.deepEqual(triggered, [["#toolbar", "submit"]]);
 });
@@ -146,7 +182,7 @@ test("a failed action note becomes an error toast and leaves the list alone", ()
   );
 
   assert.equal(toasts[0].className, "alert alert-error");
-  assert.equal(toasts[0].textContent, "The mailbox moved on");
+  assert.equal(message(toasts[0]), "The mailbox moved on");
   assert.deepEqual(triggered, []);
 });
 
@@ -159,11 +195,41 @@ test("a response without a note raises no toast", () => {
   assert.deepEqual(triggered, []);
 });
 
-test("a toast removes itself when its timer fires", () => {
-  const { fire, toasts, timers } = page();
+test("a success toast removes itself when its timer fires and the region closes", () => {
+  const { fire, toasts, timers, container } = page();
   fire("htmx:afterRequest", respond("<div data-note>Done</div>"));
+  assert.equal(container.popoverOpen, true);
 
   timers[0].callback();
 
   assert.equal(toasts[0].removed, true);
+});
+
+test("a toast has a Close button that removes it", () => {
+  const { fire, toasts } = page();
+  fire("htmx:afterRequest", respond("<div data-note data-failed>Nope</div>"));
+  const close = toasts[0].children[1];
+
+  assert.equal(close.textContent, "Close");
+  assert.equal(close.type, "button");
+  close.listeners.click();
+
+  assert.equal(toasts[0].removed, true);
+});
+
+test("toasts are announced with ariaNotify, errors prefixed", () => {
+  const { fire, announced } = page();
+
+  fire("htmx:afterRequest", respond("<div data-note>Done</div>"));
+  fire("htmx:afterRequest", respond("<div data-note data-failed>Nope</div>"));
+
+  assert.deepEqual(announced, ["Done", "Error: Nope"]);
+});
+
+test("without ariaNotify the message goes to the live region", () => {
+  const { fire, status } = page({ ariaNotify: false });
+
+  fire("htmx:afterRequest", respond("<div data-note>Done</div>"));
+
+  assert.equal(status.textContent, "Done");
 });

@@ -16,8 +16,27 @@ document.addEventListener("change", (event) => {
   }
 });
 
+// The server renders the confirmation as a plain <dialog data-modal>; opening it
+// as a modal gives the inert page, focus containment, Esc and focus return.
+const openModals = () => {
+  for (const dialog of document.querySelectorAll("dialog[data-modal]")) {
+    if (!dialog.open) dialog.showModal();
+  }
+};
+
 document.addEventListener("htmx:afterSettle", () => {
   if (header()?.checked) {
     for (const box of rowBoxes()) box.checked = true;
   }
+  openModals();
 });
+
+// Cancel and Esc close the dialog natively; drop it so a stale copy never lingers.
+// `close` does not bubble, hence the capture phase.
+document.addEventListener(
+  "close",
+  (event) => {
+    if (event.target.matches?.("dialog[data-modal]")) event.target.remove();
+  },
+  true,
+);

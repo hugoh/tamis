@@ -17,3 +17,21 @@
   --sl-color-bg-nav: oklch(98% 0 0);
   --sl-color-bg-sidebar: oklch(98% 0 0);
 }
+
+/* astro-pele diagrams read these variables; map them to Starlight's palette so
+   they follow the site's light/dark toggle (not just the OS preference). */
+:root {
+  --pele-bg: var(--sl-color-bg);
+  --pele-fg: var(--sl-color-white);
+  --pele-muted: var(--sl-color-gray-2);
+  --pele-line: var(--sl-color-gray-2);
+  --pele-surface: var(--sl-color-gray-6);
+  --pele-surface-alt: var(--sl-color-gray-5);
+  --pele-border: var(--sl-color-gray-4);
+  --pele-accent: var(--sl-color-accent-high);
+}
+
+:root[data-theme="light"] {
+  --pele-line: var(--sl-color-gray-3);
+  --pele-accent: var(--sl-color-accent);
+}

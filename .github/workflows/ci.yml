@@ -95,7 +95,6 @@ jobs:
       - uses: ./.github/actions/rust-setup
         with:
           shared-key: e2e
-          minimal: "true"
       - name: Browser tests
         run: mise run test:e2e
 

@@ -43,6 +43,10 @@ jobs:
         uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
         with:
           fetch-depth: "1"
+          extra-cache-key-cmd: cat rust-toolchain.toml
+          extra-cache-paths: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
         uses: ./.github/actions/rust-setup
         with:

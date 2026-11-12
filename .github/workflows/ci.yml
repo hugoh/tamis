@@ -37,6 +37,10 @@ jobs:
       - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
         with:
           fetch-depth: "0"
+          extra-cache-key-cmd: cat rust-toolchain.toml
+          extra-cache-paths: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
       - uses: ./.github/actions/rust-setup
         with:
           shared-key: lint
@@ -55,6 +59,11 @@ jobs:
       MISE_ENV: ci
     steps:
       - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
+        with:
+          extra-cache-key-cmd: cat rust-toolchain.toml
+          extra-cache-paths: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: test
@@ -92,6 +101,10 @@ jobs:
       - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
         with:
           fetch-depth: "1"
+          extra-cache-key-cmd: cat rust-toolchain.toml
+          extra-cache-paths: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
       - uses: ./.github/actions/rust-setup
         with:
           shared-key: e2e

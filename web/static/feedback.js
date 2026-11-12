@@ -57,9 +57,16 @@ const failure = (status) =>
     ? "Not signed in or the connection dropped: reload the page and try again."
     : `The request failed (HTTP ${status}).`;
 
+const busyButton = (elt) =>
+  elt.tagName === "FORM"
+    ? elt.querySelector("button[type=submit]")
+    : elt.tagName === "BUTTON"
+      ? elt
+      : null;
+
 document.addEventListener("htmx:beforeRequest", (event) => {
-  const button = event.detail.elt;
-  if (button.tagName === "BUTTON") {
+  const button = busyButton(event.detail.elt);
+  if (button) {
     button.dataset.label = button.textContent;
     button.textContent = "Working…";
     const spinner = document.createElement("span");
@@ -71,7 +78,8 @@ document.addEventListener("htmx:beforeRequest", (event) => {
 
 document.addEventListener("htmx:afterRequest", (event) => {
   const { elt, xhr, successful } = event.detail;
-  if (elt.dataset.label) elt.textContent = elt.dataset.label;
+  const button = busyButton(elt);
+  if (button?.dataset.label) button.textContent = button.dataset.label;
   if (!successful) {
     toast(failure(xhr.status), true, elt);
     return;

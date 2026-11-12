@@ -151,6 +151,23 @@ test("a button shows a spinner and Working… while its request runs", async () 
   await button.locator(".loading-spinner").waitFor();
 });
 
+test("the Refresh button shows a spinner and Working… while the list reloads", async () => {
+  const page = await mock.page();
+  await page.goto(`${mock.origin}/`);
+  await page.waitForSelector("tbody tr[data-state]");
+  await page.route(/\/\?/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.continue();
+  });
+  const refresh = page.locator("#toolbar button[type=submit]");
+
+  await refresh.click();
+
+  await refresh.getByText("Working…").waitFor();
+  await refresh.locator(".loading-spinner").waitFor();
+  await refresh.getByText("Refresh", { exact: true }).waitFor();
+});
+
 test("the toast region stays on top of an open modal", async () => {
   const page = await mock.page();
   await page.goto(`${mock.origin}/whitelist`);

@@ -124,13 +124,36 @@ test("a button reads Working… while its request runs and gets its label back",
   assert.equal(elt.textContent, "Spam");
 });
 
+test("a form request puts the spinner on its submit button and restores the label", () => {
+  const { fire } = page();
+  const submit = button("Refresh");
+  const elt = {
+    tagName: "FORM",
+    textContent: "form",
+    dataset: {},
+    querySelector: (selector) => (selector === "button[type=submit]" ? submit : null),
+  };
+
+  fire("htmx:beforeRequest", { elt });
+  assert.equal(submit.textContent, "Working…");
+  assert.match(submit.prepended[0].className, /loading-spinner/);
+  assert.equal(elt.textContent, "form");
+  fire("htmx:afterRequest", {
+    elt,
+    successful: true,
+    xhr: { responseText: "" },
+  });
+
+  assert.equal(submit.textContent, "Refresh");
+});
+
 test("elements that are not buttons keep their text while a request runs", () => {
   const { fire } = page();
-  const elt = { tagName: "FORM", textContent: "form", dataset: {} };
+  const elt = { tagName: "INPUT", textContent: "input", dataset: {} };
 
   fire("htmx:beforeRequest", { elt });
 
-  assert.equal(elt.textContent, "form");
+  assert.equal(elt.textContent, "input");
   assert.equal(elt.dataset.label, undefined);
 });
 

@@ -47,7 +47,6 @@ jobs:
         uses: ./.github/actions/rust-setup
         with:
           shared-key: pages
-          minimal: "true"
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
         run: mise run site
       - if: github.event_name != 'pull_request'

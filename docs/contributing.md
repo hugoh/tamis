@@ -57,9 +57,10 @@ builds the web interface files first, so you test the same build CI does.
 | --- | --- |
 | `mise run test` | The Rust tests (`cargo nextest`, all features) and the browser script tests |
 | `mise run test:js` | Only the browser script tests |
+| `mise run test:e2e` | The browser tests: Playwright drives the web interface over the mock server |
 | `mise run test:imap` | The IMAP tests against a real Dovecot server |
-| `mise run ci:test` | What CI runs: tests with coverage, the CRAP report and the browser script tests |
-| `mise run full-check` | `fix`, then `ci:test`, then every `hk` check: run it before you push |
+| `mise run ci:test` | What the CI `test` job runs: tests with coverage, the CRAP report and the browser script tests |
+| `mise run full-check` | `fix`, then `ci:test`, then `test:e2e`, then every `hk` check: run it before you push |
 
 ### The Rust tests
 
@@ -109,8 +110,27 @@ context with a hand-made `document`, `htmx` and `fetch`, so it runs without a
 browser. Fake only what the script touches, and have the test fire the events
 the script listens for.
 
-These tests see markup and script logic, not how a page looks or feels. For
-that, start the interface over sample data and use it in a browser:
+### The browser tests
+
+`web/e2e` holds [Playwright](https://playwright.dev) tests that use the real
+interface in a real browser (`mise run test:e2e`): filtering, sorting, paging,
+undo and learn, the toasts, the whitelist dialog, the rules tester. Each test
+file starts its own copy of the mock server (`serve_mock` in
+`src/web/tests/mock.rs`) on a free port, so files run in parallel and what one
+file changes (an undo, a removed address) never reaches another. The task builds
+the test binary once and passes it to them as `TAMIS_MOCK_BIN`.
+
+You need a browser: run `playwright install chromium` once, or set
+`TAMIS_E2E_CHANNEL=chrome` to use the Chrome you already have. Fake time with
+`page.clock` instead of sleeping; the file's failure cases use a server started
+with `fail: true`.
+
+CI runs them as the `e2e` job, beside `test` on its own runner (using the Chrome
+already on it). It is not a step of `test`: beside the coverage run its debug
+build starves the timing sensitive Dovecot tests, and after it the build adds
+to the job's time.
+
+These tests cover flows. For how a page looks or feels, start the interface over sample data and use it in a browser:
 [looking at the web interface](../contributing/#looking-at-the-web-interface).
 
 ### Coverage

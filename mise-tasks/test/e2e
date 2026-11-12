@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Drive the web interface in a real browser against the mock server (needs a Chromium: playwright install chromium, or TAMIS_E2E_CHANNEL=chrome)"
+#MISE depends=["prebuild"]
+set -euo pipefail
+
+mise=${TAMIS_MISE:-mise}
+NODE_PATH=$("$mise" where npm:playwright)/node_modules
+export NODE_PATH
+
+# Build the test binary once; every test file then starts its own copy of the
+# mock server from it (own port, own sample data), so the files run in parallel
+# and nothing waits on cargo.
+TAMIS_MOCK_BIN=$(cargo test --lib --all-features --no-run --message-format=json-render-diagnostics |
+  jq -r 'select(.reason == "compiler-artifact" and .profile.test == true and (.target.kind | index("lib"))) | .executable')
+export TAMIS_MOCK_BIN
+
+node --test 'web/e2e/*.e2e.mjs'

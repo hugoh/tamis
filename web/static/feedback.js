@@ -62,6 +62,10 @@ document.addEventListener("htmx:beforeRequest", (event) => {
   if (button.tagName === "BUTTON") {
     button.dataset.label = button.textContent;
     button.textContent = "Working…";
+    const spinner = document.createElement("span");
+    spinner.className = "loading loading-spinner loading-xs";
+    spinner.setAttribute("aria-hidden", "true");
+    button.prepend(spinner);
   }
 });
 

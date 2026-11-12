@@ -77,6 +77,27 @@ jobs:
           path: crap-baseline.json
           if-no-files-found: error
 
+  # Its own job, not a step of `test`: the debug build it needs would take the
+  # CPUs from the coverage run's timing-sensitive Dovecot tests when run beside
+  # them, and would add its whole build and run time when run after them.
+  e2e:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # The runner's own Chrome: no browser download.
+      TAMIS_E2E_CHANNEL: chrome
+    steps:
+      - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
+        with:
+          fetch-depth: "1"
+      - uses: ./.github/actions/rust-setup
+        with:
+          shared-key: e2e
+      - name: Browser tests
+        run: mise run test:e2e
+
   plan:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
@@ -143,7 +164,7 @@ jobs:
         run: anodizer preflight
 
   tag:
-    needs: [plan, hk, test, preflight]
+    needs: [plan, hk, test, e2e, preflight]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
     runs-on: ubuntu-latest

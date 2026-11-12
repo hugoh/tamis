@@ -10,6 +10,7 @@ const SCRIPT = readFileSync(
 
 function element() {
   return {
+    setAttribute() {},
     removed: false,
     className: "",
     textContent: "",
@@ -95,6 +96,10 @@ const button = (text) => ({
   tagName: "BUTTON",
   textContent: text,
   dataset: {},
+  prepended: [],
+  prepend(node) {
+    this.prepended.push(node);
+  },
 });
 const respond = (responseText, extra = {}) => ({
   elt: button("Spam"),
@@ -109,6 +114,7 @@ test("a button reads Working… while its request runs and gets its label back",
 
   fire("htmx:beforeRequest", { elt });
   assert.equal(elt.textContent, "Working…");
+  assert.match(elt.prepended[0].className, /loading-spinner/);
   fire("htmx:afterRequest", {
     elt,
     successful: true,

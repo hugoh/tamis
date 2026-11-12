@@ -13,7 +13,10 @@ defaults:
     - x86_64-unknown-linux-gnu
     - aarch64-unknown-linux-gnu
     - aarch64-apple-darwin
-  cross: auto
+  cross: cargo
+
+partial:
+  by: target
 
 crates:
   - name: tamis

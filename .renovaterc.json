@@ -1,4 +1,32 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>hugoh/renovate-config"]
+  "extends": ["github>hugoh/renovate-config"],
+  "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "rust dependencies"
+    },
+    {
+      "matchFileNames": [".config/mise/conf.d/web.toml"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "web dependencies"
+    },
+    {
+      "matchDatasources": ["github-runners"],
+      "groupName": "runner images"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Runner images pinned in workflow matrices, which the github-actions manager does not read",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "os: (?<depName>ubuntu)-(?<currentValue>\\d+\\.\\d+)(?:-arm)?[,}]"
+      ],
+      "datasourceTemplate": "github-runners",
+      "versioningTemplate": "docker"
+    }
+  ]
 }

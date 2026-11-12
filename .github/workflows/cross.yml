@@ -50,7 +50,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - {os: ubuntu-26.04, target: x86_64-unknown-linux-gnu}
+          - {os: ubuntu-26.04-arm, target: aarch64-unknown-linux-gnu}
+          - {os: macos-latest, target: aarch64-apple-darwin}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -64,8 +67,49 @@ jobs:
         with:
           shared-key: anodizer-${{ matrix.os }}
       - run: anodizer check config
-      - name: Build this runner's targets natively
-        run: anodizer release --split --snapshot --clean
+      - name: Build this runner's target natively
+        run: anodizer release --split --snapshot --clean --targets ${{ matrix.target }}
+      # Hidden files are dropped by default and would only surface at merge time.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  # Mirrors ci.yml's release job without publishing: proves the per-target shards
+  # merge instead of overwriting each other.
+  merge:
+    name: anodizer (merge)
+    needs: anodizer
+    timeout-minutes: 30
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    env:
+      MISE_ENV: release,package
+    steps:
+      - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
+        with:
+          fetch-depth: "1"
+      - uses: ./.github/actions/rust-setup
+        with:
+          shared-key: anodizer-merge
+          save-if: "false"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist/
+          pattern: dist-*
+          merge-multiple: true
+      - name: Restore execute bit
+        run: find dist -type f -name tamis -exec chmod +x {} +
+      - name: Every target has its own shard
+        run: |
+          for t in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu aarch64-apple-darwin; do
+            [ -f "dist/$t/context.json" ] || { echo "::error::missing dist/$t/context.json"; exit 1; }
+          done
+      - run: anodizer release --snapshot --merge
 
   # Stable check name for branch protection: matrix leg names carry the runner
   # label, and a skipped `anodizer` job (unrelated paths) posts no check at
@@ -73,7 +117,7 @@ jobs:
   # skipped, so it's what's pinned as the required context.
   cross-gate:
     if: always()
-    needs: [changes, anodizer]
+    needs: [changes, anodizer, merge]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     permissions: {}
@@ -82,6 +126,7 @@ jobs:
         env:
           BUILD_CHANGED: ${{ needs.changes.outputs.build }}
           ANODIZER_RESULT: ${{ needs.anodizer.result }}
+          MERGE_RESULT: ${{ needs.merge.result }}
         run: |
           set -euo pipefail
           echo "build_changed=$BUILD_CHANGED anodizer=$ANODIZER_RESULT"
@@ -89,4 +134,4 @@ jobs:
             echo "no build-relevant changes; skipping"
             exit 0
           fi
-          [ "$ANODIZER_RESULT" = success ] || exit 1
+          [ "$ANODIZER_RESULT" = success ] && [ "$MERGE_RESULT" = success ] || exit 1

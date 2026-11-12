@@ -68,18 +68,26 @@ document.addEventListener("htmx:beforeRequest", (event) => {
   const button = busyButton(event.detail.elt);
   if (button) {
     button.dataset.label = button.textContent;
-    button.textContent = "Working…";
+    button.style.width = `${button.getBoundingClientRect().width}px`;
+    button.setAttribute("aria-busy", "true");
     const spinner = document.createElement("span");
     spinner.className = "loading loading-spinner loading-xs";
     spinner.setAttribute("aria-hidden", "true");
-    button.prepend(spinner);
+    const hidden = document.createElement("span");
+    hidden.className = "sr-only";
+    hidden.textContent = "Working…";
+    button.replaceChildren(spinner, hidden);
   }
 });
 
 document.addEventListener("htmx:afterRequest", (event) => {
   const { elt, xhr, successful } = event.detail;
   const button = busyButton(elt);
-  if (button?.dataset.label) button.textContent = button.dataset.label;
+  if (button?.dataset.label) {
+    button.textContent = button.dataset.label;
+    button.style.width = "";
+    button.removeAttribute("aria-busy");
+  }
   if (!successful) {
     toast(failure(xhr.status), true, elt);
     return;

@@ -136,7 +136,7 @@ test("Spam teaches the filter and the toast says what happened", async () => {
     .waitFor();
 });
 
-test("a button shows a spinner and Working… while its request runs", async () => {
+test("a button keeps its width, with a spinner in place of its label, while its request runs", async () => {
   const page = await mock.page();
   await page.route("**/decisions/*/undo", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 800));
@@ -145,10 +145,13 @@ test("a button shows a spinner and Working… while its request runs", async () 
   await page.goto(`${mock.origin}/`);
   const button = row(page, "Sample message 142").getByRole("button", { name: /Undo|Working/ });
 
+  const width = (await button.boundingBox()).width;
+
   await button.click();
 
-  await button.getByText("Working…").waitFor();
+  await button.getByText("Working…").waitFor({ state: "attached" });
   await button.locator(".loading-spinner").waitFor();
+  assert.equal((await button.boundingBox()).width, width);
 });
 
 test("the Refresh button shows a spinner and Working… while the list reloads", async () => {
@@ -163,7 +166,7 @@ test("the Refresh button shows a spinner and Working… while the list reloads",
 
   await refresh.click();
 
-  await refresh.getByText("Working…").waitFor();
+  await refresh.getByText("Working…").waitFor({ state: "attached" });
   await refresh.locator(".loading-spinner").waitFor();
   await refresh.getByText("Refresh", { exact: true }).waitFor();
 });

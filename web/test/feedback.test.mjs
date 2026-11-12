@@ -96,9 +96,19 @@ const button = (text) => ({
   tagName: "BUTTON",
   textContent: text,
   dataset: {},
-  prepended: [],
-  prepend(node) {
-    this.prepended.push(node);
+  style: { width: "" },
+  attributes: {},
+  children: [],
+  getBoundingClientRect: () => ({ width: 42 }),
+  setAttribute(name, value) {
+    this.attributes[name] = value;
+  },
+  removeAttribute(name) {
+    delete this.attributes[name];
+  },
+  replaceChildren(...nodes) {
+    this.children = nodes;
+    this.textContent = nodes.map((node) => node.textContent).join("");
   },
 });
 const respond = (responseText, extra = {}) => ({
@@ -108,13 +118,25 @@ const respond = (responseText, extra = {}) => ({
   ...extra,
 });
 
-test("a button reads Working… while its request runs and gets its label back", () => {
+test("a button keeps its width and shows only a spinner while its request runs", () => {
   const { fire } = page();
   const elt = button("Spam");
 
   fire("htmx:beforeRequest", { elt });
-  assert.equal(elt.textContent, "Working…");
-  assert.match(elt.prepended[0].className, /loading-spinner/);
+
+  assert.equal(elt.style.width, "42px");
+  assert.equal(elt.attributes["aria-busy"], "true");
+  const [spinner, hidden] = elt.children;
+  assert.match(spinner.className, /loading-spinner/);
+  assert.match(hidden.className, /sr-only/);
+  assert.equal(hidden.textContent, "Working…");
+});
+
+test("a button gets its label and natural width back when the request ends", () => {
+  const { fire } = page();
+  const elt = button("Spam");
+
+  fire("htmx:beforeRequest", { elt });
   fire("htmx:afterRequest", {
     elt,
     successful: true,
@@ -122,6 +144,8 @@ test("a button reads Working… while its request runs and gets its label back",
   });
 
   assert.equal(elt.textContent, "Spam");
+  assert.equal(elt.style.width, "");
+  assert.equal(elt.attributes["aria-busy"], undefined);
 });
 
 test("a form request puts the spinner on its submit button and restores the label", () => {
@@ -135,8 +159,8 @@ test("a form request puts the spinner on its submit button and restores the labe
   };
 
   fire("htmx:beforeRequest", { elt });
-  assert.equal(submit.textContent, "Working…");
-  assert.match(submit.prepended[0].className, /loading-spinner/);
+  assert.equal(submit.style.width, "42px");
+  assert.match(submit.children[0].className, /loading-spinner/);
   assert.equal(elt.textContent, "form");
   fire("htmx:afterRequest", {
     elt,

@@ -77,6 +77,48 @@ jobs:
           path: crap-baseline.json
           if-no-files-found: error
 
+  # The browser tests are their own job so they run beside `test` instead of
+  # after it, and they are skipped when nothing the web interface depends on
+  # changed. A skipped step still leaves the job green for `tag`.
+  e2e:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # The runner's own Chrome: no browser download.
+      TAMIS_E2E_CHANNEL: chrome
+    steps:
+      - uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
+        with:
+          fetch-depth: "0"
+      - name: Did the web interface change?
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          if git diff --name-only "origin/${BASE}...HEAD" |
+            grep -Eq '^(templates/|web/|site/|src/(web|health|live|store|rules|config)/|mise-tasks/(web|site|test)/|\.config/mise/|\.github/|Cargo\.(toml|lock)$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No web interface changes: skipping the browser tests"
+          fi
+      - if: steps.changes.outputs.run == 'true'
+        uses: ./.github/actions/rust-setup
+        with:
+          shared-key: e2e
+          minimal: "true"
+      - name: Browser tests
+        if: steps.changes.outputs.run == 'true'
+        run: mise run test:e2e
+
   plan:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
@@ -143,7 +185,7 @@ jobs:
         run: anodizer preflight
 
   tag:
-    needs: [plan, hk, test, preflight]
+    needs: [plan, hk, test, e2e, preflight]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
     runs-on: ubuntu-latest

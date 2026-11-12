@@ -10,11 +10,11 @@
 <link rel="stylesheet" href="/static/decisions.css?v={{ version }}">
 </head>
 <body class="min-h-screen">
-<header class="navbar bg-base-200 shadow-sm px-4">
+<header class="navbar flex-wrap bg-base-200 shadow-sm px-4">
 <div class="flex-1"><span class="text-xl font-semibold">tamis</span></div>
-{% if !nav.is_empty() %}<div class="flex-none flex items-center gap-2">
+{% if !nav.is_empty() %}<div class="flex flex-wrap items-center gap-2">
 <nav aria-label="Main">
-<ul class="menu menu-horizontal">
+<ul class="menu menu-horizontal flex-wrap">
 <li><a href="/"{% if nav == "decisions" %} class="menu-active" aria-current="page"{% endif %}>Decisions</a></li>
 <li><a href="/health"{% if nav == "health" %} class="menu-active" aria-current="page"{% endif %}>Health</a></li>
 <li><a href="/whitelist"{% if nav == "whitelist" %} class="menu-active" aria-current="page"{% endif %}>Whitelist</a></li>

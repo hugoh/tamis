@@ -3,5 +3,4 @@
 set -euo pipefail
 mise run fix
 mise run ci:test
-mise run test:e2e
 hk check --all

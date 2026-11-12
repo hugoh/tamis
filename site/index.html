@@ -22,7 +22,16 @@
 <body class="bg-base-100 text-base-content">
 
 <div class="navbar bg-base-200 sticky top-0 z-10">
-  <div class="navbar-start w-auto shrink-0 px-2 text-xl font-bold text-primary">tamis</div>
+  <div class="navbar-start w-auto shrink-0 gap-1 px-2">
+    <div class="dropdown sm:hidden">
+      <div tabindex="0" role="button" class="btn btn-ghost btn-sm btn-square" aria-label="Menu">☰</div>
+      <ul tabindex="0" class="menu dropdown-content bg-base-200 rounded-box z-20 mt-3 w-40 p-2 shadow">
+        <li><a href="#demo">Demo</a></li>
+        <li><a href="#start">Quick start</a></li>
+      </ul>
+    </div>
+    <span class="text-xl font-bold text-primary">tamis</span>
+  </div>
   <div class="navbar-end min-w-0 flex-1 gap-1 px-2 sm:gap-2">
     <div id="search" class="w-28 min-w-0 sm:w-48"></div>
     <a class="btn btn-ghost btn-sm hidden sm:inline-flex" href="#demo">Demo</a>
@@ -43,7 +52,7 @@
     </p>
     <div class="flex gap-3 flex-wrap justify-center">
       <a class="btn btn-accent btn-lg" href="#start">Get started</a>
-      <a class="btn btn-lg bg-transparent border-primary-content text-primary-content hover:bg-primary-content hover:text-primary" href="https://github.com/hugoh/tamis">View on GitHub</a>
+      <a class="btn btn-lg btn-ghost border-primary-content text-primary-content hover:bg-primary-content hover:text-primary" href="https://github.com/hugoh/tamis">View on GitHub</a>
     </div>
   </div>
 </section>

@@ -1,6 +1,6 @@
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
-import mermaid from "astro-mermaid";
+import { pele } from "astro-pele";
 import starlightLinksValidator from "starlight-links-validator";
 
 export default defineConfig({
@@ -8,7 +8,7 @@ export default defineConfig({
   base: "/docs",
   outDir: "../target/site/docs",
   integrations: [
-    mermaid(),
+    pele(),
     starlight({
       title: "tamis",
       favicon: "/favicon.svg",

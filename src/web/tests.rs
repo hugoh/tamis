@@ -317,7 +317,7 @@ async fn a_rule_decision_gets_a_second_pill_and_a_move_shows_its_destination() {
 
     assert_eq!(page.matches("badge-info").count(), 1, "{page}");
     assert!(
-        page.contains("INBOX</span><span data-arrow> → </span><span data-dest>Junk</span>"),
+        page.contains("INBOX</span><span data-arrow> → </span><span data-dest class=\"badge badge-neutral font-semibold\">Junk</span>"),
         "{page}"
     );
 }

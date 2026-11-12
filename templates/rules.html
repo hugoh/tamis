@@ -2,7 +2,7 @@
 {% block content %}
 <h1 class="text-2xl font-semibold mb-4">Rules</h1>
 <p class="mb-4 text-sm"><a class="link" href="https://tamis.larve.net/docs/user-guide/filing-rules/" target="_blank">Sieve filtering docs</a></p>
-{% if !body.path.is_empty() %}<p class="mb-2 font-mono text-sm">{{ body.path }}
+{% if !body.path.is_empty() %}<p class="mb-2 font-mono text-sm break-all">{{ body.path }}
 {% if !body.problem.is_empty() %}<span class="badge badge-error badge-sm">Invalid</span>{% else %}<span class="badge badge-success badge-sm">Valid</span>{% endif %}</p>
 {% if !body.problem.is_empty() %}<div role="alert" class="alert alert-error alert-soft mb-4"><span>{{ body.problem }}</span></div>{% endif %}
 {% if !body.source.is_empty() %}<pre id="rules-source" class="bg-base-200 rounded-box p-4 mb-6 overflow-x-auto text-sm">{{ body.source }}</pre>{% endif %}

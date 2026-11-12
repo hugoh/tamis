@@ -59,8 +59,8 @@ builds the web interface files first, so you test the same build CI does.
 | `mise run test:js` | Only the browser script tests |
 | `mise run test:e2e` | The browser tests: Playwright drives the web interface over the mock server |
 | `mise run test:imap` | The IMAP tests against a real Dovecot server |
-| `mise run ci:test` | What CI runs: tests with coverage, the CRAP report, the browser script tests and the browser tests |
-| `mise run full-check` | `fix`, then `ci:test`, then every `hk` check: run it before you push |
+| `mise run ci:test` | What the CI `test` job runs: tests with coverage, the CRAP report and the browser script tests |
+| `mise run full-check` | `fix`, then `ci:test`, then `test:e2e`, then every `hk` check: run it before you push |
 
 ### The Rust tests
 
@@ -125,9 +125,10 @@ You need a browser: run `playwright install chromium` once, or set
 `page.clock` instead of sleeping; the file's failure cases use a server started
 with `fail: true`.
 
-CI runs them in the `test` job, after the Rust tests and coverage (`mise run
-ci:test` runs them last: their debug build in parallel starves the timing
-sensitive Dovecot tests), using the Chrome already on the runner.
+CI runs them as the `e2e` job, beside `test` on its own runner (using the Chrome
+already on it). It is not a step of `test`: beside the coverage run its debug
+build starves the timing sensitive Dovecot tests, and after it the build adds
+to the job's time.
 
 These tests cover flows. For how a page looks or feels, start the interface over sample data and use it in a browser:
 [looking at the web interface](../contributing/#looking-at-the-web-interface).

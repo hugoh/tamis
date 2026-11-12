@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Screenshot the mock decisions page into target/site/decisions.png for the landing page hero (needs a Chromium: playwright install chromium, or TAMIS_E2E_CHANNEL=chrome)"
+#MISE depends=["site:static"]
+#MISE sources=["target/site/mock/decisions.html", "mise-tasks/site/shot"]
+#MISE outputs=["target/site/decisions.png"]
+set -euo pipefail
+
+mise=${TAMIS_MISE:-mise}
+NODE_PATH=$("$mise" where npm:playwright)/node_modules
+export NODE_PATH
+
+node --input-type=commonjs - <<'JS'
+const { chromium } = require("playwright");
+(async () => {
+  const browser = await chromium.launch(
+    process.env.TAMIS_E2E_CHANNEL ? { channel: process.env.TAMIS_E2E_CHANNEL } : {},
+  );
+  const page = await browser.newPage({ viewport: { width: 1200, height: 640 }, deviceScaleFactor: 2 });
+  await page.goto("file://" + process.cwd() + "/target/site/mock/decisions.html");
+  await page.screenshot({ path: "target/site/decisions.png" });
+  await browser.close();
+})();
+JS

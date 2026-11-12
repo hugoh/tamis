@@ -38,6 +38,10 @@ settings are environment variables, all optional:
   add (150, enough to need a second page).
 - `TAMIS_MOCK_FAIL`, set to anything, makes every action fail and the daemon
   report an error, to see the error states.
+- `TAMIS_MOCK_LATENCY` is the slowest a page or action may take to answer, in
+  milliseconds (350). Each response waits a random time up to that, so the
+  spinners and loading states show as they would against a real mailbox; 0
+  answers at once. The browser tests set it to 0.
 
 The sign-in page (`/auth/login`) and the enrol page (`/auth/enroll`) are served
 too, without the automatic session, so you can see them and their script run;

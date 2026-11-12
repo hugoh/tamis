@@ -217,7 +217,9 @@ fn sample_logs() -> Arc<Ring> {
 
 /// Serves the real router over sample data until interrupted. Settings, all
 /// optional: `TAMIS_MOCK_PORT` (8484), `TAMIS_MOCK_ROWS` (150, more than one
-/// page), `TAMIS_MOCK_FAIL` (any value: every action and the daemon fail).
+/// page), `TAMIS_MOCK_FAIL` (any value: every action and the daemon fail),
+/// `TAMIS_MOCK_LATENCY` (350: the slowest a page or action may take to answer,
+/// in milliseconds; 0 answers at once).
 #[tokio::test]
 #[ignore = "serves until interrupted; run by hand: mise run web:serve"]
 async fn serve_mock() {
@@ -225,6 +227,8 @@ async fn serve_mock() {
     let port: u16 = var("TAMIS_MOCK_PORT").map_or(8484, |v| v.parse().expect("TAMIS_MOCK_PORT"));
     let rows: usize = var("TAMIS_MOCK_ROWS").map_or(150, |v| v.parse().expect("TAMIS_MOCK_ROWS"));
     let fail = var("TAMIS_MOCK_FAIL").is_some();
+    let max_latency: u64 =
+        var("TAMIS_MOCK_LATENCY").map_or(350, |v| v.parse().expect("TAMIS_MOCK_LATENCY"));
     let origin = format!("http://localhost:{port}");
 
     let db = Arc::new(OnceLock::new());
@@ -269,6 +273,15 @@ async fn serve_mock() {
         .unwrap();
     let cookie = HeaderValue::from_str(&format!("{SESSION_COOKIE}={session}")).unwrap();
     let router = site.router.clone().layer(middleware::from_fn(
+        move |request: Request<Body>, next: Next| async move {
+            if max_latency > 0 && !request.uri().path().starts_with("/static/") {
+                let delay = fastrand::u64(max_latency / 8..=max_latency);
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
+            next.run(request).await
+        },
+    ));
+    let router = router.layer(middleware::from_fn(
         move |mut request: Request<Body>, next: Next| {
             let cookie = cookie.clone();
             async move {

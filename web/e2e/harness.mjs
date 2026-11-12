@@ -49,6 +49,7 @@ export async function startMock({ rows = 150, fail = false } = {}) {
         ...process.env,
         TAMIS_MOCK_PORT: String(port),
         TAMIS_MOCK_ROWS: String(rows),
+        TAMIS_MOCK_LATENCY: "0",
         ...(fail && { TAMIS_MOCK_FAIL: "1" }),
       },
       detached: true,

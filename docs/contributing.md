@@ -125,8 +125,9 @@ You need a browser: run `playwright install chromium` once, or set
 `page.clock` instead of sleeping; the file's failure cases use a server started
 with `fail: true`.
 
-CI runs them in the `test` job, alongside the Rust tests and coverage (`mise run
-ci:test` runs them in parallel), using the Chrome already on the runner.
+CI runs them in the `test` job, after the Rust tests and coverage (`mise run
+ci:test` runs them last: their debug build in parallel starves the timing
+sensitive Dovecot tests), using the Chrome already on the runner.
 
 These tests cover flows. For how a page looks or feels, start the interface over sample data and use it in a browser:
 [looking at the web interface](../contributing/#looking-at-the-web-interface).

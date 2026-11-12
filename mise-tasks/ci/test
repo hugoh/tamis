@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Run the CI test checks: tests with coverage, CRAP regression report, browser script tests, browser tests of the web interface"
-#MISE depends=["coverage", "crap", "test:js", "test:e2e"]
-true
+#MISE description="Run the CI test checks: tests with coverage, CRAP regression report, browser script tests, then the browser tests of the web interface"
+#MISE depends=["coverage", "crap", "test:js"]
+set -euo pipefail
+
+# After the dependencies, not beside them: its debug build would take the CPUs
+# the coverage run's timing-sensitive Dovecot tests need (the daemon test waits
+# a fixed 2 s for its first pass and fails when starved).
+"${TAMIS_MISE:-mise}" run test:e2e

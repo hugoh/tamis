@@ -216,7 +216,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - {os: ubuntu-24.04, target: x86_64-unknown-linux-gnu}
+          - {os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu}
+          - {os: macos-latest, target: aarch64-apple-darwin}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -233,16 +236,15 @@ jobs:
       - uses: ./.github/actions/rust-setup
         with:
           shared-key: anodizer-${{ matrix.os }}
-      - name: Build this runner's targets
+      - name: Build this runner's target
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: anodizer release --split --clean
+        run: anodizer release --split --clean --targets ${{ matrix.target }}
       - name: Check the binary reports the tag's version
         env:
           TAG: ${{ needs.tag.outputs.tag }}
         run: |
-          triple=x86_64-unknown-linux-gnu
-          [ "$RUNNER_OS" = macOS ] && triple=aarch64-apple-darwin
+          triple=${{ matrix.target }}
           # --split only writes dist/<platform>/context.json; the binary stays in
           # cargo's target/<triple>/release/ until --merge archives it.
           bin=$(find target dist -type f -name tamis -path "*${triple}*" -perm -u=x 2>/dev/null | head -n1)

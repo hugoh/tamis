@@ -31,8 +31,7 @@ pub(super) fn text(value: &imap_client::imap_types::core::NString<'_>) -> String
     value
         .0
         .as_ref()
-        .map(|s| String::from_utf8_lossy(s.as_ref()).into_owned())
-        .unwrap_or_default()
+        .map_or_default(|s| String::from_utf8_lossy(s.as_ref()).into_owned())
 }
 
 /// Normalises a Message-ID to its `<...>` form.
@@ -78,11 +77,7 @@ pub(super) fn to_message(uid: u32, items: &[MessageDataItem<'static>]) -> Messag
                     .collect();
             }
             MessageDataItem::BodyExt { data, .. } => {
-                message.raw = data
-                    .0
-                    .as_ref()
-                    .map(|d| d.as_ref().to_vec())
-                    .unwrap_or_default();
+                message.raw = data.0.as_ref().map_or_default(|d| d.as_ref().to_vec());
             }
             MessageDataItem::Envelope(envelope) => fill_from_envelope(&mut message, envelope),
             _ => {}
@@ -94,7 +89,7 @@ pub(super) fn to_message(uid: u32, items: &[MessageDataItem<'static>]) -> Messag
 pub(super) fn fill_from_envelope(message: &mut Message, envelope: &Envelope<'_>) {
     message.subject = decode_subject(&text(&envelope.subject));
     message.message_id = bracket(&text(&envelope.message_id));
-    message.from = envelope.from.first().map(address_of).unwrap_or_default();
+    message.from = envelope.from.first().map_or_default(address_of);
 }
 
 pub(super) fn flag_name(flag: &FlagFetch<'_>) -> String {

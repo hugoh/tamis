@@ -65,8 +65,7 @@ impl Ring {
     pub fn entries(&self) -> Vec<Entry> {
         self.lock()
             .as_ref()
-            .map(|entries| entries.iter().rev().cloned().collect())
-            .unwrap_or_default()
+            .map_or_default(|entries| entries.iter().rev().cloned().collect())
     }
 }
 

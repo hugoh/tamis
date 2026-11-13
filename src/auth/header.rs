@@ -5,7 +5,7 @@ pub(super) fn values(raw: &[u8], name: &str) -> Vec<String> {
     let mut headers: Vec<String> = Vec::new();
 
     for line in text.split('\n') {
-        let line = line.strip_suffix('\r').unwrap_or(line);
+        let line = line.trim_suffix('\r');
         if line.is_empty() {
             break;
         }

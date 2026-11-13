@@ -201,8 +201,7 @@ impl Fake {
     pub fn uids(&self, folder: &str) -> Vec<u32> {
         self.folders
             .get(folder)
-            .map(|f| f.messages.iter().map(|m| m.uid).collect())
-            .unwrap_or_default()
+            .map_or_default(|f| f.messages.iter().map(|m| m.uid).collect())
     }
 
     /// The raw source of a message.
@@ -271,14 +270,13 @@ fn envelope(stored: &Stored, with_source: bool) -> Message {
     let message_id = parsed
         .as_ref()
         .and_then(|m| m.message_id())
-        .map(|id| {
+        .map_or_default(|id| {
             if id.starts_with('<') {
                 id.to_owned()
             } else {
                 format!("<{id}>")
             }
-        })
-        .unwrap_or_default();
+        });
 
     Message {
         uid: stored.uid,

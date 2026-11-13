@@ -115,8 +115,7 @@ fn own_addresses(
     }
     default_path(getenv)
         .and_then(|path| Config::load(getenv, &path).ok())
-        .map(|cfg| vec![cfg.account.user])
-        .unwrap_or_default()
+        .map_or_default(|cfg| vec![cfg.account.user])
 }
 
 #[cfg(test)]

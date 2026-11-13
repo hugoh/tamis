@@ -5,7 +5,9 @@
     {
       "matchManagers": ["cargo"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "groupName": "rust dependencies"
+      "groupName": "rust dependencies",
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "deps"
     },
     {
       "matchFileNames": [".config/mise/conf.d/web.toml"],

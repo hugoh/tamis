@@ -301,7 +301,7 @@ fn with_body_separator(raw: &[u8]) -> Cow<'_, [u8]> {
 #[must_use]
 pub fn header_value(raw: &[u8], name: &str) -> Option<String> {
     for line in raw.split(|&b| b == b'\n') {
-        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let line = line.trim_suffix(b"\r");
         if line.is_empty() {
             return None;
         }

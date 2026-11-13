@@ -649,21 +649,16 @@ fn minutes(span: std::time::Duration) -> String {
 }
 
 fn logs_body(app: &App) -> LogsBody {
-    let rows = app
-        .options
-        .logs
-        .as_ref()
-        .map(|ring| {
-            ring.entries()
-                .into_iter()
-                .map(|entry| LogRow {
-                    when: local_clock(entry.at),
-                    level: entry.level.to_string(),
-                    text: entry.text,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let rows = app.options.logs.as_ref().map_or_default(|ring| {
+        ring.entries()
+            .into_iter()
+            .map(|entry| LogRow {
+                when: local_clock(entry.at),
+                level: entry.level.to_string(),
+                text: entry.text,
+            })
+            .collect()
+    });
     LogsBody {
         rows,
         debug: debug_view(app),

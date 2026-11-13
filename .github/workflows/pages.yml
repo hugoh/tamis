@@ -19,7 +19,7 @@ jobs:
   # required context. Filtering by step instead reports `site-build` as passing
   # without paying for a second runner.
   site-build:
-    timeout-minutes: 30
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,7 +46,16 @@ jobs:
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
         uses: ./.github/actions/rust-setup
         with:
-          shared-key: pages
+          # Reuse the e2e job's dev-profile dependency build (saved from main);
+          # this job only restores it.
+          shared-key: e2e
+          save-if: "false"
+      - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('site-docs/package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
         run: mise run site
         env:
@@ -60,7 +69,7 @@ jobs:
   deploy:
     needs: site-build
     if: github.event_name != 'pull_request'
-    timeout-minutes: 10
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     permissions:
       pages: write

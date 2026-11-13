@@ -43,6 +43,8 @@ jobs:
         uses: hugoh/gh-workflows/setup@12a131c8eca966fe30bcc4ca670fa596b375702f # v1.40.19
         with:
           fetch-depth: "1"
+          extra-cache-key-cmd: cat site-docs/package-lock.json
+          extra-cache-paths: ~/.npm
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
         uses: ./.github/actions/rust-setup
         with:
@@ -50,12 +52,6 @@ jobs:
           # this job only restores it.
           shared-key: e2e
           save-if: "false"
-      - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('site-docs/package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
         run: mise run site
         env:

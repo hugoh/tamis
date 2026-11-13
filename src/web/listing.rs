@@ -46,10 +46,7 @@ impl TableState {
         let mut state = Self {
             path,
             filters: BTreeMap::new(),
-            search: params
-                .get("q")
-                .map(|q| q.trim().to_owned())
-                .unwrap_or_default(),
+            search: params.get("q").map_or_default(|q| q.trim().to_owned()),
             sort: first.key,
             asc: first.asc_first,
             after: String::new(),

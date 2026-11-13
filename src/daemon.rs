@@ -328,9 +328,7 @@ impl<C: Connector> Daemon<C> {
     fn tell(&self, err: &engine::Error, failures: u32) {
         if failures >= self.cfg.monitor.fail_after {
             let since = self.streak.since().map_or_else(String::new, |at| {
-                Timestamp::try_from(at)
-                    .map(|t| t.to_string())
-                    .unwrap_or_default()
+                Timestamp::try_from(at).map_or_default(|t| t.to_string())
             });
             self.beat.fail(&format!(
                 "{failures} passes failed in a row since {since}: {err}"

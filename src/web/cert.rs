@@ -120,14 +120,13 @@ fn usable(cert_file: &Path, key_file: &Path, host: &str, now: Timestamp) -> bool
         .subject_alternative_name()
         .ok()
         .flatten()
-        .map(|san| {
+        .map_or_default(|san| {
             san.value
                 .general_names
                 .iter()
                 .map(name_of)
                 .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+        });
     names.iter().any(|name| name.eq_ignore_ascii_case(host))
         && now.as_second() > start
         && now.as_second() + renew < end
@@ -139,8 +138,7 @@ fn name_of(name: &GeneralName<'_>) -> String {
         GeneralName::IPAddress(bytes) => match bytes.len() {
             4 => std::net::Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]).to_string(),
             16 => <[u8; 16]>::try_from(*bytes)
-                .map(|b| std::net::Ipv6Addr::from(b).to_string())
-                .unwrap_or_default(),
+                .map_or_default(|b| std::net::Ipv6Addr::from(b).to_string()),
             _ => String::new(),
         },
         _ => String::new(),

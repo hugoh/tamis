@@ -205,7 +205,11 @@ impl Keeper {
             return Err(Error::NoIdle);
         }
 
-        let _idling = IdleGuard::new(Arc::clone(&self.shared));
+        self.shared.idling.fetch_add(1, Ordering::Relaxed);
+        // Counts the folder as idling for as long as this guard lives.
+        let _idling = std::mem::DropGuard::new(Arc::clone(&self.shared), |shared| {
+            shared.idling.fetch_sub(1, Ordering::Relaxed);
+        });
         self.over();
         tracing::debug!(mailbox = %self.mailbox, "idle");
 
@@ -221,22 +225,6 @@ impl Keeper {
                 tracing::debug!(mailbox = %self.mailbox, "idle renewed");
             }
         }
-    }
-}
-
-/// Counts a folder as idling for as long as it lives.
-struct IdleGuard(Arc<Shared>);
-
-impl IdleGuard {
-    fn new(shared: Arc<Shared>) -> Self {
-        shared.idling.fetch_add(1, Ordering::Relaxed);
-        Self(shared)
-    }
-}
-
-impl Drop for IdleGuard {
-    fn drop(&mut self) {
-        self.0.idling.fetch_sub(1, Ordering::Relaxed);
     }
 }
 

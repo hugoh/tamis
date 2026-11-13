@@ -14,7 +14,9 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="docs/pagefind/pagefind-ui.css">
 <style>
-#search { position: relative; --pagefind-ui-scale: 0.8; }
+#search { position: relative; --pagefind-ui-scale: 0.8; --pagefind-ui-text: var(--color-base-content, #393939); --pagefind-ui-background: var(--color-base-100, #fff); --pagefind-ui-border: color-mix(in oklab, var(--color-base-content, #393939) 25%, transparent); --pagefind-ui-tag: var(--color-base-200, #eee); }
+#search .pagefind-ui__result-link, #search .pagefind-ui__result-title, #search .pagefind-ui__result-excerpt, #search .pagefind-ui__message { color: var(--color-base-content, #393939); }
+#search .pagefind-ui__result-link { color: var(--color-primary, #034ad8); }
 #search .pagefind-ui__drawer { position: absolute; top: 100%; right: 0; width: min(28rem, 90vw); max-height: 70vh; overflow-y: auto; background: var(--color-base-100, #fff); padding: 1rem; border-radius: .5rem; box-shadow: 0 8px 24px rgb(0 0 0 / .2); }
 #search .pagefind-ui__drawer.pagefind-ui__hidden { display: none; }
 #search .pagefind-ui__search-input::placeholder { color: var(--color-base-content, #333); opacity: .7; }

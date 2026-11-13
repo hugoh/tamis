@@ -65,7 +65,14 @@ const busyButton = (elt) =>
       : null;
 
 document.addEventListener("htmx:beforeRequest", (event) => {
-  const button = busyButton(event.detail.elt);
+  const elt = event.detail.elt;
+  // The Logs page polls every 10 seconds; skip that while its tab is hidden.
+  // (An hx-trigger filter would need htmx's eval, which is off.)
+  if (elt.id === "logs" && document.hidden) {
+    event.preventDefault();
+    return;
+  }
+  const button = busyButton(elt);
   if (button) {
     button.dataset.label = button.textContent;
     button.style.width = `${button.getBoundingClientRect().width}px`;

@@ -86,7 +86,9 @@ function page({ ariaNotify = true } = {}) {
     announced,
     status,
     container,
-    fire: (name, detail) => handlers[name]({ detail }),
+    sandbox,
+    fire: (name, detail, preventDefault) =>
+      handlers[name]({ detail, preventDefault }),
   };
 }
 
@@ -285,4 +287,23 @@ test("without ariaNotify the message goes to the live region", () => {
   fire("htmx:afterRequest", respond("<div data-note>Done</div>"));
 
   assert.equal(status.textContent, "Done");
+});
+
+test("the Logs page's poll is cancelled while the tab is hidden", () => {
+  const { fire, sandbox } = page();
+  const poll = { id: "logs" };
+  let prevented = false;
+
+  sandbox.document.hidden = true;
+  fire("htmx:beforeRequest", { elt: poll }, () => {
+    prevented = true;
+  });
+  assert.equal(prevented, true);
+
+  sandbox.document.hidden = false;
+  prevented = false;
+  fire("htmx:beforeRequest", { elt: poll }, () => {
+    prevented = true;
+  });
+  assert.equal(prevented, false);
 });

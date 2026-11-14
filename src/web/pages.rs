@@ -162,13 +162,13 @@ struct DecisionRowView {
 
 const DECISION_SORTS: [SortChoice; 9] = [
     SortChoice {
-        key: "time",
-        label: "Time",
+        key: "id",
+        label: "ID",
         asc_first: false,
     },
     SortChoice {
-        key: "id",
-        label: "ID",
+        key: "time",
+        label: "Time",
         asc_first: false,
     },
     SortChoice {

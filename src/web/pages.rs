@@ -162,13 +162,13 @@ struct DecisionRowView {
 
 const DECISION_SORTS: [SortChoice; 9] = [
     SortChoice {
-        key: "time",
-        label: "Time",
+        key: "id",
+        label: "ID",
         asc_first: false,
     },
     SortChoice {
-        key: "id",
-        label: "ID",
+        key: "time",
+        label: "Time",
         asc_first: false,
     },
     SortChoice {
@@ -249,6 +249,11 @@ pub(super) async fn decisions(
 ) -> Response {
     let query = params(query);
     let mut state = TableState::parse("/", &query, &DECISION_SORTS);
+    // ID is listed first, like the row cells, but the list opens newest first.
+    if !query.contains_key("sort") {
+        state.sort = "time";
+        state.asc = query.get("dir").is_some_and(|d| d == "asc");
+    }
     let chosen: Option<Verdict> = query.get("verdict").and_then(|v| v.parse().ok());
     let verdict = chosen.map_or_else(String::new, |v| v.to_string());
     state.filters.insert("verdict", verdict.clone());

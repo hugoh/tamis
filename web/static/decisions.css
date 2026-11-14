@@ -7,6 +7,7 @@ tbody tr[data-state]>*{background-color:color-mix(in oklab,var(--t) 9%,transpare
 tbody tr[data-state]:hover>*{filter:brightness(.96)}
 tbody tr[data-state]>:first-child{box-shadow:inset 4px 0 0 color-mix(in oklab,var(--t) 80%,transparent)}
 tbody tr[data-idle]>:first-child{box-shadow:none;background-image:repeating-linear-gradient(180deg,color-mix(in oklab,var(--t) 80%,transparent) 0 4px,transparent 4px 8px);background-size:4px 100%;background-repeat:no-repeat}
+tbody tr[data-correction]:not([data-idle])>:first-child{box-shadow:inset 4px 0 0 color-mix(in oklab,var(--t) 80%,transparent),inset 7px 0 0 var(--color-base-100),inset 10px 0 0 color-mix(in oklab,var(--t) 80%,transparent);padding-inline-start:1rem}
 dialog:modal{overscroll-behavior:contain}
 dialog::backdrop{overflow:hidden;overscroll-behavior:contain}
 #toasts[popover]{position:fixed;inset:auto 1rem 1rem auto;margin:0;padding:0;border:0;background:transparent;overflow:visible}

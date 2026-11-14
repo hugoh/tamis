@@ -30,6 +30,12 @@ test("the list shows a row per decision with state, pills and a destination badg
     await page.locator("tr[data-state=corrected] [data-dest]").first().getAttribute("class"),
     /\bbadge-outline\b/,
   );
+
+  // Corrections and undos carry a marker so the left bar can differ from a decision.
+  await page.goto(`${mock.origin}/?q=Invoice`);
+  await page.waitForSelector("tbody tr[data-correction]");
+  assert.equal(await page.locator("tbody tr[data-correction]").count(), 1);
+  assert.equal(await page.locator("tbody tr:not([data-correction])").count(), 1);
 });
 
 test("scrolling to the end of the list loads the next page", async () => {

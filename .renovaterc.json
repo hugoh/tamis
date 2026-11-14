@@ -15,6 +15,11 @@
       "groupName": "web dependencies"
     },
     {
+      "description": "The docs site does not ship in the binary, so its runtime dependencies must not count as fix and cut a patch release",
+      "matchFileNames": ["site-docs/package.json"],
+      "semanticCommitType": "chore"
+    },
+    {
       "matchDatasources": ["github-runners"],
       "groupName": "runner images"
     }

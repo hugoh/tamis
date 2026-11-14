@@ -12,7 +12,22 @@
     {
       "matchFileNames": [".config/mise/conf.d/web.toml"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "groupName": "web dependencies"
+      "groupName": "web dependencies",
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Playwright only runs the end-to-end tests and is not embedded in the binary, so it must not cut a patch release. Own group so it does not drag the web group down to chore (or the web group's fix onto it). Must stay below the web dependencies rule, whose groupName it replaces",
+      "matchFileNames": [".config/mise/conf.d/web.toml"],
+      "matchDepNames": ["npm:playwright"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "playwright",
+      "semanticCommitType": "chore"
+    },
+    {
+      "description": "The docs site does not ship in the binary, so its runtime dependencies must not count as fix and cut a patch release",
+      "matchFileNames": ["site-docs/package.json"],
+      "semanticCommitType": "chore"
     },
     {
       "matchDatasources": ["github-runners"],

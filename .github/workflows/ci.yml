@@ -32,7 +32,7 @@ env:
 
 jobs:
   hk:
-    uses: hugoh/rust-tools/.github/workflows/rust-hk.yml@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+    uses: hugoh/rust-tools/.github/workflows/rust-hk.yml@293ebfe357228074cc85557531f0531536d4ca94 # v0.3.2
     permissions:
       contents: read
       packages: read
@@ -41,7 +41,7 @@ jobs:
       prebuild: true
 
   test:
-    uses: hugoh/rust-tools/.github/workflows/rust-test.yml@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+    uses: hugoh/rust-tools/.github/workflows/rust-test.yml@293ebfe357228074cc85557531f0531536d4ca94 # v0.3.2
     permissions:
       actions: read
       contents: read
@@ -125,7 +125,7 @@ jobs:
         with:
           cache-shared-key: lint
           cache-save-if: "false"
-      - uses: hugoh/rust-tools/.github/actions/apply-tag@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+      - uses: hugoh/rust-tools/.github/actions/apply-tag@293ebfe357228074cc85557531f0531536d4ca94 # v0.3.2
         with:
           tag: ${{ needs.plan.outputs.tag }}
       - name: Preflight
@@ -158,7 +158,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
           cache: "false"
-      - uses: hugoh/rust-tools/.github/actions/apply-tag@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+      - uses: hugoh/rust-tools/.github/actions/apply-tag@293ebfe357228074cc85557531f0531536d4ca94 # v0.3.2
         with:
           tag: ${{ needs.plan.outputs.tag }}
       - name: Validate release

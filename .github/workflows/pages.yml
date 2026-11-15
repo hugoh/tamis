@@ -46,7 +46,7 @@ jobs:
           extra-cache-key-cmd: cat site-docs/package-lock.json
           extra-cache-paths: ~/.npm
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
-        uses: ./.github/actions/rust-setup
+        uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           # Reuse the e2e job's dev-profile dependency build (saved from main);
           # this job only restores it.

@@ -1,14 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>hugoh/renovate-config"],
+  "extends": [
+    "github>hugoh/rust-tools:rust-renovaterc",
+    "github>hugoh/rust-tools//presets/copier-owned-files"
+  ],
   "packageRules": [
-    {
-      "matchManagers": ["cargo"],
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "groupName": "rust dependencies",
-      "semanticCommitType": "fix",
-      "semanticCommitScope": "deps"
-    },
     {
       "matchFileNames": [".config/mise/conf.d/web.toml"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
@@ -28,22 +24,6 @@
       "description": "The docs site does not ship in the binary, so its runtime dependencies must not count as fix and cut a patch release",
       "matchFileNames": ["site-docs/package.json"],
       "semanticCommitType": "chore"
-    },
-    {
-      "matchDatasources": ["github-runners"],
-      "groupName": "runner images"
-    }
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Runner images pinned in workflow matrices, which the github-actions manager does not read",
-      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
-      "matchStrings": [
-        "os: (?<depName>ubuntu)-(?<currentValue>\\d+\\.\\d+)(?:-arm)?[,}]"
-      ],
-      "datasourceTemplate": "github-runners",
-      "versioningTemplate": "docker"
     }
   ]
 }

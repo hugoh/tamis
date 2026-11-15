@@ -19,7 +19,7 @@ shellcheck = "0.11.0"
 shfmt = "3.14.1"
 tombi = "1.10.0"
 "github:owenlamont/ryl" = "0.29.0"
-"npm:jscpd" = "5.4.2"
+"npm:jscpd" = "5.4.3"
 "github:minikin/cargo-crap" = "0.9.0"
 
 [env]

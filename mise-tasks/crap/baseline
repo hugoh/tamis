@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Write crap-baseline.json from the last coverage run (run coverage first); CI records it on main"
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 set -euo pipefail
 if [ ! -f "$COVEROUT" ]; then
   echo "crap:baseline: $COVEROUT not found; run mise run coverage first" >&2

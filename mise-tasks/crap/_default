@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="CI check: warn when a function's CRAP score regresses against crap-baseline.json, without failing (report only when absent)"
 #MISE depends=["coverage"]
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 set -euo pipefail
 if [ ! -f crap-baseline.json ]; then
   cargo crap --lcov "$COVEROUT" --top 20

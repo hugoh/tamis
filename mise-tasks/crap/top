@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Show the 20 functions with the highest CRAP scores"
 #MISE depends=["coverage"]
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 cargo crap --lcov "$COVEROUT" --top 20

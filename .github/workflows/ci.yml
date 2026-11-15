@@ -25,6 +25,11 @@ concurrency:
   # Cancel superseded PR runs; never cancel a push-to-main run mid-release.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # setup-rust-toolchain defaults this to deny, which would turn rustc warnings into build
+  # failures; clippy already gates warnings.
+  CARGO_BUILD_WARNINGS: warn
+
 jobs:
   hk:
     uses: hugoh/rust-tools/.github/workflows/rust-hk.yml@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
@@ -58,9 +63,10 @@ jobs:
       - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
         with:
           fetch-depth: "1"
-      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
-          shared-key: e2e
+          cache-shared-key: e2e
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Browser tests
         run: mise run test:e2e
 
@@ -115,10 +121,10 @@ jobs:
       - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
         with:
           fetch-depth: "0"
-      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
-          shared-key: lint
-          save-if: "false"
+          cache-shared-key: lint
+          cache-save-if: "false"
       - uses: hugoh/rust-tools/.github/actions/apply-tag@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           tag: ${{ needs.plan.outputs.tag }}
@@ -149,7 +155,7 @@ jobs:
       - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
         with:
           fetch-depth: "0"
-      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
           cache: "false"
       - uses: hugoh/rust-tools/.github/actions/apply-tag@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
@@ -199,9 +205,10 @@ jobs:
         env:
           TAG: ${{ needs.tag.outputs.tag }}
         run: git checkout --detach "$TAG"
-      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
-          shared-key: anodizer-${{ matrix.os }}
+          cache-shared-key: anodizer-${{ matrix.os }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build this runner's target
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -249,10 +256,10 @@ jobs:
         env:
           TAG: ${{ needs.tag.outputs.tag }}
         run: git checkout --detach "$TAG"
-      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
-          shared-key: lint
-          save-if: "false"
+          cache-shared-key: lint
+          cache-save-if: "false"
       # cargo publish packages the files prebuild generates; they are gitignored,
       # so Cargo.toml's include list is what ships them.
       - name: Check the crate ships the embedded web assets

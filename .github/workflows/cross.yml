@@ -12,6 +12,11 @@ concurrency:
   group: cross-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # setup-rust-toolchain defaults this to deny, which would turn rustc warnings into build
+  # failures; clippy already gates warnings.
+  CARGO_BUILD_WARNINGS: warn
+
 jobs:
   # Limitation: this filter only lists build inputs (dependencies, toolchain,
   # release config), not `src/**`, so a pull request that changes only source
@@ -63,9 +68,10 @@ jobs:
       - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
         with:
           fetch-depth: "1"
-      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+      - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
-          shared-key: anodizer-${{ matrix.os }}
+          cache-shared-key: anodizer-${{ matrix.os }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: anodizer check config
       - name: Build this runner's target natively
         run: anodizer release --split --snapshot --clean --targets ${{ matrix.target }}

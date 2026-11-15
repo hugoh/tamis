@@ -14,6 +14,11 @@ concurrency:
   group: pages-${{ github.event.pull_request.number || 'deploy' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # setup-rust-toolchain defaults this to deny, which would turn rustc warnings into build
+  # failures; clippy already gates warnings.
+  CARGO_BUILD_WARNINGS: warn
+
 jobs:
   # A path-filtered workflow posts no check on unrelated PRs, so it can't be a
   # required context. Filtering by step instead reports `site-build` as passing
@@ -46,12 +51,12 @@ jobs:
           extra-cache-key-cmd: cat site-docs/package-lock.json
           extra-cache-paths: ~/.npm
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
-        uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
+        uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
           # Reuse the e2e job's dev-profile dependency build (saved from main);
           # this job only restores it.
-          shared-key: e2e
-          save-if: "false"
+          cache-shared-key: e2e
+          cache-save-if: "false"
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
         run: mise run site
         env:

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Download crap-baseline.json from the last successful main run (needs gh and GH_TOKEN); a missing baseline is only a warning"
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 set -euo pipefail
 id=$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
 if [ "$id" = "" ] || ! gh run download "$id" --name crap-baseline; then

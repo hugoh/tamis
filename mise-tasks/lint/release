@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Check the release config"
 #MISE sources=[".anodizer.yaml"]
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 set -euo pipefail
 
 anodizer check config

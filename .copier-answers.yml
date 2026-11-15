@@ -1,8 +1,18 @@
 # Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
-_commit: v0.3.2
+_commit: v0.4.0
 _src_path: https://github.com/hugoh/rust-tools.git
+build_extra_sources:
+- web/static/vendor/*
+ci_test_extra_depends:
+- test:js
+has_prebuild: true
+lint_extra_depends:
+- lint:package
+- lint:systemd
 project_name: tamis
 rust_channel: 1.100.0
+test_extra_depends:
+- test:js
 toolchain_targets:
 - x86_64-unknown-linux-gnu
 - aarch64-unknown-linux-gnu

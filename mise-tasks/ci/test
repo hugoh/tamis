@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run the CI test checks: tests with coverage, CRAP regression report, browser script tests"
+#MISE description="Run the CI test checks: tests with coverage, the CRAP regression report and any repo-specific checks"
 #MISE depends=["coverage", "crap", "test:js"]
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 true

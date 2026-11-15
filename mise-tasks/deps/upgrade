@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Upgrade dependencies, including incompatible (major) bumps; extra arguments go to cargo upgrade"
 #MISE tools={"cargo:cargo-edit"="latest"}
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 set -euo pipefail
 cargo upgrade --incompatible "$@"
 cargo update

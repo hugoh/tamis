@@ -3,4 +3,5 @@
 #MISE sources=["src/**/*.rs", "Cargo.toml", "Cargo.lock", "web/static/vendor/*"]
 #MISE outputs=["target/release/tamis"]
 #MISE depends=["prebuild"]
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 cargo build --release

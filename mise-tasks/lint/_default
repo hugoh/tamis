@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check the code, release config and systemd unit without changing anything"
-#MISE depends=["lint:rust", "lint:package", "lint:release", "lint:systemd"]
+#MISE description="Check the code and the release config, plus any repo-specific checks, without changing anything"
+#MISE depends=["lint:rust", "lint:release", "lint:package", "lint:systemd"]
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 true

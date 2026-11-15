@@ -1,3 +1,4 @@
+# DO NOT EDIT — managed by hugoh/rust-tools via copier.
 # Files the coverage run excludes (see mise-tasks/coverage) have no coverage data,
 # which `missing = "skip"` already leaves out, so they need no entry here.
 missing = "skip"

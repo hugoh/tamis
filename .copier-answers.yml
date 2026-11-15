@@ -1,0 +1,10 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v0.3.1
+_src_path: https://github.com/hugoh/rust-tools.git
+project_name: tamis
+rust_channel: 1.100.0
+toolchain_targets:
+- x86_64-unknown-linux-gnu
+- aarch64-unknown-linux-gnu
+- aarch64-apple-darwin
+

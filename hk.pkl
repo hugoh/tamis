@@ -1,3 +1,4 @@
+// DO NOT EDIT — managed by hugoh/rust-tools via copier.
 amends "package://github.com/jdx/hk/releases/download/v2.11.1/hk@2.11.1#/Config.pkl"
 import "package://github.com/jdx/hk/releases/download/v2.11.1/hk@2.11.1#/Builtins.pkl"
 import "package://github.com/hugoh/hk-config/releases/download/v3.1.3/hk-config@3.1.3#/base.pkl" as Base
@@ -7,6 +8,17 @@ min_hk_version = Base.min_hk_version
 local linters = new Mapping<String, Step> {
   ...Base.base
   ...Base.shell
+  // .copier-answers.yml is written by copier's own YAML serializer, which omits
+  // the trailing newline these checks expect
+  ["newlines"] = (Builtins.newlines) {
+    exclude = List(".copier-answers.yml")
+  }
+  ["ryl"] = (Builtins.ryl) {
+    exclude = List(".copier-answers.yml")
+  }
+  ["ryl_format"] = (Builtins.ryl_format) {
+    exclude = List(".copier-answers.yml")
+  }
   ["cargo_fmt"] = Builtins.cargo_fmt
   ["cargo_clippy"] = (Builtins.cargo_clippy) {
     check = "cargo clippy --all-targets --all-features -- -D warnings"

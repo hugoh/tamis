@@ -1,5 +1,9 @@
 {
+  // DO NOT EDIT — managed by hugoh/rust-tools via copier.
   "$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
+  // .copier-answers.yml is written by copier's own YAML serializer, not
+  // rendered from a template, so biome's YAML formatter must leave it alone
+  "files": { "includes": ["**", "!**/.copier-answers.yml"] },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

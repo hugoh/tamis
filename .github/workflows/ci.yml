@@ -27,55 +27,21 @@ concurrency:
 
 jobs:
   hk:
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
+    uses: hugoh/rust-tools/.github/workflows/rust-hk.yml@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
     permissions:
       contents: read
       packages: read
       statuses: write
-    steps:
-      - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
-        with:
-          fetch-depth: "0"
-      - uses: ./.github/actions/rust-setup
-        with:
-          shared-key: lint
-      - run: mise run prebuild
-      - uses: hugoh/gh-workflows/hk-check@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
-        env:
-          PINACT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    with:
+      prebuild: true
 
   test:
-    timeout-minutes: 30
-    runs-on: ubuntu-latest
+    uses: hugoh/rust-tools/.github/workflows/rust-test.yml@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
     permissions:
       actions: read
       contents: read
-    env:
-      MISE_ENV: ci
-    steps:
-      - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          shared-key: test
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Start Dovecot
-        run: mise run test:imap-server
-      - name: Fetch CRAP baseline
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: mise run crap:fetch
-      - name: Tests and coverage
-        run: mise run ci:test
-      - name: Record CRAP baseline
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: mise run crap:baseline
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          name: crap-baseline
-          path: crap-baseline.json
-          if-no-files-found: error
+    with:
+      setup-command: mise run test:imap-server
 
   # Its own job, not a step of `test`: the debug build it needs would take the
   # CPUs from the coverage run's timing-sensitive Dovecot tests when run beside
@@ -92,7 +58,7 @@ jobs:
       - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
         with:
           fetch-depth: "1"
-      - uses: ./.github/actions/rust-setup
+      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           shared-key: e2e
       - name: Browser tests
@@ -149,11 +115,11 @@ jobs:
       - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
         with:
           fetch-depth: "0"
-      - uses: ./.github/actions/rust-setup
+      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           shared-key: lint
           save-if: "false"
-      - uses: ./.github/actions/apply-tag
+      - uses: hugoh/rust-tools/.github/actions/apply-tag@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           tag: ${{ needs.plan.outputs.tag }}
       - name: Preflight
@@ -183,10 +149,10 @@ jobs:
       - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
         with:
           fetch-depth: "0"
-      - uses: ./.github/actions/rust-setup
+      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           cache: "false"
-      - uses: ./.github/actions/apply-tag
+      - uses: hugoh/rust-tools/.github/actions/apply-tag@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           tag: ${{ needs.plan.outputs.tag }}
       - name: Validate release
@@ -233,7 +199,7 @@ jobs:
         env:
           TAG: ${{ needs.tag.outputs.tag }}
         run: git checkout --detach "$TAG"
-      - uses: ./.github/actions/rust-setup
+      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           shared-key: anodizer-${{ matrix.os }}
       - name: Build this runner's target
@@ -283,7 +249,7 @@ jobs:
         env:
           TAG: ${{ needs.tag.outputs.tag }}
         run: git checkout --detach "$TAG"
-      - uses: ./.github/actions/rust-setup
+      - uses: hugoh/rust-tools/.github/actions/rust-setup@1f3124404d8d55abbb05e0cc4a37f444a1da34b9 # v0.2.0
         with:
           shared-key: lint
           save-if: "false"

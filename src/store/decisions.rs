@@ -176,6 +176,8 @@ pub struct DecisionQuery {
     /// Drops decisions a later correction or undo of the same message
     /// superseded.
     pub hide_corrected: bool,
+    /// Drops decisions made by a filing rule.
+    pub hide_rule: bool,
     /// Keeps decisions whose sender, subject, reason, action or folder contain
     /// it, ignoring ASCII case.
     pub search: String,
@@ -213,6 +215,9 @@ impl DecisionQuery {
                    AND c.id > decisions.id AND c.reason IN ('correction', 'undo'))"
                     .to_owned(),
             );
+        }
+        if self.hide_rule {
+            conditions.push("reason != 'rule'".to_owned());
         }
         if !self.search.is_empty() {
             let pattern = like_pattern(&self.search);

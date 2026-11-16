@@ -128,6 +128,7 @@ struct DecisionsBody {
     reason: String,
     reasons: Vec<ReasonChoice>,
     hide_corrected: bool,
+    hide_rule: bool,
     columns: Vec<Column>,
     more_href: String,
     only_id: i64,
@@ -259,6 +260,10 @@ pub(super) async fn decisions(
     if hide_corrected {
         state.filters.insert("hide_corrected", "1".to_owned());
     }
+    let hide_rule = query.get("hide_rule").is_some_and(|v| v == "1");
+    if hide_rule {
+        state.filters.insert("hide_rule", "1".to_owned());
+    }
     let only_id = query
         .get("id")
         .and_then(|id| id.parse::<i64>().ok())
@@ -273,6 +278,7 @@ pub(super) async fn decisions(
         verdict: chosen,
         reason: chosen_reason,
         hide_corrected,
+        hide_rule,
         search: state.search.clone(),
         sort: DecisionSort::from_name(state.sort),
         asc: state.asc,
@@ -313,6 +319,7 @@ pub(super) async fn decisions(
             !verdict.is_empty()
                 || !reason.is_empty()
                 || hide_corrected
+                || hide_rule
                 || !state.search.is_empty()
                 || only_id > 0,
         ),
@@ -325,6 +332,7 @@ pub(super) async fn decisions(
         reason,
         reasons,
         hide_corrected,
+        hide_rule,
         only_id,
     };
 

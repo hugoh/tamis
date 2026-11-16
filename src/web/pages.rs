@@ -116,6 +116,11 @@ struct ReasonChoice {
     checked: bool,
 }
 
+struct FilterChip {
+    label: String,
+    field: &'static str,
+}
+
 struct DecisionsBody {
     sort: &'static str,
     dir: &'static str,
@@ -129,6 +134,7 @@ struct DecisionsBody {
     reasons: Vec<ReasonChoice>,
     hide_corrected: bool,
     hide_rule: bool,
+    chips: Vec<FilterChip>,
     columns: Vec<Column>,
     more_href: String,
     only_id: i64,
@@ -243,6 +249,46 @@ fn decision_row(decision: &Decision) -> DecisionRow {
     }
 }
 
+/// The verdict buttons and reason options, with the current ones checked.
+fn filter_choices(verdict: &str, reason: &str) -> (Vec<VerdictChoice>, Vec<ReasonChoice>) {
+    let verdicts = std::iter::once(("", "All"))
+        .chain(Verdict::ALL.map(|v| (v.as_str(), v.as_str())))
+        .map(|(value, label)| VerdictChoice {
+            value,
+            label,
+            checked: value == verdict,
+        })
+        .collect();
+    let reasons = std::iter::once("")
+        .chain(Reason::ALL.map(Reason::as_str))
+        .map(|value| ReasonChoice {
+            value,
+            checked: value == reason,
+        })
+        .collect();
+    (verdicts, reasons)
+}
+
+/// One removable chip per filter in force.
+fn filter_chips(
+    search: &str,
+    verdict: &str,
+    reason: &str,
+    (hide_corrected, hide_rule): (bool, bool),
+) -> Vec<FilterChip> {
+    let chip = |label: String, field| FilterChip { label, field };
+    [
+        (!search.is_empty()).then(|| chip(format!("Search: {search}"), "q")),
+        (!verdict.is_empty()).then(|| chip(format!("Verdict: {verdict}"), "verdict")),
+        (!reason.is_empty()).then(|| chip(format!("Reason: {reason}"), "reason")),
+        hide_corrected.then(|| chip("Hide corrected".to_owned(), "hide_corrected")),
+        hide_rule.then(|| chip("Hide rule".to_owned(), "hide_rule")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
 pub(super) async fn decisions(
     State(app): State<App>,
     headers: HeaderMap,
@@ -293,21 +339,13 @@ pub(super) async fn decisions(
     let more = found.len() > page_size;
     let found = &found[..found.len().min(page_size)];
     let rows: Vec<DecisionRow> = found.iter().map(decision_row).collect();
-    let verdicts = std::iter::once(("", "All"))
-        .chain(Verdict::ALL.map(|v| (v.as_str(), v.as_str())))
-        .map(|(value, label)| VerdictChoice {
-            value,
-            label,
-            checked: value == verdict,
-        })
-        .collect();
-    let reasons = std::iter::once("")
-        .chain(Reason::ALL.map(Reason::as_str))
-        .map(|value| ReasonChoice {
-            value,
-            checked: value == reason,
-        })
-        .collect();
+    let (verdicts, reasons) = filter_choices(&verdict, &reason);
+    let chips = filter_chips(
+        &state.search,
+        &verdict,
+        &reason,
+        (hide_corrected, hide_rule),
+    );
     let body = DecisionsBody {
         sort: state.sort,
         dir: state.dir(),
@@ -333,6 +371,7 @@ pub(super) async fn decisions(
         reasons,
         hide_corrected,
         hide_rule,
+        chips,
         only_id,
     };
 

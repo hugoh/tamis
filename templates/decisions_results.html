@@ -2,6 +2,9 @@
 <input type="hidden" form="toolbar" name="sort" value="{{ body.sort }}">
 <input type="hidden" form="toolbar" name="dir" value="{{ body.dir }}">
 {% if body.only_id != 0 %}<div role="status" class="alert alert-info alert-soft my-2"><span>Showing decision #{{ body.only_id }} only.</span><a class="link" href="/">Show all</a></div>{% endif %}
+{% if !body.chips.is_empty() %}<div class="flex flex-wrap items-center gap-2 my-2" role="group" aria-label="Active filters">
+{% for chip in body.chips %}<span class="badge badge-soft badge-primary gap-1">{{ chip.label }}<button type="button" class="cursor-pointer" data-clear="{{ chip.field }}" aria-label="Remove filter: {{ chip.label }}">×</button></span>
+{% endfor %}<a class="link link-hover text-xs" href="/">Reset filters</a></div>{% endif %}
 <p class="text-sm opacity-70 my-2">{{ body.count }} · Updated {{ body.generated }}</p>
 {% if !body.rows.is_empty() %}<div class="overflow-x-auto">
 <table class="table table-xs table-zebra table-pin-rows">

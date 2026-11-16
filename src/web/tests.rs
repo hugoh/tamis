@@ -385,6 +385,10 @@ async fn rule_decisions_can_be_hidden() {
 
     assert!(page.contains("name=\"hide_rule\""), "{page}");
     assert!(
+        !page.contains("data-clear") && hidden.contains("data-clear=\"hide_rule\""),
+        "{hidden}"
+    );
+    assert!(
         hidden.contains("1 decision match")
             && hidden.contains("by-bayes")
             && !hidden.contains("by-rule"),

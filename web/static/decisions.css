@@ -13,3 +13,7 @@ dialog::backdrop{overflow:hidden;overscroll-behavior:contain}
 #toasts[popover]{position:fixed;inset:auto 1rem 1rem auto;margin:0;padding:0;border:0;background:transparent;overflow:visible}
 #toasts[popover]:not(:popover-open){display:none}
 #toasts .alert{align-items:center}
+#toolbar{counter-reset:hides}
+#toolbar [name^=hide_]:checked{counter-increment:hides}
+.hide-count::after{content:counter(hides)}
+#toolbar:not(:has([name^=hide_]:checked)) .hide-count,#toolbar:not(:has([name^=hide_]:checked)) #reset-hides{display:none}

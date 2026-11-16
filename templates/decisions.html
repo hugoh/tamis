@@ -2,18 +2,22 @@
 {% block content %}
 <h1 class="text-2xl font-semibold mb-4">Decisions</h1>
 <form id="toolbar" class="flex flex-wrap items-center gap-3" hx-get="/" hx-target="#results" hx-swap="outerHTML" hx-push-url="true" hx-include="#toolbar" hx-disabled-elt="#toolbar button[type=submit]">
-<input type="search" name="q" value="{{ body.search }}" placeholder="Search folder, sender, subject, reason…" aria-label="Search" class="input input-sm w-72" hx-get="/" hx-trigger="input changed delay:300ms, search">
+<input type="search" name="q" value="{{ body.search }}" placeholder="Search folder, sender, subject, reason…" aria-label="Search" class="input input-sm w-72 grow" hx-get="/" hx-trigger="input changed delay:300ms, search">
 <div class="join">
 {% for choice in body.verdicts %}<input class="join-item btn btn-sm" type="radio" name="verdict" value="{{ choice.value }}" aria-label="{{ choice.label }}"{% if choice.checked %} checked{% endif %} hx-get="/" hx-trigger="change">
 {% endfor %}</div>
 <select name="reason" aria-label="Reason" class="select select-sm w-auto" hx-get="/" hx-trigger="change">
 {% for choice in body.reasons %}<option value="{{ choice.value }}"{% if choice.checked %} selected{% endif %}>{% if choice.value.is_empty() %}Any reason{% else %}{{ choice.value }}{% endif %}</option>
 {% endfor %}</select>
-<fieldset class="flex items-center gap-3 text-sm"><legend class="sr-only">Hide</legend><span aria-hidden="true" class="opacity-70">Hide:</span>
-<label class="label cursor-pointer gap-2 text-sm"><input type="checkbox" name="hide_corrected" value="1" class="checkbox checkbox-sm"{% if body.hide_corrected %} checked{% endif %} hx-get="/" hx-trigger="change">Corrected</label>
-<label class="label cursor-pointer gap-2 text-sm"><input type="checkbox" name="hide_rule" value="1" class="checkbox checkbox-sm"{% if body.hide_rule %} checked{% endif %} hx-get="/" hx-trigger="change">Rule</label>
-</fieldset>
+<div class="relative">
+<button type="button" class="btn btn-sm" popovertarget="hide-menu" style="anchor-name:--hide-menu" aria-haspopup="true">Hide <span class="hide-count badge badge-primary badge-xs" aria-hidden="true"></span> <span aria-hidden="true">▾</span></button>
+<div id="hide-menu" popover class="dropdown menu rounded-box bg-base-100 border border-base-300 shadow-lg p-2 w-60" style="position-anchor:--hide-menu">
+<label class="label cursor-pointer justify-start gap-2 text-sm rounded p-2 hover:bg-base-200"><input type="checkbox" name="hide_corrected" value="1" class="checkbox checkbox-sm"{% if body.hide_corrected %} checked{% endif %} hx-get="/" hx-trigger="change">Corrected <span class="ml-auto text-xs opacity-60">superseded</span></label>
+<label class="label cursor-pointer justify-start gap-2 text-sm rounded p-2 hover:bg-base-200"><input type="checkbox" name="hide_rule" value="1" class="checkbox checkbox-sm"{% if body.hide_rule %} checked{% endif %} hx-get="/" hx-trigger="change">Rule <span class="ml-auto text-xs opacity-60">filing rules</span></label>
+</div>
+</div>
 <button type="submit" class="btn btn-sm">Refresh</button>
+<a id="reset-hides" href="/" class="link link-hover text-sm">Reset</a>
 </form>
 {% include "decisions_results.html" %}
 {% endblock %}

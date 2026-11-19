@@ -17,3 +17,4 @@ dialog::backdrop{overflow:hidden;overscroll-behavior:contain}
 #toolbar [name^=hide_]:checked{counter-increment:hides}
 .hide-count::after{content:counter(hides)}
 #toolbar:not(:has([name^=hide_]:checked)) .hide-count,#toolbar:not(:has([name^=hide_]:checked)) #reset-hides{display:none}
+#hide-menu{inset:auto;margin:0}

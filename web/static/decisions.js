@@ -33,7 +33,8 @@ document.getElementById("hide-menu")?.addEventListener("toggle", (event) => {
   const button = document.querySelector('[popovertarget="hide-menu"]');
   const box = button.getBoundingClientRect();
   const margin = 8;
-  const farthest = document.documentElement.clientWidth - menu.offsetWidth - margin;
+  const farthest =
+    document.documentElement.clientWidth - menu.offsetWidth - margin;
   Object.assign(menu.style, {
     position: "fixed",
     top: `${box.bottom + 4}px`,

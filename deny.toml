@@ -9,6 +9,8 @@ ignore = [
   { id = "RUSTSEC-2026-0371", reason = "zbus_names was merged into zbus 6; secret-service (via keyring) still pins zbus 5" },
   { id = "RUSTSEC-2023-0071", reason = "rsa (via webauthn-rs) only verifies public-key signatures here; the timing leak is in private-key operations tamis never performs" },
   { id = "RUSTSEC-2026-0374", reason = "basic-toml is askama's build-time parser of its own config, not part of the shipped binary" },
+  { id = "RUSTSEC-2026-0542", reason = "humantime wraps chrono, which is unmaintained; no replacement is published yet" },
+  { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained and arrives via imap-codec; no safe upgrade is available yet" },
   { id = "RUSTSEC-2026-0372", reason = "zvariant_derive was merged into zbus 6; secret-service (via keyring) still pins zbus 5" },
 ]
 

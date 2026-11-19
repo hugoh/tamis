@@ -374,6 +374,28 @@ async fn corrected_decisions_can_be_hidden_and_offer_no_buttons() {
     );
 }
 
+#[tokio::test]
+async fn rule_decisions_can_be_hidden() {
+    let site = site();
+    record(&site, "by-rule-mail", "rule", true);
+    record(&site, "by-bayes-mail", "bayes", true);
+
+    let page = text(site.get("/").await).await;
+    let hidden = text(site.get_htmx("/?hide_rule=1").await).await;
+
+    assert!(page.contains("name=\"hide_rule\""), "{page}");
+    assert!(
+        !page.contains("data-clear") && hidden.contains("data-clear=\"hide_rule\""),
+        "{hidden}"
+    );
+    assert!(
+        hidden.contains("1 decision match")
+            && hidden.contains("by-bayes")
+            && !hidden.contains("by-rule"),
+        "{hidden}"
+    );
+}
+
 /// Injected into the mock page: it is a static picture, so nothing in it
 /// should navigate or submit.
 const MOCK_FREEZE: &str = "<style>a,button,input,select,textarea,label,summary,[hx-get],[hx-post]\

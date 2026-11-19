@@ -24,16 +24,19 @@ document.addEventListener("click", (event) => {
   );
 });
 
-// Places the Hide menu under its button. The menu is in the top layer, so it
-// is positioned from the button's rectangle instead of CSS anchor positioning,
-// which Safari positions at the page's top left.
-document.getElementById("hide-menu")?.addEventListener("beforetoggle", (event) => {
+// Places the Hide menu under its button, kept inside the viewport. The menu is
+// in the top layer, so it is positioned from the button's rectangle instead of
+// CSS anchor positioning, which Safari puts at the page's top left.
+document.getElementById("hide-menu")?.addEventListener("toggle", (event) => {
   if (event.newState !== "open") return;
+  const menu = event.target;
   const button = document.querySelector('[popovertarget="hide-menu"]');
   const box = button.getBoundingClientRect();
-  Object.assign(event.target.style, {
+  const margin = 8;
+  const farthest = document.documentElement.clientWidth - menu.offsetWidth - margin;
+  Object.assign(menu.style, {
     position: "fixed",
     top: `${box.bottom + 4}px`,
-    left: `${box.left}px`,
+    left: `${Math.max(margin, Math.min(box.left, farthest))}px`,
   });
 });

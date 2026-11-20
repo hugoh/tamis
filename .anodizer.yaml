@@ -83,6 +83,7 @@ cloudsmiths:
       deb: any-distro/any-version
       rpm: any-distro/any-version
     secret_name: CLOUDSMITH_API_KEY
+    keep_versions: 2
     required: true
 
 verify_release:

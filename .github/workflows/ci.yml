@@ -60,7 +60,7 @@ jobs:
       # The runner's own Chrome: no browser download.
       TAMIS_E2E_CHANNEL: chrome
     steps:
-      - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
+      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
         with:
           fetch-depth: "1"
       - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
@@ -86,7 +86,7 @@ jobs:
         run: |
           echo "::error::Manual bump_type dispatch must run on main (got ${GITHUB_REF})"
           exit 1
-      - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
+      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
         with:
           fetch-depth: "0"
       - name: Plan the release
@@ -118,7 +118,7 @@ jobs:
     env:
       MISE_ENV: package
     steps:
-      - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
+      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
         with:
           fetch-depth: "0"
       - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
@@ -152,7 +152,7 @@ jobs:
       group: release
       cancel-in-progress: false
     steps:
-      - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
+      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
         with:
           fetch-depth: "0"
       - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
@@ -198,7 +198,7 @@ jobs:
     env:
       MISE_ENV: release,package
     steps:
-      - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
+      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
         with:
           fetch-depth: "0"
       - name: Check out the release tag
@@ -249,7 +249,7 @@ jobs:
       group: release-publish
       cancel-in-progress: false
     steps:
-      - uses: hugoh/gh-workflows/setup@e16fb522310fbdff89aab38e3d16d13ee5cff11e # v1.40.20
+      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
         with:
           fetch-depth: "0"
       - name: Check out the release tag

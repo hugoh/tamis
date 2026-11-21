@@ -5,3 +5,9 @@
 set -euo pipefail
 
 anodizer check config
+
+unpruned=$(yq '(.cloudsmiths // [])[] | select(has("keep_versions") | not) | .repository' .anodizer.yaml)
+if [ -n "$unpruned" ]; then
+    echo "cloudsmiths entries without keep_versions (Cloudsmith has no retention on the free plan): ${unpruned//$'\n'/, }" >&2
+    exit 1
+fi

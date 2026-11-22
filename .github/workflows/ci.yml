@@ -70,6 +70,19 @@ jobs:
       - name: Browser tests
         run: mise run test:e2e
 
+  # The single required status check for these jobs, and what the release
+  # pipeline waits on. cross.yml and pages.yml are separate workflows with their own.
+  ci-gate:
+    if: always()
+    needs: [hk, test, e2e]
+    timeout-minutes: 2
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}
+
   plan:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
@@ -136,7 +149,7 @@ jobs:
         run: anodizer preflight
 
   tag:
-    needs: [plan, hk, test, e2e, preflight]
+    needs: [plan, ci-gate, preflight]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
     runs-on: ubuntu-latest

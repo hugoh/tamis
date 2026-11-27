@@ -32,7 +32,7 @@ env:
 
 jobs:
   hk:
-    uses: hugoh/rust-tools/.github/workflows/rust-hk.yml@84c4a79ca74a7ed1e3c65009e33b63cffeda0e88 # v0.4.0
+    uses: hugoh/rust-tools/.github/workflows/rust-hk.yml@12504367a54688308677cf04603db3cc3a0cf95b # v0.5.1
     permissions:
       contents: read
       packages: read
@@ -41,7 +41,7 @@ jobs:
       prebuild: true
 
   test:
-    uses: hugoh/rust-tools/.github/workflows/rust-test.yml@84c4a79ca74a7ed1e3c65009e33b63cffeda0e88 # v0.4.0
+    uses: hugoh/rust-tools/.github/workflows/rust-test.yml@12504367a54688308677cf04603db3cc3a0cf95b # v0.5.1
     permissions:
       actions: read
       contents: read
@@ -60,7 +60,7 @@ jobs:
       # The runner's own Chrome: no browser download.
       TAMIS_E2E_CHANNEL: chrome
     steps:
-      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
+      - uses: hugoh/gh-workflows/setup@8d17bc6b4d7edc0bbec893e0466eb0ba60728721 # v1.40.27
         with:
           fetch-depth: "1"
       - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
@@ -99,7 +99,7 @@ jobs:
         run: |
           echo "::error::Manual bump_type dispatch must run on main (got ${GITHUB_REF})"
           exit 1
-      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
+      - uses: hugoh/gh-workflows/setup@8d17bc6b4d7edc0bbec893e0466eb0ba60728721 # v1.40.27
         with:
           fetch-depth: "0"
       - name: Plan the release
@@ -131,14 +131,14 @@ jobs:
     env:
       MISE_ENV: package
     steps:
-      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
+      - uses: hugoh/gh-workflows/setup@8d17bc6b4d7edc0bbec893e0466eb0ba60728721 # v1.40.27
         with:
           fetch-depth: "0"
       - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
           cache-shared-key: lint
           cache-save-if: "false"
-      - uses: hugoh/rust-tools/.github/actions/apply-tag@84c4a79ca74a7ed1e3c65009e33b63cffeda0e88 # v0.4.0
+      - uses: hugoh/rust-tools/.github/actions/apply-tag@12504367a54688308677cf04603db3cc3a0cf95b # v0.5.1
         with:
           tag: ${{ needs.plan.outputs.tag }}
       - name: Preflight
@@ -165,13 +165,13 @@ jobs:
       group: release
       cancel-in-progress: false
     steps:
-      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
+      - uses: hugoh/gh-workflows/setup@8d17bc6b4d7edc0bbec893e0466eb0ba60728721 # v1.40.27
         with:
           fetch-depth: "0"
       - uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
         with:
           cache: "false"
-      - uses: hugoh/rust-tools/.github/actions/apply-tag@84c4a79ca74a7ed1e3c65009e33b63cffeda0e88 # v0.4.0
+      - uses: hugoh/rust-tools/.github/actions/apply-tag@12504367a54688308677cf04603db3cc3a0cf95b # v0.5.1
         with:
           tag: ${{ needs.plan.outputs.tag }}
       - name: Validate release
@@ -211,7 +211,7 @@ jobs:
     env:
       MISE_ENV: release,package
     steps:
-      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
+      - uses: hugoh/gh-workflows/setup@8d17bc6b4d7edc0bbec893e0466eb0ba60728721 # v1.40.27
         with:
           fetch-depth: "0"
       - name: Check out the release tag
@@ -262,7 +262,7 @@ jobs:
       group: release-publish
       cancel-in-progress: false
     steps:
-      - uses: hugoh/gh-workflows/setup@ae6e1b2ce64760b5418b71668bb9b0a74a3c4c70 # v1.40.22
+      - uses: hugoh/gh-workflows/setup@8d17bc6b4d7edc0bbec893e0466eb0ba60728721 # v1.40.27
         with:
           fetch-depth: "0"
       - name: Check out the release tag

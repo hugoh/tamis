@@ -40,7 +40,7 @@ rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "
 regex = "1.13.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
 rpassword = "7.5.5"
-rusqlite = { version = "0.42.0", features = ["bundled"] }
+rusqlite = { version = "0.43.0", features = ["bundled"] }
 rust-embed = "8.14.0"
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1.0.229", features = ["derive"] }

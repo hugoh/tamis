@@ -45,7 +45,7 @@ jobs:
               - mise-tasks/site/**
               - .github/workflows/pages.yml
       - if: github.event_name != 'pull_request' || steps.filter.outputs.site == 'true'
-        uses: hugoh/gh-workflows/setup@8d17bc6b4d7edc0bbec893e0466eb0ba60728721 # v1.40.27
+        uses: hugoh/gh-workflows/setup@1990006622d3176e00fbf0d3d0b40723cfe8dbeb # v1.40.28
         with:
           fetch-depth: "1"
           extra-cache-key-cmd: cat site-docs/package-lock.json
